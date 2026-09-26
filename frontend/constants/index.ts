@@ -1,4 +1,6 @@
-export const API_URL = "http://192.168.31.203:3000";
+export const API_URL =
+    process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    "http://192.168.31.203:3000";
 
 export const CLOUDINARY_CLOUD_NAME = "dafb37rpe";
 export const CLOUDINARY_UPLOAD_PRESET = "images_1";
