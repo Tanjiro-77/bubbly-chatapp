@@ -1,0 +1,143 @@
+Chat/
+├── backend/
+│   ├── config/
+│   │   └── db.ts
+│   ├── controllers/
+│   │   ├── auth.controller.ts
+│   │   ├── call.controller.ts
+│   │   └── search.controller.ts
+│   ├── middleware/
+│   │   └── auth.ts
+│   ├── modals/
+│   │   ├── Call.ts
+│   │   ├── Conversation.ts
+│   │   ├── Message.ts
+│   │   ├── Report.ts
+│   │   ├── SavedMessage.ts
+│   │   ├── ScheduledMessage.ts
+│   │   ├── Story.ts
+│   │   ├── TranslationCache.ts
+│   │   └── User.ts
+│   ├── routes/
+│   │   ├── app.routes.ts
+│   │   └── auth.routes.ts
+│   ├── services/
+│   │   ├── messageService.ts
+│   │   └── scheduledWorker.ts
+│   ├── socket/
+│   │   ├── appEvents.ts
+│   │   ├── callEvents.ts
+│   │   ├── chatEvents.ts
+│   │   ├── groupEvents.ts
+│   │   ├── io.ts
+│   │   ├── socket.ts
+│   │   └── useEvents.ts
+│   ├── utils/
+│   │   ├── messageFormat.ts
+│   │   ├── permissions.ts
+│   │   ├── rateLimit.ts
+│   │   └── token.ts
+│   ├── .env
+│   ├── index.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── types.ts
+├── frontend/
+│   ├── .claude/
+│   │   └── settings.json
+│   ├── .vscode/
+│   │   ├── extensions.json
+│   │   └── settings.json
+│   ├── app/
+│   │   ├── (auth)/
+│   │   │   ├── login.tsx
+│   │   │   ├── register.tsx
+│   │   │   └── welcome.tsx
+│   │   ├── (main)/
+│   │   │   ├── callScreen.tsx
+│   │   │   ├── conversation.tsx
+│   │   │   ├── createStory.tsx
+│   │   │   ├── home.tsx
+│   │   │   ├── incomingCall.tsx
+│   │   │   ├── newConversationModal.tsx
+│   │   │   ├── profileModel.tsx
+│   │   │   └── storyViewer.tsx
+│   │   ├── _layout.tsx
+│   │   └── index.tsx
+│   ├── assets/
+│   │   ├── expo.icon/
+│   │   │   ├── Assets/
+│   │   │   │   ├── expo-symbol 2.svg
+│   │   │   │   └── grid.png
+│   │   │   └── icon.json
+│   │   └── images/
+│   │       ├── tabIcons/
+│   │       │   ├── explore.png
+│   │       │   ├── explore@2x.png
+│   │       │   ├── explore@3x.png
+│   │       │   ├── home.png
+│   │       │   ├── home@2x.png
+│   │       │   └── home@3x.png
+│   │       ├── android-icon-background.png
+│   │       ├── android-icon-foreground.png
+│   │       ├── android-icon-monochrome.png
+│   │       ├── bgPattern.png
+│   │       ├── defaultAvatar.png
+│   │       ├── defaultGroupAvatar.png
+│   │       ├── expo-badge-white.png
+│   │       ├── expo-badge.png
+│   │       ├── expo-logo.png
+│   │       ├── favicon.png
+│   │       ├── icon.png
+│   │       ├── logo-glow.png
+│   │       ├── react-logo.png
+│   │       ├── react-logo@2x.png
+│   │       ├── react-logo@3x.png
+│   │       ├── splash-icon.png
+│   │       ├── splashImage.png
+│   │       ├── tutorial-web.png
+│   │       └── welcome.png
+│   ├── components/
+│   │   ├── Avatar.tsx
+│   │   ├── BackButton.tsx
+│   │   ├── Button.tsx
+│   │   ├── ConversationItem.tsx
+│   │   ├── Header.tsx
+│   │   ├── Input.tsx
+│   │   ├── Loading.tsx
+│   │   ├── MessageItem.tsx
+│   │   ├── ScreenWrapper.tsx
+│   │   ├── StoryBar.tsx
+│   │   └── Typo.tsx
+│   ├── constants/
+│   │   ├── index.ts
+│   │   └── theme.ts
+│   ├── contexts/
+│   │   └── authContext.tsx
+│   ├── hooks/
+│   ├── scripts/
+│   │   └── reset-project.js
+│   ├── services/
+│   │   ├── authService.ts
+│   │   ├── callService.ts
+│   │   └── imageService.ts
+│   ├── socket/
+│   │   ├── socket.ts
+│   │   └── socketEvents.ts
+│   ├── utils/
+│   │   └── styling.ts
+│   ├── .gitignore
+│   ├── AGENTS.md
+│   ├── app.json
+│   ├── CLAUDE.md
+│   ├── eas.json
+│   ├── expo-env.d.ts
+│   ├── LICENSE
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── README.md
+│   ├── tsconfig.json
+│   └── types.ts
+├── file-tree.txt
+└── make_tree.py
