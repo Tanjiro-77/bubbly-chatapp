@@ -168,7 +168,6 @@ const ProfileModal = () => {
                         style={styles.fields}
                     >
 
-                        {/* Section label */}
                         <Typo
                             size={11}
                             fontWeight="700"
@@ -233,7 +232,7 @@ const ProfileModal = () => {
 
                     </Animated.View>
 
-                    {/* ── Danger Zone ── */}
+                    {/* ── Account Actions ── */}
                     <Animated.View
                         entering={FadeInDown.duration(500).delay(250).springify()}
                         style={styles.dangerZone}
@@ -247,14 +246,112 @@ const ProfileModal = () => {
                             ACCOUNT ACTIONS
                         </Typo>
 
+
+                        {/* ── About Bubbly ── */}
                         <Pressable
-                            onPress={showLogoutAlert}
+                            onPress={() => router.push("/(main)/about")}
                             style={({ pressed }) => [
-                                styles.signOutRow,
+                                styles.actionRow,
                                 pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
                             ]}
                         >
-                            <View style={styles.signOutLeft}>
+                            <View style={styles.actionLeft}>
+                                <View style={styles.actionIconWrap}>
+                                    <Icons.Info
+                                        size={verticalScale(18)}
+                                        color={colors.primary}
+                                        weight="bold"
+                                    />
+                                </View>
+                                <View>
+                                    <Typo size={15} fontWeight="600" color={colors.neutral800}>
+                                        About Bubbly
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400}>
+                                        App info & developer
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.CaretRight
+                                size={verticalScale(16)}
+                                color={colors.neutral300}
+                                weight="bold"
+                            />
+                        </Pressable>
+
+                        {/* ── How to Use Bubbly (replay) ── */}
+                        <Pressable
+                            onPress={() => router.push("/onboarding?replay=true")}
+                            style={({ pressed }) => [
+                                styles.actionRow,
+                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
+                                <View style={styles.tutorialIconWrap}>
+                                    <Icons.BookOpen
+                                        size={verticalScale(18)}
+                                        color={colors.neutral600}
+                                        weight="bold"
+                                    />
+                                </View>
+                                <View>
+                                    <Typo size={15} fontWeight="600" color={colors.neutral800}>
+                                        How to Use Bubbly
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400}>
+                                        Replay the app walkthrough
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.CaretRight
+                                size={verticalScale(16)}
+                                color={colors.neutral300}
+                                weight="bold"
+                            />
+                        </Pressable>
+
+                        {/* ── Settings ── */}
+                        <Pressable
+                            onPress={() => router.push("/(main)/settings")}
+                            style={({ pressed }) => [
+                                styles.actionRow,
+                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
+                                <View style={styles.tutorialIconWrap}>
+                                    <Icons.GearSix
+                                        size={verticalScale(18)}
+                                        color={colors.neutral600}
+                                        weight="bold"
+                                    />
+                                </View>
+                                <View>
+                                    <Typo size={15} fontWeight="600" color={colors.neutral800}>
+                                        Settings
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400}>
+                                        Notifications, privacy & more
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.CaretRight
+                                size={verticalScale(16)}
+                                color={colors.neutral300}
+                                weight="bold"
+                            />
+                        </Pressable>
+
+                        {/* ── Sign Out ── */}
+                        <Pressable
+                            onPress={showLogoutAlert}
+                            style={({ pressed }) => [
+                                styles.actionRow,
+                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
                                 <View style={styles.signOutIconWrap}>
                                     <Icons.SignOut
                                         size={verticalScale(18)}
@@ -277,6 +374,7 @@ const ProfileModal = () => {
                                 weight="bold"
                             />
                         </Pressable>
+
                     </Animated.View>
 
                 </ScrollView>
@@ -307,6 +405,12 @@ export default ProfileModal;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+    },
+
+    tutorialIconWrap: {
+        backgroundColor: colors.neutral100,
+        padding: spacingY._10,
+        borderRadius: radius._12,
     },
 
     // Header
@@ -392,12 +496,14 @@ const styles = StyleSheet.create({
         opacity: 0.65,
     },
 
-    // Danger zone
+    // Account Actions section
     dangerZone: {
         paddingHorizontal: spacingX._20,
         gap: spacingY._10,
     },
-    signOutRow: {
+
+    // Shared action row — used by both About and Sign Out
+    actionRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
@@ -408,11 +514,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacingX._15,
         paddingVertical: spacingY._15,
     },
-    signOutLeft: {
+    actionLeft: {
         flexDirection: "row",
         alignItems: "center",
         gap: spacingX._12,
     },
+
+    // About icon wrap — primary-tinted background
+    actionIconWrap: {
+        backgroundColor: "#fefce8",   // very light yellow, matches primary #facc15
+        padding: spacingY._10,
+        borderRadius: radius._12,
+    },
+
+    // Sign out icon wrap — rose-tinted background (unchanged)
     signOutIconWrap: {
         backgroundColor: "#fef2f2",
         padding: spacingY._10,
