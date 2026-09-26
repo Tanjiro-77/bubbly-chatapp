@@ -80,7 +80,6 @@ Chat/
 │   │       │   ├── home@2x.png
 │   │       │   └── home@3x.png
 │   │       ├── android-icon-background.png
-│   │       ├── android-icon-foreground.png
 │   │       ├── android-icon-monochrome.png
 │   │       ├── bgPattern.png
 │   │       ├── defaultAvatar.png
@@ -89,6 +88,7 @@ Chat/
 │   │       ├── expo-badge.png
 │   │       ├── expo-logo.png
 │   │       ├── favicon.png
+│   │       ├── icon-foreground.png
 │   │       ├── icon.png
 │   │       ├── logo-glow.png
 │   │       ├── react-logo.png
@@ -127,6 +127,7 @@ Chat/
 │   │   └── socketEvents.ts
 │   ├── utils/
 │   │   └── styling.ts
+│   ├── .env
 │   ├── .gitignore
 │   ├── AGENTS.md
 │   ├── app.json
@@ -139,5 +140,5 @@ Chat/
 │   ├── README.md
 │   ├── tsconfig.json
 │   └── types.ts
-├── file-tree.txt
+├── .gitignore
 └── make_tree.py
