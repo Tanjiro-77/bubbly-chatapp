@@ -26,7 +26,8 @@ import {
   Zap,
 } from "lucide-react";
 
-export const APK_DOWNLOAD_LINK = "/bubbly.apk";
+export const APK_DOWNLOAD_LINK =
+  "https://github.com/Tanjiro-77/bubbly-chatapp/releases/download/Bubbly_v1.0.0/bubbly.apk";
 export const GITHUB_URL = "https://github.com/Tanjiro-77/bubbly-chatapp";
 export const FEEDBACK_EMAIL =
   "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20Feedback&body=Hi%20Arnav%2C%0A%0AHere%27s%20my%20feedback%20on%20Bubbly%3A%0A%0A-%20%5BDescribe%20the%20issue%20or%20idea%5D%0A%0ADevice%3A%20%5BYour%20phone%20model%5D%0AAndroid%20version%3A%20%5BYour%20Android%20version%5D%0A%0AThanks%21";
