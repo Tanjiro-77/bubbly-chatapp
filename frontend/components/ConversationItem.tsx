@@ -8,6 +8,7 @@ import { ConversationListItemProps } from "../types"
 import { useAuth } from "../contexts/authContext"
 import { scale, verticalScale } from "../utils/styling"
 import { TextStyle } from 'react-native'
+import * as Icons from "phosphor-react-native"
 
 // ── Highlight matched text ──
 const HighlightText = ({
@@ -61,6 +62,7 @@ const ConversationItem = ({
     showDivider,
     router,
     searchQuery = "",
+    isOnline,
 }: ConversationListItemProps & { searchQuery?: string }) => {
 
     const { user: currentUser } = useAuth();
@@ -117,7 +119,12 @@ const ConversationItem = ({
                 activeOpacity={0.7}
             >
                 {/* Avatar */}
-                <Avatar uri={avatar} size={50} isGroup={item.type === 'group'} />
+                <View style={styles.avatarWrap}>
+                    <Avatar uri={avatar} size={50} isGroup={item.type === 'group'} />
+                    {isDirect && isOnline && (
+                        <View style={styles.onlineDot} />
+                    )}
+                </View>
 
                 {/* Content */}
                 <View style={styles.textContent}>
@@ -135,16 +142,32 @@ const ConversationItem = ({
                             />
                         </View>
 
-                        {lastMessageDate && (
-                            <Typo
-                                size={12}
-                                // ── highlight time if unread ──
-                                color={hasUnread ? colors.primary : colors.neutral400}
-                                fontWeight={hasUnread ? "700" : "400"}
-                            >
-                                {lastMessageDate}
-                            </Typo>
-                        )}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            {item.isMuted && (
+                                <Icons.BellSlash
+                                    size={verticalScale(13)}
+                                    color={colors.neutral400}
+                                    weight="fill"
+                                />
+                            )}
+                            {item.pinnedMessages && item.pinnedMessages.length > 0 && (
+                                <Icons.PushPin
+                                    size={verticalScale(12)}
+                                    color={colors.primaryDark}
+                                    weight="fill"
+                                />
+                            )}
+                            {lastMessageDate && (
+                                <Typo
+                                    size={12}
+                                    // ── highlight time if unread ──
+                                    color={hasUnread ? colors.primary : colors.neutral400}
+                                    fontWeight={hasUnread ? "700" : "400"}
+                                >
+                                    {lastMessageDate}
+                                </Typo>
+                            )}
+                        </View>
                     </View>
 
                     {/* Bottom row: last message + badge */}
@@ -183,6 +206,20 @@ const ConversationItem = ({
 export default ConversationItem;
 
 const styles = StyleSheet.create({
+    avatarWrap: {
+        position: 'relative',
+    },
+    onlineDot: {
+        position: 'absolute',
+        bottom: 1,
+        right: 1,
+        width: verticalScale(12),
+        height: verticalScale(12),
+        borderRadius: radius.full,
+        backgroundColor: '#22c55e',
+        borderWidth: 2,
+        borderColor: colors.white,
+    },
     conversationItem: {
         flexDirection: "row",
         alignItems: "center",

@@ -24,7 +24,7 @@ const scheduledMessageSchema = new mongoose.Schema({
     timezone: { type: String, default: "UTC" },
     status: {
         type: String,
-        enum: ["pending", "sent", "cancelled", "failed"],
+        enum: ["pending", "processing", "sent", "cancelled", "failed"],
         default: "pending",
         index: true,
     },

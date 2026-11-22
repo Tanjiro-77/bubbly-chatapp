@@ -24,13 +24,16 @@ const Login = () => {
     const { signIn } = useAuth();
 
     const handleSubmit = async () => {
-        if (!emailRef.current || !passwordRef.current) {
+        const cleanEmail = emailRef.current.trim().toLowerCase();
+        const cleanPassword = passwordRef.current;
+
+        if (!cleanEmail || !cleanPassword) {
             Alert.alert('Log In', "Please fill all the fields");
             return;
         }
         try {
             setIsLoading(true);
-            await signIn(emailRef.current, passwordRef.current);
+            await signIn(cleanEmail, cleanPassword);
         } catch (error: any) {
             Alert.alert("Login Error", error.message);
         } finally {

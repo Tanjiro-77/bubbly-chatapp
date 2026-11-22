@@ -57,6 +57,25 @@ const ConversationSchema = new Schema<ConversationProps>({
     inviteCode: { type: String, unique: true, sparse: true, index: true },
     disappearingSeconds: { type: Number, default: 0 },
     wallpaper: { type: String, default: "" },
+    pinnedMessages: [
+        {
+            type: Schema.Types.ObjectId,
+            ref: "Message",
+        },
+    ],
+    mutedBy: [
+        {
+            userId: {
+                type: Schema.Types.ObjectId,
+                ref: "User",
+                required: true,
+            },
+            until: {
+                type: Date,
+                default: null,
+            },
+        },
+    ],
     updatedAt: {
         type: Date,
         default: Date.now,

@@ -135,6 +135,7 @@ export type ConversationListItemProps = {
   showDivider: boolean;
   isGroup?: boolean;
   router: typeof router;
+  isOnline?: boolean;
 };
 
 export type ConversationProps = {
@@ -177,6 +178,15 @@ export type ConversationProps = {
   };
 
   unreadCount?: number;
+  isMuted?: boolean;
+  mutedUntil?: string | null;
+  pinnedMessages?: {
+    id: string;
+    content: string;
+    type: string;
+    createdAt: string;
+    sender?: { id: string; name: string; avatar?: string | null } | null;
+  }[];
   createdAt: string;
   updatedAt: string;
 };
@@ -356,6 +366,12 @@ export interface MessageProps {
   expiresAt?: string | null;
 
   storyId?: string | null;
+
+  isSaved?: boolean;
+  isPinned?: boolean;
+  isForwarded?: boolean;
+  isViewOnce?: boolean;
+  viewOnceOpenedBy?: string[];
 }
 
 // ─────────────────────────────────────────────

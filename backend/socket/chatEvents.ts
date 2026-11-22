@@ -23,13 +23,28 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta" })
                 .populate({ path: "participants", select: "name avatar email isOnline lastSeen" })
                 .populate({ path: "admins", select: "name avatar" })
+                .populate({
+                    path: "pinnedMessages",
+                    select: "content senderId type createdAt isDeleted",
+                    populate: { path: "senderId", select: "name avatar" }
+                })
                 .lean();
 
+            const now = new Date();
             const conversationsWithUnread = conversations.map(conv => {
                 const unreadEntry = (conv.unreadCounts || []).find(
                     (u: any) => u.userId.toString() === userId.toString()
                 );
-                return { ...conv, unreadCount: unreadEntry?.count || 0 };
+                const muteEntry = (conv.mutedBy || []).find(
+                    (m: any) => m.userId.toString() === userId.toString()
+                );
+                const isMuted = muteEntry ? (!muteEntry.until || new Date(muteEntry.until) > now) : false;
+                return {
+                    ...conv,
+                    unreadCount: unreadEntry?.count || 0,
+                    isMuted,
+                    mutedUntil: muteEntry?.until || null,
+                };
             });
 
             socket.emit("getConversations", { success: true, data: conversationsWithUnread });
@@ -273,6 +288,15 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 isSaved: savedSet.has(message._id.toString()),
             }));
 
+            const conversationDoc = await Conversation.findById(data.conversationId)
+                .select("pinnedMessages")
+                .populate({
+                    path: "pinnedMessages",
+                    select: "content senderId type createdAt isDeleted",
+                    populate: { path: "senderId", select: "name avatar" },
+                })
+                .lean();
+
             socket.emit("getMessages", {
                 success: true,
                 data: messagesWithSender,
@@ -280,6 +304,17 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 hasMore: skip + PAGE_LIMIT < totalCount,
                 totalCount,
                 aroundMessageId: data.aroundMessageId || null,
+                pinnedMessages: (conversationDoc?.pinnedMessages || []).map((pm: any) => ({
+                    id: pm._id.toString(),
+                    content: pm.content,
+                    type: pm.type,
+                    createdAt: pm.createdAt,
+                    sender: pm.senderId ? {
+                        id: pm.senderId._id?.toString(),
+                        name: pm.senderId.name,
+                        avatar: pm.senderId.avatar,
+                    } : null,
+                })),
             });
         } catch (error) {
             console.log("getMessages error:", error);
@@ -342,6 +377,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
     }) => {
         try {
             const userId = socket.data.userId;
+
+            if (typeof data.emoji !== "string" || !data.emoji.trim() || data.emoji.length > 16) {
+                socket.emit("reactToMessage", { success: false, msg: "Invalid emoji reaction" });
+                return;
+            }
+
             const conversation = await Conversation.findOne({
                 _id: data.conversationId,
                 participants: userId,
@@ -357,8 +398,16 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
+            // Verify message actually belongs to this conversation (IDOR prevention)
+            if (message.conversationId.toString() !== conversation._id.toString()) {
+                socket.emit("reactToMessage", { success: false, msg: "Message not found in conversation" });
+                return;
+            }
+
+            const cleanEmoji = data.emoji.trim();
+
             const existingIndex = message.reactions.findIndex(
-                (r: any) => r.userId.toString() === userId && r.emoji === data.emoji
+                (r: any) => r.userId.toString() === userId && r.emoji === cleanEmoji
             );
 
             if (existingIndex !== -1) {
@@ -368,12 +417,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     (r: any) => r.userId.toString() === userId
                 );
                 if (otherIndex !== -1) message.reactions.splice(otherIndex, 1);
-                message.reactions.push({ emoji: data.emoji, userId, userName: socket.data.name });
+                message.reactions.push({ emoji: cleanEmoji, userId, userName: socket.data.name });
             }
 
             await message.save();
 
-            io.to(data.conversationId).emit("reactToMessage", {
+            io.to(conversation._id.toString()).emit("reactToMessage", {
                 success: true,
                 data: {
                     messageId: data.messageId,
@@ -404,6 +453,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
+            // Verify conversation match if provided
+            if (data.conversationId && message.conversationId.toString() !== data.conversationId.toString()) {
+                socket.emit("deleteMessage", { success: false, msg: "Conversation mismatch" });
+                return;
+            }
+
             message.isDeleted = true;
             message.content = "";
             message.attachement = undefined;
@@ -412,9 +467,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             message.location = undefined;
             await message.save();
 
-            io.to(data.conversationId).emit("deleteMessage", {
+            // Always emit to the genuine conversation room
+            io.to(message.conversationId.toString()).emit("deleteMessage", {
                 success: true,
-                data: { messageId: data.messageId, conversationId: data.conversationId },
+                data: { messageId: data.messageId, conversationId: message.conversationId.toString() },
             });
 
         } catch (error) {
@@ -432,6 +488,11 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
+            if (data.content.length > 5000) {
+                socket.emit("editMessage", { success: false, msg: "Message content exceeds limit of 5,000 characters" });
+                return;
+            }
+
             const message = await Message.findById(data.messageId);
             if (!message) {
                 socket.emit("editMessage", { success: false, msg: "Message not found" });
@@ -439,6 +500,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             }
             if (message.senderId.toString() !== userId.toString()) {
                 socket.emit("editMessage", { success: false, msg: "You can only edit your own messages" });
+                return;
+            }
+            if (data.conversationId && message.conversationId.toString() !== data.conversationId.toString()) {
+                socket.emit("editMessage", { success: false, msg: "Conversation mismatch" });
                 return;
             }
             if (message.isDeleted) {
@@ -454,11 +519,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             message.isEdited = true;
             await message.save();
 
-            io.to(data.conversationId).emit("editMessage", {
+            // Always emit to the genuine conversation room
+            io.to(message.conversationId.toString()).emit("editMessage", {
                 success: true,
                 data: {
                     messageId: data.messageId,
-                    conversationId: data.conversationId,
+                    conversationId: message.conversationId.toString(),
                     content: message.content,
                     isEdited: true,
                 },
@@ -817,6 +883,387 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 success: false,
                 msg: error.message || "Failed to close poll",
             });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // TOGGLE STAR MESSAGE (Feature 2)
+    // ─────────────────────────────────────────────
+    socket.on("toggleStarMessage", async (data: { messageId: string; conversationId: string }) => {
+        try {
+            const userId = socket.data.userId;
+            if (!userId) {
+                socket.emit("toggleStarMessage", { success: false, msg: "Unauthorized" });
+                return;
+            }
+
+            const conversation = await Conversation.findOne({
+                _id: data.conversationId,
+                participants: userId,
+            });
+            if (!conversation) {
+                socket.emit("toggleStarMessage", { success: false, msg: "Not a member" });
+                return;
+            }
+
+            const existing = await SavedMessage.findOne({ userId, messageId: data.messageId });
+            let isSaved = false;
+            if (existing) {
+                await SavedMessage.deleteOne({ _id: existing._id });
+                isSaved = false;
+            } else {
+                await SavedMessage.create({
+                    userId,
+                    messageId: data.messageId,
+                    conversationId: data.conversationId,
+                });
+                isSaved = true;
+            }
+
+            socket.emit("toggleStarMessage", {
+                success: true,
+                data: { messageId: data.messageId, conversationId: data.conversationId, isSaved },
+            });
+        } catch (error: any) {
+            console.log("toggleStarMessage error:", error);
+            socket.emit("toggleStarMessage", { success: false, msg: "Failed to toggle star" });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // GET STARRED MESSAGES (Feature 2)
+    // ─────────────────────────────────────────────
+    socket.on("getStarredMessages", async (data: { page?: number; limit?: number }) => {
+        try {
+            const userId = socket.data.userId;
+            if (!userId) {
+                socket.emit("getStarredMessages", { success: false, msg: "Unauthorized" });
+                return;
+            }
+
+            const page = Math.max(1, Number(data?.page) || 1);
+            const limit = Math.min(50, Math.max(1, Number(data?.limit) || 20));
+            const skip = (page - 1) * limit;
+
+            const saved = await SavedMessage.find({ userId })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate({
+                    path: "messageId",
+                    populate: { path: "senderId", select: "name avatar" }
+                })
+                .lean();
+
+            const formatted = saved
+                .filter((s: any) => s.messageId && !s.messageId.isDeleted)
+                .map((s: any) => ({
+                    savedId: s._id.toString(),
+                    savedAt: s.createdAt,
+                    conversationId: s.conversationId.toString(),
+                    message: formatMessagePayload(s.messageId, {
+                        sender: s.messageId.senderId ? {
+                            id: s.messageId.senderId._id?.toString(),
+                            name: s.messageId.senderId.name,
+                            avatar: s.messageId.senderId.avatar,
+                        } : undefined,
+                    }),
+                }));
+
+            socket.emit("getStarredMessages", {
+                success: true,
+                data: formatted,
+                page,
+                hasMore: formatted.length === limit,
+            });
+        } catch (error: any) {
+            console.log("getStarredMessages error:", error);
+            socket.emit("getStarredMessages", { success: false, msg: "Failed to fetch starred messages" });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // PIN MESSAGE (Feature 3)
+    // ─────────────────────────────────────────────
+    socket.on("pinMessage", async (data: { conversationId: string; messageId: string }) => {
+        try {
+            const userId = socket.data.userId;
+            const conversation = await Conversation.findOne({
+                _id: data.conversationId,
+                participants: userId,
+            });
+            if (!conversation) {
+                socket.emit("pinMessage", { success: false, msg: "Conversation not found" });
+                return;
+            }
+
+            if (conversation.type === "group") {
+                const isAdmin = conversation.admins?.some((a) => a.toString() === userId) ||
+                    conversation.createdBy?.toString() === userId;
+                if (!isAdmin) {
+                    socket.emit("pinMessage", { success: false, msg: "Only admins can pin messages" });
+                    return;
+                }
+            }
+
+            const message = await Message.findById(data.messageId);
+            if (!message || message.conversationId.toString() !== data.conversationId) {
+                socket.emit("pinMessage", { success: false, msg: "Message not found" });
+                return;
+            }
+
+            if (!conversation.pinnedMessages) conversation.pinnedMessages = [];
+            const alreadyPinned = conversation.pinnedMessages.some(
+                (p) => p.toString() === data.messageId
+            );
+
+            if (!alreadyPinned) {
+                conversation.pinnedMessages.push(message._id as any);
+                await conversation.save();
+                message.isPinned = true;
+                await message.save();
+            }
+
+            const populatedConv = await Conversation.findById(conversation._id)
+                .select("pinnedMessages")
+                .populate({
+                    path: "pinnedMessages",
+                    select: "content senderId type createdAt isDeleted",
+                    populate: { path: "senderId", select: "name avatar" }
+                })
+                .lean();
+
+            const pinnedPayload = (populatedConv?.pinnedMessages || []).map((pm: any) => ({
+                id: pm._id.toString(),
+                content: pm.content,
+                type: pm.type,
+                createdAt: pm.createdAt,
+                sender: pm.senderId ? {
+                    id: pm.senderId._id?.toString(),
+                    name: pm.senderId.name,
+                    avatar: pm.senderId.avatar,
+                } : null,
+            }));
+
+            io.to(data.conversationId).emit("pinnedMessageUpdated", {
+                success: true,
+                data: {
+                    conversationId: data.conversationId,
+                    pinnedMessages: pinnedPayload,
+                    action: "pinned",
+                    messageId: data.messageId,
+                },
+            });
+
+            socket.emit("pinMessage", { success: true, data: pinnedPayload });
+        } catch (error: any) {
+            console.log("pinMessage error:", error);
+            socket.emit("pinMessage", { success: false, msg: "Failed to pin message" });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // UNPIN MESSAGE (Feature 3)
+    // ─────────────────────────────────────────────
+    socket.on("unpinMessage", async (data: { conversationId: string; messageId: string }) => {
+        try {
+            const userId = socket.data.userId;
+            const conversation = await Conversation.findOne({
+                _id: data.conversationId,
+                participants: userId,
+            });
+            if (!conversation) {
+                socket.emit("unpinMessage", { success: false, msg: "Conversation not found" });
+                return;
+            }
+
+            if (conversation.type === "group") {
+                const isAdmin = conversation.admins?.some((a) => a.toString() === userId) ||
+                    conversation.createdBy?.toString() === userId;
+                if (!isAdmin) {
+                    socket.emit("unpinMessage", { success: false, msg: "Only admins can unpin messages" });
+                    return;
+                }
+            }
+
+            conversation.pinnedMessages = (conversation.pinnedMessages || []).filter(
+                (p) => p.toString() !== data.messageId
+            );
+            await conversation.save();
+
+            await Message.findByIdAndUpdate(data.messageId, { isPinned: false });
+
+            const populatedConv = await Conversation.findById(conversation._id)
+                .select("pinnedMessages")
+                .populate({
+                    path: "pinnedMessages",
+                    select: "content senderId type createdAt isDeleted",
+                    populate: { path: "senderId", select: "name avatar" }
+                })
+                .lean();
+
+            const pinnedPayload = (populatedConv?.pinnedMessages || []).map((pm: any) => ({
+                id: pm._id.toString(),
+                content: pm.content,
+                type: pm.type,
+                createdAt: pm.createdAt,
+                sender: pm.senderId ? {
+                    id: pm.senderId._id?.toString(),
+                    name: pm.senderId.name,
+                    avatar: pm.senderId.avatar,
+                } : null,
+            }));
+
+            io.to(data.conversationId).emit("pinnedMessageUpdated", {
+                success: true,
+                data: {
+                    conversationId: data.conversationId,
+                    pinnedMessages: pinnedPayload,
+                    action: "unpinned",
+                    messageId: data.messageId,
+                },
+            });
+
+            socket.emit("unpinMessage", { success: true, data: pinnedPayload });
+        } catch (error: any) {
+            console.log("unpinMessage error:", error);
+            socket.emit("unpinMessage", { success: false, msg: "Failed to unpin message" });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // FORWARD MESSAGE (Feature 5)
+    // ─────────────────────────────────────────────
+    socket.on("forwardMessage", async (data: { messageId: string; targetConversationIds: string[] }) => {
+        try {
+            const senderId = socket.data.userId;
+            if (!senderId) {
+                socket.emit("forwardMessage", { success: false, msg: "Unauthorized" });
+                return;
+            }
+
+            if (!Array.isArray(data.targetConversationIds) || data.targetConversationIds.length === 0) {
+                socket.emit("forwardMessage", { success: false, msg: "No recipient conversations provided" });
+                return;
+            }
+
+            const original = await Message.findById(data.messageId).lean();
+            if (!original || original.isDeleted) {
+                socket.emit("forwardMessage", { success: false, msg: "Message not found or deleted" });
+                return;
+            }
+
+            let sentCount = 0;
+            for (const targetId of data.targetConversationIds) {
+                try {
+                    await createAndBroadcastMessage({
+                        conversationId: targetId,
+                        senderId,
+                        content: original.content,
+                        attachement: original.attachement,
+                        attachmentMeta: original.attachmentMeta as any,
+                        voiceUrl: original.voiceUrl,
+                        voiceDuration: original.voiceDuration,
+                        type: original.type,
+                        isForwarded: true,
+                    });
+                    sentCount++;
+                } catch (err) {
+                    console.log(`Failed to forward to conversation ${targetId}:`, err);
+                }
+            }
+
+            socket.emit("forwardMessage", { success: true, data: { sentCount } });
+        } catch (error: any) {
+            console.log("forwardMessage error:", error);
+            socket.emit("forwardMessage", { success: false, msg: "Failed to forward message" });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // OPEN VIEW ONCE (Feature 7)
+    // ─────────────────────────────────────────────
+    socket.on("openViewOnce", async (data: { messageId: string; conversationId: string }) => {
+        try {
+            const userId = socket.data.userId;
+            const message = await Message.findById(data.messageId);
+            if (!message || !message.isViewOnce) {
+                socket.emit("openViewOnce", { success: false, msg: "Not a view-once message" });
+                return;
+            }
+
+            const alreadyViewed = (message.viewOnceOpenedBy || []).some(
+                (u) => u.toString() === userId
+            );
+
+            if (!alreadyViewed) {
+                if (!message.viewOnceOpenedBy) message.viewOnceOpenedBy = [];
+                message.viewOnceOpenedBy.push(userId as any);
+                await message.save();
+            }
+
+            io.to(data.conversationId).emit("viewOnceOpened", {
+                success: true,
+                data: {
+                    messageId: data.messageId,
+                    conversationId: data.conversationId,
+                    userId,
+                },
+            });
+
+            socket.emit("openViewOnce", { success: true });
+        } catch (error: any) {
+            console.log("openViewOnce error:", error);
+            socket.emit("openViewOnce", { success: false, msg: "Failed to open view-once media" });
+        }
+    });
+
+    // ─────────────────────────────────────────────
+    // TOGGLE MUTE CONVERSATION (Feature 9)
+    // ─────────────────────────────────────────────
+    socket.on("toggleMuteConversation", async (data: { conversationId: string; durationHours?: number; unmute?: boolean }) => {
+        try {
+            const userId = socket.data.userId;
+            const conversation = await Conversation.findOne({
+                _id: data.conversationId,
+                participants: userId,
+            });
+            if (!conversation) {
+                socket.emit("toggleMuteConversation", { success: false, msg: "Conversation not found" });
+                return;
+            }
+
+            if (!conversation.mutedBy) conversation.mutedBy = [];
+            conversation.mutedBy = conversation.mutedBy.filter(
+                (m) => m.userId.toString() !== userId
+            );
+
+            let isMuted = false;
+            let until: Date | null = null;
+
+            if (!data.unmute) {
+                isMuted = true;
+                if (data.durationHours && data.durationHours > 0) {
+                    until = new Date(Date.now() + data.durationHours * 3600 * 1000);
+                } else {
+                    until = null;
+                }
+                conversation.mutedBy.push({ userId: userId as any, until });
+            }
+
+            await conversation.save();
+
+            socket.emit("toggleMuteConversation", {
+                success: true,
+                data: {
+                    conversationId: data.conversationId,
+                    isMuted,
+                    mutedUntil: until ? until.toISOString() : null,
+                },
+            });
+        } catch (error: any) {
+            console.log("toggleMuteConversation error:", error);
+            socket.emit("toggleMuteConversation", { success: false, msg: "Failed to update mute settings" });
         }
     });
 }

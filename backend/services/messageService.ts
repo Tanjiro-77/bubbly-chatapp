@@ -31,6 +31,8 @@ export type SendMessageInput = {
         duration: number;
     };
     storyId?: string | null;
+    isForwarded?: boolean;
+    isViewOnce?: boolean;
     skipRateLimit?: boolean;
     skipPermissionCheck?: boolean;
 };
@@ -84,6 +86,11 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         voiceUrl: input.voiceUrl ?? undefined,
         location: input.location ?? undefined,
     });
+
+    if (typeof content === "string" && content.length > 5000) {
+        throw new Error("Message content cannot exceed 5,000 characters");
+    }
+
     if (type === "text" && !content.trim() && !attachement && !voiceUrl && !systemEvent && !callMeta) {
         throw new Error("Message cannot be empty");
     }
@@ -111,6 +118,8 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         systemEvent: systemEvent || undefined,
         callMeta: callMeta || undefined,
         storyId: storyId || null,
+        isForwarded: input.isForwarded || false,
+        isViewOnce: input.isViewOnce || false,
         expiresAt,
     });
 
@@ -119,7 +128,8 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         const replyMsg = await Message.findById(replyTo)
             .populate<{ senderId: { _id: string; name: string } }>({ path: "senderId", select: "name" })
             .lean();
-        if (replyMsg) {
+        // Prevent cross-conversation message disclosure
+        if (replyMsg && replyMsg.conversationId.toString() === conversationId.toString()) {
             replyToData = {
                 id: replyMsg._id,
                 content: replyMsg.content,

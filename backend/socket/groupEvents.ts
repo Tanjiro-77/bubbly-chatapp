@@ -1,5 +1,6 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
 import crypto from "crypto";
+import { isValidObjectId } from "mongoose";
 import Conversation from "../modals/Conversation";
 import Message from "../modals/Message";
 import User from "../modals/User";
@@ -104,14 +105,24 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
             const ids = (data.userIds || []).filter(Boolean);
+            if (ids.length > 50) {
+                socket.emit("addGroupMembers", { success: false, msg: "Cannot add more than 50 members at once" });
+                return;
+            }
+            if (conversation.participants.length + ids.length > 500) {
+                socket.emit("addGroupMembers", { success: false, msg: "Group participant limit reached (max 500)" });
+                return;
+            }
             for (const id of ids) {
-                if (conversation.participants.some((p) => p.toString() === id)) continue;
+                if (!isValidObjectId(id)) continue;
+                if (conversation.participants.some((p) => p.toString() === id.toString())) continue;
+                const user = await User.findById(id).select("name").lean();
+                if (!user) continue; // Ensure user exists before adding
                 conversation.participants.push(id as any);
                 conversation.unreadCounts.push({ userId: id as any, count: 0 });
-                const user = await User.findById(id).select("name").lean();
                 await createSystemMessage(data.conversationId, userId, "member_added", {
                     targetId: id,
-                    content: `${socket.data.name} added ${user?.name || "a member"}`,
+                    content: `${socket.data.name} added ${user.name || "a member"}`,
                 });
                 const targetSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === id);
                 targetSockets.forEach((s) => s.join(data.conversationId));
@@ -160,6 +171,9 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 .populate({ path: "admins", select: "name avatar" })
                 .lean();
             emitGroupUpdate(io, populated);
+            // Evict removed member's active sockets from the room immediately
+            const targetSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === data.targetUserId);
+            targetSockets.forEach((s) => s.leave(data.conversationId));
             io.to(userRoom(data.targetUserId)).emit("removedFromGroup", { conversationId: data.conversationId });
             socket.emit("removeGroupMember", { success: true, data: populated });
         } catch (error: any) {

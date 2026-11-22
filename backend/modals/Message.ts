@@ -86,6 +86,24 @@ const messageSchema = new mongoose.Schema({
         ref: "Story",
         default: null,
     },
+    isPinned: {
+        type: Boolean,
+        default: false,
+    },
+    isForwarded: {
+        type: Boolean,
+        default: false,
+    },
+    isViewOnce: {
+        type: Boolean,
+        default: false,
+    },
+    viewOnceOpenedBy: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+        },
+    ],
     // ── NEW: Poll fields ──
     poll: {
         question: { type: String, default: "" },

@@ -7,6 +7,12 @@ export function startScheduledMessageWorker() {
     if (started) return;
     started = true;
 
+    // Reclaim orphaned messages from earlier crashed process instances (older than 5 minutes)
+    ScheduledMessage.updateMany(
+        { status: "processing", updatedAt: { $lte: new Date(Date.now() - 5 * 60 * 1000) } },
+        { $set: { status: "pending" } }
+    ).catch((err) => console.error("Error reclaiming stale scheduled messages:", err));
+
     const tick = async () => {
         try {
             const due = await ScheduledMessage.find({
@@ -15,25 +21,34 @@ export function startScheduledMessageWorker() {
             }).limit(25);
 
             for (const item of due) {
+                // Atomically claim the message to prevent duplicate processing
+                const lockedItem = await ScheduledMessage.findOneAndUpdate(
+                    { _id: item._id, status: "pending" },
+                    { $set: { status: "processing" } },
+                    { new: true }
+                );
+
+                if (!lockedItem) continue;
+
                 try {
-                    item.status = "sent";
                     const payload = await createAndBroadcastMessage({
-                        conversationId: item.conversationId.toString(),
-                        senderId: item.senderId.toString(),
-                        content: item.content,
-                        type: item.type || "text",
-                        attachement: item.attachement,
-                        attachmentMeta: item.attachmentMeta,
-                        location: item.location,
-                        voiceUrl: item.voiceUrl,
-                        voiceDuration: item.voiceDuration ?? undefined,
+                        conversationId: lockedItem.conversationId.toString(),
+                        senderId: lockedItem.senderId.toString(),
+                        content: lockedItem.content,
+                        type: lockedItem.type || "text",
+                        attachement: lockedItem.attachement,
+                        attachmentMeta: lockedItem.attachmentMeta,
+                        location: lockedItem.location,
+                        voiceUrl: lockedItem.voiceUrl,
+                        voiceDuration: lockedItem.voiceDuration ?? undefined,
                     });
-                    item.sentMessageId = payload.id;
-                    await item.save();
+                    lockedItem.status = "sent";
+                    lockedItem.sentMessageId = payload.id;
+                    await lockedItem.save();
                 } catch (error: any) {
-                    item.status = "failed";
-                    item.error = error.message || "Failed to send";
-                    await item.save();
+                    lockedItem.status = "failed";
+                    lockedItem.error = error.message || "Failed to send";
+                    await lockedItem.save();
                 }
             }
         } catch (error) {

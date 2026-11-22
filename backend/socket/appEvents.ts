@@ -336,12 +336,33 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 type: "direct",
                 participants: { $all: [userId, authorId], $size: 2 },
             });
+            const isNewConv = !conversation;
             if (!conversation) {
                 conversation = await Conversation.create({
                     type: "direct",
                     participants: [userId, authorId],
                     createdBy: userId,
                     unreadCounts: [{ userId, count: 0 }, { userId: authorId, count: 0 }],
+                });
+            }
+
+            // Ensure current socket is in the conversation room
+            socket.join(conversation._id.toString());
+
+            // If new conversation, join author's active sockets and notify them
+            if (isNewConv) {
+                const authorSockets = Array.from(io.sockets.sockets.values()).filter(
+                    (s) => s.data.userId === authorId
+                );
+                authorSockets.forEach((s) => s.join(conversation!._id.toString()));
+
+                const populated = await Conversation.findById(conversation._id)
+                    .populate({ path: "participants", select: "name avatar email" })
+                    .lean();
+
+                io.to(conversation._id.toString()).emit("newConversation", {
+                    success: true,
+                    data: { ...populated, isNew: true, unreadCount: 0 }
                 });
             }
             await createAndBroadcastMessage({

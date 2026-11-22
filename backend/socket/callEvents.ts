@@ -5,10 +5,45 @@ import { areBlocked, getMembership } from "../utils/permissions";
 import { createAndBroadcastMessage } from "../services/messageService";
 import { userRoom } from "./io";
 
-const activeCalls = new Map<string, { callerId: string; calleeId: string }>();
+interface ActiveCallEntry {
+    callerId: string;
+    calleeId: string;
+    ringingTimer?: NodeJS.Timeout;
+}
+
+const activeCalls = new Map<string, ActiveCallEntry>();
 
 function cleanupCall(callId: string) {
+    const entry = activeCalls.get(callId);
+    if (entry?.ringingTimer) {
+        clearTimeout(entry.ringingTimer);
+    }
     activeCalls.delete(callId);
+}
+
+export async function handleUserDisconnectCalls(io: SocketIOServer, userId: string) {
+    for (const [callId, callData] of Array.from(activeCalls.entries())) {
+        if (callData.callerId === userId || callData.calleeId === userId) {
+            cleanupCall(callId);
+            const otherUserId = callData.callerId === userId ? callData.calleeId : callData.callerId;
+
+            try {
+                const call = await Call.findById(callId);
+                if (call && ["ringing", "connecting", "connected"].includes(call.status)) {
+                    call.status = "ended";
+                    call.endedAt = new Date();
+                    await call.save();
+                }
+
+                io.to(userRoom(otherUserId)).emit("call:ended", {
+                    callId,
+                    reason: "disconnected",
+                });
+            } catch (err) {
+                console.error("Error finalizing call on disconnect:", err);
+            }
+        }
+    }
 }
 
 export function registerCallEvents(io: SocketIOServer, socket: Socket) {
@@ -66,7 +101,35 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 kind: data.kind,
                 status: "ringing",
             });
-            activeCalls.set(call._id.toString(), { callerId, calleeId: data.calleeId });
+
+            // Auto-timeout ringing after 60 seconds if no answer
+            const ringingTimer = setTimeout(async () => {
+                try {
+                    const pendingCall = await Call.findById(call._id);
+                    if (pendingCall && pendingCall.status === "ringing") {
+                        pendingCall.status = "missed";
+                        pendingCall.endedAt = new Date();
+                        await pendingCall.save();
+                        cleanupCall(call._id.toString());
+
+                        await createAndBroadcastMessage({
+                            conversationId: pendingCall.conversationId.toString(),
+                            senderId: callerId,
+                            type: "call",
+                            callMeta: { callId: pendingCall._id.toString(), kind: data.kind, status: "missed", duration: 0 },
+                            skipRateLimit: true,
+                            skipPermissionCheck: true,
+                        });
+
+                        io.to(userRoom(data.calleeId)).emit("call:ended", { callId: call._id, reason: "timeout" });
+                        socket.emit("call:ended", { callId: call._id, reason: "timeout" });
+                    }
+                } catch (timeoutErr) {
+                    console.error("Error timing out ringing call:", timeoutErr);
+                }
+            }, 60_000);
+
+            activeCalls.set(call._id.toString(), { callerId, calleeId: data.calleeId, ringingTimer });
 
             const payload = {
                 callId: call._id,
@@ -87,6 +150,13 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             const userId = socket.data.userId;
             const call = await Call.findById(data.callId);
             if (!call || call.calleeId.toString() !== userId) throw new Error("Call not found");
+
+            // Clear ringing timer since call has been answered
+            const entry = activeCalls.get(call._id.toString());
+            if (entry?.ringingTimer) {
+                clearTimeout(entry.ringingTimer);
+                entry.ringingTimer = undefined;
+            }
 
             call.status = "connecting";
             await call.save();

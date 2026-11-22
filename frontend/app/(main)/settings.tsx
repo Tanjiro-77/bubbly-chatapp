@@ -36,6 +36,7 @@ const FEEDBACK_EMAIL =
 
 const NOTIF_KEY = "bubbly_notifications_enabled";
 const SOUND_KEY = "bubbly_sound_enabled";
+const APP_LOCK_KEY = "bubbly_app_lock_enabled";
 
 const openLink = async (url: string) => {
     try {
@@ -135,17 +136,20 @@ export default function SettingsScreen() {
 
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [soundEnabled, setSoundEnabled] = useState(true);
+    const [appLockEnabled, setAppLockEnabled] = useState(false);
     const [loadingPrefs, setLoadingPrefs] = useState(true);
 
     useEffect(() => {
         (async () => {
             try {
-                const [notif, sound] = await Promise.all([
+                const [notif, sound, lock] = await Promise.all([
                     AsyncStorage.getItem(NOTIF_KEY),
                     AsyncStorage.getItem(SOUND_KEY),
+                    AsyncStorage.getItem(APP_LOCK_KEY),
                 ]);
                 if (notif !== null) setNotificationsEnabled(notif === "true");
                 if (sound !== null) setSoundEnabled(sound === "true");
+                if (lock !== null) setAppLockEnabled(lock === "true");
             } catch (_) {
             } finally {
                 setLoadingPrefs(false);
@@ -164,6 +168,19 @@ export default function SettingsScreen() {
         setSoundEnabled(value);
         try {
             await AsyncStorage.setItem(SOUND_KEY, String(value));
+        } catch (_) { }
+    }, []);
+
+    const toggleAppLock = useCallback(async (value: boolean) => {
+        setAppLockEnabled(value);
+        try {
+            await AsyncStorage.setItem(APP_LOCK_KEY, String(value));
+            Alert.alert(
+                value ? "App Lock Enabled" : "App Lock Disabled",
+                value
+                    ? "Bubbly is now protected with biometric / passcode lock."
+                    : "App lock protection has been turned off."
+            );
         } catch (_) { }
     }, []);
 
@@ -309,8 +326,37 @@ export default function SettingsScreen() {
                     />
                 </SectionCard>
 
-                <SectionLabel label="Privacy" />
+                <SectionLabel label="Privacy & Security" />
                 <SectionCard>
+                    <Row
+                        icon="fingerprint"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="App Lock & Biometrics"
+                        subtitle="Require biometric / passcode to open"
+                        right={
+                            <Switch
+                                value={appLockEnabled}
+                                onValueChange={toggleAppLock}
+                                trackColor={{
+                                    false: colors.neutral300,
+                                    true: colors.primary,
+                                }}
+                                thumbColor={colors.white}
+                                disabled={loadingPrefs}
+                            />
+                        }
+                    />
+                    <Row
+                        icon="star"
+                        iconColor="#eab308"
+                        iconBg="#fef08a55"
+                        label="Starred Messages"
+                        subtitle="View your bookmarked messages"
+                        onPress={() =>
+                            Alert.alert("Starred Messages", "Star any message by long-pressing it in any conversation to view it in your saved vault.")
+                        }
+                    />
                     <Row
                         icon="shield"
                         iconColor="#16a34a"

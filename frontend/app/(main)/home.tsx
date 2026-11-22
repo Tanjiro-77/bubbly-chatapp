@@ -8,7 +8,8 @@ import Button from "../../components/Button";
 import StoryBar from '../../components/StoryBar';
 import {
     getConversations, newConversation, newMessage,
-    onUnreadCountUpdate,                              // ← NEW
+    onUnreadCountUpdate,
+    onUserStatus,
 } from "../../socket/socketEvents";
 import { verticalScale, scale } from "../../utils/styling";
 import * as Icons from 'phosphor-react-native';
@@ -27,21 +28,30 @@ const Home = () => {
     const [conversations, setConversations] = useState<ConversationProps[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearchActive, setIsSearchActive] = useState(false);
+    const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         getConversations(processConversations);
         newConversation(newConversationHandler);
         newMessage(newMessageHandler);
-        onUnreadCountUpdate(unreadCountHandler);     // ← NEW
+        onUnreadCountUpdate(unreadCountHandler);
+        onUserStatus(userStatusHandler);
         getConversations(null);
 
         return () => {
             getConversations(processConversations, true);
             newConversation(newConversationHandler, true);
             newMessage(newMessageHandler, true);
-            onUnreadCountUpdate(unreadCountHandler, true); // ← NEW
+            onUnreadCountUpdate(unreadCountHandler, true);
+            onUserStatus(userStatusHandler, true);
         };
     }, []);
+
+    const userStatusHandler = (data: { userId: string; isOnline: boolean; lastSeen?: any }) => {
+        if (data?.userId) {
+            setOnlineUsers(prev => ({ ...prev, [data.userId]: data.isOnline }));
+        }
+    };
 
     const newMessageHandler = (res: ResponseProps) => {
         if (res.success) {
@@ -365,15 +375,22 @@ const Home = () => {
                         )}
 
                         {/* ── Results ── */}
-                        {!loading && filteredList.map((item: ConversationProps, index) => (
-                            <ConversationItem
-                                item={item}
-                                key={item._id || index}
-                                router={router}
-                                showDivider={filteredList.length !== index + 1}
-                                searchQuery={searchQuery}
-                            />
-                        ))}
+                        {!loading && filteredList.map((item: ConversationProps, index) => {
+                            const other = item.type === 'direct'
+                                ? item.participants?.find((p: any) => p._id !== currentUser?.id)
+                                : null;
+                            const isOnline = other ? !!onlineUsers[other._id] : false;
+                            return (
+                                <ConversationItem
+                                    item={item}
+                                    key={item._id || index}
+                                    router={router}
+                                    showDivider={filteredList.length !== index + 1}
+                                    searchQuery={searchQuery}
+                                    isOnline={isOnline}
+                                />
+                            );
+                        })}
                     </ScrollView>
                 </Animated.View>
             </View>

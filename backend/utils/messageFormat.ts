@@ -71,6 +71,10 @@ export function formatMessagePayload(message: any, extras?: {
         callMeta: message.callMeta || null,
         expiresAt: message.expiresAt || null,
         storyId: message.storyId || null,
+        isPinned: message.isPinned || false,
+        isForwarded: message.isForwarded || false,
+        isViewOnce: message.isViewOnce || false,
+        viewOnceOpenedBy: (message.viewOnceOpenedBy || []).map((u: any) => u.toString?.() || u),
     };
 }
 

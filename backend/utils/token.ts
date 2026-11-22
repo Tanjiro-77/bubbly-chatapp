@@ -1,17 +1,24 @@
 import jwt from "jsonwebtoken";
 import { UserProps } from "../types";
 
-export const generateToken = (user: UserProps) => {
+export const generateToken = (user: UserProps | any) => {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error("JWT_SECRET environment variable is missing");
+    }
+
+    const userId = user.id || user._id?.toString();
     const payload = {
         user: {
-            id: user.id,
+            id: userId,
             name: user.name,
             email: user.email,
-            avatar: user.avatar,
+            avatar: user.avatar || "",
         }
     };
 
-    return jwt.sign(payload, process.env.JWT_SECRET as string, {
+    return jwt.sign(payload, secret, {
+        algorithm: "HS256",
         expiresIn: "30d",
     });
 };

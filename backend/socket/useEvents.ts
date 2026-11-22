@@ -13,33 +13,53 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
         const userId = socket.data.userId;
         if (!userId) {
             return socket.emit('updateProfile', {
-                success: false, msg: "Unathorized"
-            })
+                success: false, msg: "Unauthorized"
+            });
+        }
+
+        const updateData: { name?: string; avatar?: string } = {};
+
+        if (typeof data.name === "string") {
+            const trimmedName = data.name.trim();
+            if (!trimmedName || trimmedName.length > 70) {
+                return socket.emit('updateProfile', {
+                    success: false, msg: "Name must be between 1 and 70 characters"
+                });
+            }
+            updateData.name = trimmedName;
+        }
+
+        if (typeof data.avatar === "string") {
+            updateData.avatar = data.avatar.slice(0, 500);
         }
 
         try {
-            const updatedUser = await User.findByIdAndUpdate(userId, { name: data.name, avatar: data.avatar }, { new: true })
+            const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
 
             if (!updatedUser) {
                 return socket.emit('updateProfile', {
                     success: false, msg: "User not found"
-                })
+                });
             }
 
-            // gen token with updated value
+            // Update socket data
+            if (updateData.name) socket.data.name = updateData.name;
+            if (updateData.avatar !== undefined) socket.data.avatar = updateData.avatar;
+
+            // Generate token with updated values
             const newToken = generateToken(updatedUser);
 
             socket.emit('updateProfile', {
                 success: true,
                 data: { token: newToken },
                 msg: "Profile updated successfully"
-            })
+            });
 
         } catch (error) {
-            console.log("Error updating profile:", error);
+            console.error("Error updating profile:", error);
             socket.emit('updateProfile', {
                 success: false, msg: "Error updating profile"
-            })
+            });
         }
     })
 
@@ -57,7 +77,7 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
             const user = await User.find(
                 { _id: { $ne: currentUserId } },
                 { password: 0 }
-            ).lean();
+            ).limit(100).sort({ name: 1 }).lean();
 
             const contacts = user.map((user) => ({
                 id: user._id.toString(),

@@ -70,6 +70,8 @@ export interface ConversationProps extends Document {
     inviteCode?: string;
     disappearingSeconds: number;
     wallpaper?: string;
+    pinnedMessages?: Types.ObjectId[];
+    mutedBy?: { userId: Types.ObjectId; until: Date | null }[];
     createdAt: Date;
     updatedAt: Date;
 }

@@ -351,3 +351,108 @@ export const onPollUpdated = (payload: any, off: boolean = false) => {
     if (off) { socket.off("pollUpdated", payload); }
     else { socket.on("pollUpdated", payload); }
 };
+
+// ── STARRED / SAVED MESSAGES (Feature 2) ──
+export const toggleStarMessage = (payload: { messageId: string; conversationId: string }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("toggleStarMessage", payload as any); }
+    else if (typeof payload === 'function') { socket.on("toggleStarMessage", payload); }
+    else { socket.emit("toggleStarMessage", payload); }
+};
+
+export const onMessageStarred = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("toggleStarMessage", payload); }
+    else { socket.on("toggleStarMessage", payload); }
+};
+
+export const getStarredMessages = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("getStarredMessages", payload); }
+    else if (typeof payload === 'function') { socket.on("getStarredMessages", payload); }
+    else { socket.emit("getStarredMessages", payload); }
+};
+
+// ── PINNED MESSAGES (Feature 3) ──
+export const pinMessage = (payload: { conversationId: string; messageId: string }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("pinMessage", payload as any); }
+    else if (typeof payload === 'function') { socket.on("pinMessage", payload); }
+    else { socket.emit("pinMessage", payload); }
+};
+
+export const unpinMessage = (payload: { conversationId: string; messageId: string }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("unpinMessage", payload as any); }
+    else if (typeof payload === 'function') { socket.on("unpinMessage", payload); }
+    else { socket.emit("unpinMessage", payload); }
+};
+
+export const onPinnedMessageUpdated = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("pinnedMessageUpdated", payload); }
+    else { socket.on("pinnedMessageUpdated", payload); }
+};
+
+// ── MESSAGE FORWARDING (Feature 5) ──
+export const forwardMessage = (payload: { messageId: string; targetConversationIds: string[] }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("forwardMessage", payload as any); }
+    else if (typeof payload === 'function') { socket.on("forwardMessage", payload); }
+    else { socket.emit("forwardMessage", payload); }
+};
+
+// ── VIEW-ONCE MEDIA (Feature 7) ──
+export const openViewOnce = (payload: { messageId: string; conversationId: string }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("openViewOnce", payload as any); }
+    else if (typeof payload === 'function') { socket.on("openViewOnce", payload); }
+    else { socket.emit("openViewOnce", payload); }
+};
+
+export const onViewOnceOpened = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("viewOnceOpened", payload); }
+    else { socket.on("viewOnceOpened", payload); }
+};
+
+// ── CONVERSATION MUTE (Feature 9) ──
+export const toggleMuteConversation = (payload: { conversationId: string; durationHours?: number; unmute?: boolean }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("toggleMuteConversation", payload as any); }
+    else if (typeof payload === 'function') { socket.on("toggleMuteConversation", payload); }
+    else { socket.emit("toggleMuteConversation", payload); }
+};
+
+export const onConversationMuted = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("conversationMuted", payload); }
+    else { socket.on("conversationMuted", payload); }
+};
+
+// ── GROUP ADMIN MANAGEMENT (Feature 10) ──
+export const setGroupAdmin = (payload: { conversationId: string; targetUserId: string; promote: boolean }, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("setGroupAdmin", payload as any); }
+    else if (typeof payload === 'function') { socket.on("setGroupAdmin", payload); }
+    else { socket.emit("setGroupAdmin", payload); }
+};
+
+export const onGroupUpdated = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("groupUpdated", payload); }
+    else { socket.on("groupUpdated", payload); }
+};

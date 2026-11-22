@@ -5,6 +5,7 @@ import {
     TextInput, ScrollView,
 } from 'react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import ScreenWrapper from "../../components/ScreenWrapper"
 import Typo from "../../components/Typo"
 import { colors, radius, spacingX, spacingY } from "../../constants/theme"
@@ -34,13 +35,18 @@ import {
     deleteMessage, editMessage, onUserStatus, getUserStatus,
     callInvite, onCallRinging, onCallFailed,
     createPoll, onPollUpdated,
+    pinMessage, unpinMessage, onPinnedMessageUpdated,
+    openViewOnce, onViewOnceOpened,
+    toggleStarMessage, onMessageStarred,
+    forwardMessage, toggleMuteConversation,
+    setGroupAdmin, getConversations,
 } from "../../socket/socketEvents"
 import {
     MessageProps, ReplyToProps, ResponseProps,
     TypingPayload, UserStatusPayload, SelectedFileProps,
 } from "../../types"
 import Animated, {
-    FadeInDown, FadeIn, FadeOut,
+    FadeInDown, FadeInUp, FadeIn, FadeOut, FadeOutDown,
     useSharedValue, useAnimatedStyle,
     withRepeat, withTiming, withDelay, withSpring
 } from 'react-native-reanimated'
@@ -150,6 +156,160 @@ const replyStyles = StyleSheet.create({
     closeBtn: { padding: spacingX._12 },
 });
 
+// ─────────────────────────────────────────────
+// CHAT WALLPAPERS & THEMES (Feature 14)
+// ─────────────────────────────────────────────
+export interface ChatTheme {
+    id: string;
+    name: string;
+    icon: string;
+    bg: string;
+    bubbleMine: string;
+    bubbleOther: string;
+    isDark?: boolean;
+}
+
+export const CHAT_THEMES: ChatTheme[] = [
+    {
+        id: 'bubbly',
+        name: 'Bubbly Warm',
+        icon: '☀️',
+        bg: colors.white,
+        bubbleMine: colors.myBubble,
+        bubbleOther: colors.otherBubble,
+    },
+    {
+        id: 'latte',
+        name: 'Vanilla Latte',
+        icon: '☕',
+        bg: '#FBF9F5',
+        bubbleMine: '#FDEBD9',
+        bubbleOther: '#F5EBE1',
+    },
+    {
+        id: 'lavender',
+        name: 'Lavender Dusk',
+        icon: '💜',
+        bg: '#FAF5FF',
+        bubbleMine: '#F3E8FF',
+        bubbleOther: '#EDE9FE',
+    },
+    {
+        id: 'mint',
+        name: 'Spring Mint',
+        icon: '🌿',
+        bg: '#F0FDF4',
+        bubbleMine: '#DCFCE7',
+        bubbleOther: '#E0F2FE',
+    },
+    {
+        id: 'midnight',
+        name: 'Midnight Slate',
+        icon: '🌙',
+        bg: '#0F172A',
+        bubbleMine: '#1E293B',
+        bubbleOther: '#334155',
+        isDark: true,
+    },
+];
+
+const ChatThemeModal = ({
+    visible,
+    currentThemeId,
+    onSelectTheme,
+    onClose,
+}: {
+    visible: boolean;
+    currentThemeId: string;
+    onSelectTheme: (theme: ChatTheme) => void;
+    onClose: () => void;
+}) => (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+        <TouchableWithoutFeedback onPress={onClose}>
+            <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={themeModalStyles.overlay}>
+                <TouchableWithoutFeedback>
+                    <Animated.View entering={FadeInUp.duration(250).springify()} exiting={FadeOutDown.duration(150)} style={themeModalStyles.sheet}>
+                        <View style={themeModalStyles.header}>
+                            <View>
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>Chat Wallpaper & Theme</Typo>
+                                <Typo size={12} color={colors.neutral500}>Choose a warm aesthetic for this chat</Typo>
+                            </View>
+                            <TouchableOpacity onPress={onClose} style={themeModalStyles.closeBtn} activeOpacity={0.7}>
+                                <Icons.X size={verticalScale(18)} color={colors.neutral500} weight="bold" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={themeModalStyles.cardsScroll}>
+                            {CHAT_THEMES.map((th) => {
+                                const isSelected = th.id === currentThemeId;
+                                return (
+                                    <TouchableOpacity
+                                        key={th.id}
+                                        onPress={() => onSelectTheme(th)}
+                                        activeOpacity={0.85}
+                                        style={[
+                                            themeModalStyles.themeCard,
+                                            { backgroundColor: th.bg },
+                                            isSelected && themeModalStyles.themeCardSelected,
+                                        ]}
+                                    >
+                                        <View style={themeModalStyles.previewWrap}>
+                                            <View style={[themeModalStyles.miniBubble, { backgroundColor: th.bubbleOther, alignSelf: 'flex-start' }]} />
+                                            <View style={[themeModalStyles.miniBubble, { backgroundColor: th.bubbleMine, alignSelf: 'flex-end' }]} />
+                                        </View>
+                                        <View style={themeModalStyles.cardFooter}>
+                                            <Typo size={14}>{th.icon}</Typo>
+                                            <Typo size={11} fontWeight={isSelected ? "700" : "600"} color={th.isDark ? colors.white : colors.neutral800}>
+                                                {th.name}
+                                            </Typo>
+                                            {isSelected && (
+                                                <Icons.CheckCircle size={verticalScale(14)} color={colors.primary} weight="fill" />
+                                            )}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </Animated.View>
+                </TouchableWithoutFeedback>
+            </Animated.View>
+        </TouchableWithoutFeedback>
+    </Modal>
+);
+
+const themeModalStyles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+    sheet: {
+        backgroundColor: colors.white,
+        borderTopLeftRadius: radius._30,
+        borderTopRightRadius: radius._30,
+        paddingTop: spacingY._20,
+        paddingBottom: verticalScale(35),
+        paddingHorizontal: spacingX._20,
+        gap: spacingY._15,
+    },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    closeBtn: { width: 32, height: 32, borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center' },
+    cardsScroll: { gap: spacingX._12, paddingVertical: spacingY._10 },
+    themeCard: {
+        width: scale(115),
+        height: verticalScale(145),
+        borderRadius: radius._15,
+        borderWidth: 1.5,
+        borderColor: colors.neutral200,
+        padding: spacingY._10,
+        justifyContent: 'space-between',
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    themeCardSelected: { borderColor: colors.primary, borderWidth: 2.5 },
+    previewWrap: { gap: 6, paddingTop: 6 },
+    miniBubble: { width: '70%', height: verticalScale(18), borderRadius: radius._6 },
+    cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacingY._5 },
+});
+
 // ── Format duration ──
 const formatDuration = (seconds: number): string => {
     const m = Math.floor(seconds / 60);
@@ -189,7 +349,17 @@ const loadMoreStyles = StyleSheet.create({
 });
 
 // ── File Preview Bar ──
-const FilePreviewBar = ({ file, onRemove }: { file: SelectedFileProps; onRemove: () => void }) => (
+const FilePreviewBar = ({
+    file,
+    isViewOnce,
+    onToggleViewOnce,
+    onRemove,
+}: {
+    file: SelectedFileProps;
+    isViewOnce?: boolean;
+    onToggleViewOnce?: () => void;
+    onRemove: () => void;
+}) => (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={filePreviewStyles.container}>
         {file.isImage ? (
             <Image source={file.uri} style={filePreviewStyles.imageThumb} contentFit="cover" />
@@ -202,6 +372,15 @@ const FilePreviewBar = ({ file, onRemove }: { file: SelectedFileProps; onRemove:
             <Typo size={12} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>{file.name}</Typo>
             <Typo size={11} color={colors.neutral400}>{formatFileSize(file.size)}</Typo>
         </View>
+        {file.isImage && onToggleViewOnce && (
+            <TouchableOpacity
+                onPress={onToggleViewOnce}
+                activeOpacity={0.7}
+                style={[filePreviewStyles.viewOnceBtn, isViewOnce && filePreviewStyles.viewOnceActive]}
+            >
+                <Typo size={13} fontWeight="800" color={isViewOnce ? colors.primaryDark : colors.neutral400}>①</Typo>
+            </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={onRemove} style={filePreviewStyles.closeBtn} activeOpacity={0.7}>
             <Icons.X size={verticalScale(14)} color={colors.neutral500} weight="bold" />
         </TouchableOpacity>
@@ -214,6 +393,336 @@ const filePreviewStyles = StyleSheet.create({
     iconWrap: { width: verticalScale(42), height: verticalScale(42), borderRadius: radius._10, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.neutral200 },
     info: { flex: 1, gap: 2 },
     closeBtn: { padding: spacingX._5 },
+    viewOnceBtn: {
+        width: verticalScale(30),
+        height: verticalScale(30),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral100,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1.5,
+        borderColor: colors.neutral300,
+    },
+    viewOnceActive: {
+        backgroundColor: colors.primaryLight,
+        borderColor: colors.primaryDark,
+    },
+});
+
+// ── Pinned Message Banner (Feature 3) ──
+const PinnedMessageBanner = ({
+    pinnedMessages,
+    onPress,
+    onUnpin,
+}: {
+    pinnedMessages: any[];
+    onPress: (id: string) => void;
+    onUnpin: (id: string) => void;
+}) => {
+    if (!pinnedMessages || pinnedMessages.length === 0) return null;
+    const current = pinnedMessages[0];
+
+    return (
+        <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)} style={pinnedBannerStyles.container}>
+            <TouchableOpacity onPress={() => onPress(current.id)} activeOpacity={0.8} style={pinnedBannerStyles.mainClick}>
+                <View style={pinnedBannerStyles.iconWrap}>
+                    <Icons.PushPin size={verticalScale(13)} color={colors.primaryDark} weight="fill" />
+                </View>
+                <View style={pinnedBannerStyles.textWrap}>
+                    <Typo size={11} fontWeight="700" color={colors.neutral800}>
+                        Pinned Message {pinnedMessages.length > 1 ? `(${pinnedMessages.length})` : ''}
+                    </Typo>
+                    <Typo size={12} color={colors.neutral600} textProps={{ numberOfLines: 1 }}>
+                        {current.content || (current.type === "image" ? "📷 Photo" : "📎 Attachment")}
+                    </Typo>
+                </View>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onUnpin(current.id)} activeOpacity={0.7} style={pinnedBannerStyles.closeBtn}>
+                <Icons.X size={verticalScale(13)} color={colors.neutral400} weight="bold" />
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
+
+const pinnedBannerStyles = StyleSheet.create({
+    container: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.white,
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._8,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.neutral200,
+        gap: spacingX._10,
+    },
+    mainClick: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._10,
+    },
+    iconWrap: {
+        width: scale(26),
+        height: scale(26),
+        borderRadius: radius.full,
+        backgroundColor: colors.primaryLight,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    textWrap: {
+        flex: 1,
+        gap: 1,
+    },
+    closeBtn: {
+        padding: spacingX._5,
+    },
+});
+
+// ── In-Chat Search Bar (Feature 4) ──
+const ChatSearchBar = ({
+    query,
+    onChangeQuery,
+    matchCount,
+    currentIndex,
+    onPrev,
+    onNext,
+    onClose,
+}: {
+    query: string;
+    onChangeQuery: (text: string) => void;
+    matchCount: number;
+    currentIndex: number;
+    onPrev: () => void;
+    onNext: () => void;
+    onClose: () => void;
+}) => (
+    <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)} style={searchBarStyles.container}>
+        <Icons.MagnifyingGlass size={verticalScale(16)} color={colors.neutral500} />
+        <TextInput
+            value={query}
+            onChangeText={onChangeQuery}
+            placeholder="Search in chat..."
+            placeholderTextColor={colors.neutral400}
+            style={searchBarStyles.input}
+            autoFocus
+        />
+        {query.trim().length > 0 && (
+            <View style={searchBarStyles.navRow}>
+                <Typo size={12} color={colors.neutral500} fontWeight="500">
+                    {matchCount > 0 ? `${currentIndex + 1} of ${matchCount}` : "0 matches"}
+                </Typo>
+                <TouchableOpacity onPress={onPrev} disabled={matchCount === 0} style={searchBarStyles.navBtn}>
+                    <Icons.CaretUp size={verticalScale(15)} color={matchCount > 0 ? colors.neutral800 : colors.neutral300} weight="bold" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onNext} disabled={matchCount === 0} style={searchBarStyles.navBtn}>
+                    <Icons.CaretDown size={verticalScale(15)} color={matchCount > 0 ? colors.neutral800 : colors.neutral300} weight="bold" />
+                </TouchableOpacity>
+            </View>
+        )}
+        <TouchableOpacity onPress={onClose} style={searchBarStyles.closeBtn}>
+            <Icons.X size={verticalScale(15)} color={colors.neutral600} weight="bold" />
+        </TouchableOpacity>
+    </Animated.View>
+);
+
+const searchBarStyles = StyleSheet.create({
+    container: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.white,
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._8,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.neutral200,
+        gap: spacingX._10,
+    },
+    input: {
+        flex: 1,
+        fontSize: scale(14),
+        color: colors.neutral900,
+        padding: 0,
+        margin: 0,
+    },
+    navRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._6,
+    },
+    navBtn: {
+        padding: 3,
+    },
+    closeBtn: {
+        padding: spacingX._5,
+    },
+});
+
+// ── Forward Modal (Feature 5) ──
+const ForwardModal = ({
+    visible,
+    conversations,
+    currentUserId,
+    onSelect,
+    onClose,
+}: {
+    visible: boolean;
+    conversations: any[];
+    currentUserId: string;
+    onSelect: (targetId: string) => void;
+    onClose: () => void;
+}) => (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <TouchableWithoutFeedback onPress={onClose}>
+            <View style={forwardStyles.overlay}>
+                <TouchableWithoutFeedback>
+                    <View style={forwardStyles.sheet}>
+                        <View style={forwardStyles.handle} />
+                        <View style={forwardStyles.header}>
+                            <Typo size={17} fontWeight="700" color={colors.neutral900}>Forward To...</Typo>
+                            <TouchableOpacity onPress={onClose} style={forwardStyles.closeBtn}>
+                                <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                            </TouchableOpacity>
+                        </View>
+                        <FlatList
+                            data={conversations}
+                            keyExtractor={(item) => item._id}
+                            contentContainerStyle={forwardStyles.list}
+                            ListEmptyComponent={
+                                <View style={forwardStyles.empty}>
+                                    <Typo size={13} color={colors.neutral400}>No other conversations available</Typo>
+                                </View>
+                            }
+                            renderItem={({ item }) => {
+                                const displayName = item.type === 'group'
+                                    ? item.name
+                                    : (item.participants?.find((p: any) => p._id !== currentUserId)?.name || "Chat");
+                                return (
+                                    <TouchableOpacity onPress={() => onSelect(item._id)} activeOpacity={0.7} style={forwardStyles.itemRow}>
+                                        <Avatar size={42} uri={item.avatar} isGroup={item.type === 'group'} />
+                                        <View style={forwardStyles.itemInfo}>
+                                            <Typo size={15} fontWeight="600" color={colors.neutral900}>{displayName}</Typo>
+                                            <Typo size={12} color={colors.neutral400}>
+                                                {item.type === 'group' ? `${item.participants?.length || 0} members` : "Direct chat"}
+                                            </Typo>
+                                        </View>
+                                        <Icons.PaperPlaneTilt size={18} color={colors.primaryDark} weight="fill" />
+                                    </TouchableOpacity>
+                                );
+                            }}
+                        />
+                    </View>
+                </TouchableWithoutFeedback>
+            </View>
+        </TouchableWithoutFeedback>
+    </Modal>
+);
+
+const forwardStyles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius._30, borderTopRightRadius: radius._30, paddingBottom: verticalScale(34), maxHeight: '80%' },
+    handle: { width: scale(36), height: verticalScale(4), borderRadius: radius.full, backgroundColor: colors.neutral300, alignSelf: 'center', marginTop: verticalScale(10), marginBottom: verticalScale(4) },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacingX._20, paddingVertical: spacingY._15, borderBottomWidth: 1, borderBottomColor: colors.neutral100 },
+    closeBtn: { width: verticalScale(30), height: verticalScale(30), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center' },
+    list: { padding: spacingX._15, gap: spacingY._10 },
+    itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacingX._12, paddingVertical: spacingY._8 },
+    itemInfo: { flex: 1, gap: 2 },
+    empty: { padding: spacingY._30, alignItems: 'center' },
+});
+
+// ── Group Info Modal (Feature 10) ──
+const GroupInfoModal = ({
+    visible,
+    conversationName,
+    conversationAvatar,
+    participants,
+    admins,
+    createdBy,
+    currentUserId,
+    onPromote,
+    onDemote,
+    onClose,
+}: {
+    visible: boolean;
+    conversationName?: string;
+    conversationAvatar?: string;
+    participants: any[];
+    admins: any[];
+    createdBy?: string;
+    currentUserId: string;
+    onPromote: (userId: string) => void;
+    onDemote: (userId: string) => void;
+    onClose: () => void;
+}) => {
+    const isAdmin = admins?.some((a: any) => (a._id || a).toString() === currentUserId);
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={groupInfoStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <View style={groupInfoStyles.sheet}>
+                            <View style={groupInfoStyles.handle} />
+                            <View style={groupInfoStyles.header}>
+                                <Avatar size={50} uri={conversationAvatar} isGroup={true} />
+                                <Typo size={18} fontWeight="700" color={colors.neutral900}>{conversationName || "Group"}</Typo>
+                                <Typo size={13} color={colors.neutral500}>{participants.length} members</Typo>
+                            </View>
+                            <View style={groupInfoStyles.divider} />
+                            <Typo size={12} fontWeight="700" color={colors.neutral400} style={groupInfoStyles.sectionTitle}>MEMBERS</Typo>
+                            <FlatList
+                                data={participants}
+                                keyExtractor={(p) => p._id}
+                                contentContainerStyle={groupInfoStyles.list}
+                                renderItem={({ item }) => {
+                                    const userIsAdmin = admins?.some((a: any) => (a._id || a).toString() === item._id);
+                                    const userIsCreator = createdBy?.toString() === item._id;
+                                    return (
+                                        <View style={groupInfoStyles.memberRow}>
+                                            <Avatar size={38} uri={item.avatar} />
+                                            <View style={groupInfoStyles.memberInfo}>
+                                                <Typo size={14} fontWeight="600" color={colors.neutral900}>
+                                                    {item.name} {item._id === currentUserId ? "(You)" : ""}
+                                                </Typo>
+                                                {userIsCreator ? (
+                                                    <Typo size={11} color={colors.primaryDark} fontWeight="700">Creator</Typo>
+                                                ) : userIsAdmin ? (
+                                                    <Typo size={11} color={colors.green} fontWeight="700">Admin</Typo>
+                                                ) : (
+                                                    <Typo size={11} color={colors.neutral400}>Member</Typo>
+                                                )}
+                                            </View>
+                                            {isAdmin && item._id !== currentUserId && !userIsCreator && (
+                                                <TouchableOpacity
+                                                    onPress={() => userIsAdmin ? onDemote(item._id) : onPromote(item._id)}
+                                                    style={groupInfoStyles.roleBtn}
+                                                >
+                                                    <Typo size={11} fontWeight="600" color={colors.primaryDark}>
+                                                        {userIsAdmin ? "Demote" : "Make Admin"}
+                                                    </Typo>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    );
+                                }}
+                            />
+                        </View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+const groupInfoStyles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius._30, borderTopRightRadius: radius._30, paddingBottom: verticalScale(34), maxHeight: '85%' },
+    handle: { width: scale(36), height: verticalScale(4), borderRadius: radius.full, backgroundColor: colors.neutral300, alignSelf: 'center', marginTop: verticalScale(10), marginBottom: verticalScale(4) },
+    header: { alignItems: 'center', gap: spacingY._6, paddingVertical: spacingY._15 },
+    divider: { height: 1, backgroundColor: colors.neutral100, marginHorizontal: spacingX._20 },
+    sectionTitle: { paddingHorizontal: spacingX._20, paddingTop: spacingY._15, paddingBottom: spacingY._5 },
+    list: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
+    memberRow: { flexDirection: 'row', alignItems: 'center', gap: spacingX._12, paddingVertical: spacingY._10 },
+    memberInfo: { flex: 1, gap: 2 },
+    roleBtn: { paddingHorizontal: spacingX._10, paddingVertical: spacingY._5, backgroundColor: colors.primaryLight, borderRadius: radius.full },
 });
 
 // ── Attachment Options ──
@@ -277,7 +786,17 @@ const Conversation = () => {
     const { id: conversationId, name, participants: stringifiedParticipants, avatar, type } = useLocalSearchParams();
 
     const [message, setMessage] = useState('');
-    const participants = JSON.parse(stringifiedParticipants as string);
+    const participants: any[] = (() => {
+        try {
+            if (typeof stringifiedParticipants === "string" && stringifiedParticipants.trim()) {
+                const parsed = JSON.parse(stringifiedParticipants);
+                return Array.isArray(parsed) ? parsed : [];
+            }
+            return [];
+        } catch {
+            return [];
+        }
+    })();
     const [selectedFile, setSelectedFile] = useState<SelectedFileProps | null>(null);
     const [loading, setLoading] = useState(false);
     const [messages, setMessages] = useState<MessageProps[]>([]);
@@ -323,6 +842,40 @@ const Conversation = () => {
     if (isDirect && otherParticipant) conversationAvatar = otherParticipant.avatar;
     let conversationName = isDirect ? otherParticipant?.name : name;
 
+    // ── Advanced Features State (Features 2, 3, 4, 5, 7, 9, 10) ──
+    const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
+    const [isViewOnce, setIsViewOnce] = useState(false);
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+    const [forwardModalVisible, setForwardModalVisible] = useState(false);
+    const [forwardingMessage, setForwardingMessage] = useState<MessageProps | null>(null);
+    const [recentConversations, setRecentConversations] = useState<any[]>([]);
+    const [groupInfoVisible, setGroupInfoVisible] = useState(false);
+    const flatListRef = useRef<FlatList>(null);
+
+    // ── Chat Wallpaper & Theme (Feature 14) ──
+    const [selectedTheme, setSelectedTheme] = useState<ChatTheme>(CHAT_THEMES[0]);
+    const [showThemeModal, setShowThemeModal] = useState(false);
+
+    useEffect(() => {
+        if (!conversationId) return;
+        AsyncStorage.getItem(`@bubbly_chat_theme_${conversationId}`).then((savedId) => {
+            if (savedId) {
+                const found = CHAT_THEMES.find(t => t.id === savedId);
+                if (found) setSelectedTheme(found);
+            }
+        }).catch(() => {});
+    }, [conversationId]);
+
+    const handleSelectTheme = (th: ChatTheme) => {
+        setSelectedTheme(th);
+        setShowThemeModal(false);
+        if (conversationId) {
+            AsyncStorage.setItem(`@bubbly_chat_theme_${conversationId}`, th.id).catch(() => {});
+        }
+    };
+
     // ─────────────────────────────────────────────
     // SOCKET SETUP
     // ─────────────────────────────────────────────
@@ -341,6 +894,9 @@ const Conversation = () => {
         onPollUpdated(pollUpdatedHandler);
         onMessageDelivered(messageDeliveredHandler);
         onReadReceipt(readReceiptHandler);
+        onPinnedMessageUpdated(pinnedMessageHandler);
+        onViewOnceOpened(viewOnceOpenedHandler);
+        onMessageStarred(starMessageHandler);
 
         getMessages({ conversationId, page: 0, limit: 30 });
         markAsRead(conversationId as string);
@@ -364,6 +920,9 @@ const Conversation = () => {
             onPollUpdated(pollUpdatedHandler, true);
             onMessageDelivered(messageDeliveredHandler, true);
             onReadReceipt(readReceiptHandler, true);
+            onPinnedMessageUpdated(pinnedMessageHandler, true);
+            onViewOnceOpened(viewOnceOpenedHandler, true);
+            onMessageStarred(starMessageHandler, true);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
             stopRecording(true);
         };
@@ -560,6 +1119,10 @@ const Conversation = () => {
                 return next;
             });
 
+            if ((res as any).pinnedMessages) {
+                setPinnedMessages((res as any).pinnedMessages);
+            }
+
             if (incomingPage === 0) { setMessages(pageMessages); setPage(0); }
             else { setMessages(prev => [...prev, ...pageMessages]); setPage(incomingPage); }
         } else {
@@ -567,6 +1130,38 @@ const Conversation = () => {
             isLoadingMoreRef.current = false;
         }
     };
+
+    const pinnedMessageHandler = useCallback((res: any) => {
+        if (res?.success && res.data?.conversationId === conversationId) {
+            setPinnedMessages(res.data.pinnedMessages || []);
+            if (res.data.action === "pinned") {
+                setMessages(prev => prev.map(m => m.id === res.data.messageId ? { ...m, isPinned: true } : m));
+            } else if (res.data.action === "unpinned") {
+                setMessages(prev => prev.map(m => m.id === res.data.messageId ? { ...m, isPinned: false } : m));
+            }
+        }
+    }, [conversationId]);
+
+    const viewOnceOpenedHandler = useCallback((res: any) => {
+        if (res?.success && res.data?.conversationId === conversationId) {
+            setMessages(prev => prev.map(m => {
+                if (m.id === res.data.messageId) {
+                    const list = m.viewOnceOpenedBy || [];
+                    return {
+                        ...m,
+                        viewOnceOpenedBy: [...list, res.data.userId],
+                    };
+                }
+                return m;
+            }));
+        }
+    }, [conversationId]);
+
+    const starMessageHandler = useCallback((res: any) => {
+        if (res?.success && res.data?.conversationId === conversationId) {
+            setMessages(prev => prev.map(m => m.id === res.data.messageId ? { ...m, isSaved: res.data.isSaved } : m));
+        }
+    }, [conversationId]);
 
     const typingHandler = useCallback((data: TypingPayload) => {
         if (data.senderId === currentUser?.id) return;
@@ -775,8 +1370,17 @@ const Conversation = () => {
                 }
             }
 
-            newMessage({ conversationId, sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar }, content: message.trim(), attachement, attachmentMeta, type: messageType, replyTo: replyTo?.id || null });
-            setMessage(""); setSelectedFile(null); setReplyTo(null);
+            newMessage({
+                conversationId,
+                sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
+                content: message.trim(),
+                attachement,
+                attachmentMeta,
+                type: messageType,
+                replyTo: replyTo?.id || null,
+                isViewOnce: selectedFile?.isImage ? isViewOnce : false,
+            });
+            setMessage(""); setSelectedFile(null); setReplyTo(null); setIsViewOnce(false);
         } catch { Alert.alert("Error", "Failed to send message"); }
         finally { setLoading(false); }
     };
@@ -813,6 +1417,116 @@ const Conversation = () => {
 
         return result.reverse();
     }, [messages]);
+
+    const handleJumpToMessage = (messageId: string) => {
+        const idx = messagesWithSeparators.findIndex(
+            (m) => m.type === 'message' && m.message.id === messageId
+        );
+        if (idx !== -1) {
+            flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+        }
+    };
+
+    const handlePin = (messageId: string) => {
+        pinMessage({ conversationId: conversationId as string, messageId });
+    };
+
+    const handleUnpin = (messageId: string) => {
+        unpinMessage({ conversationId: conversationId as string, messageId });
+    };
+
+    const handleToggleStar = (messageId: string) => {
+        toggleStarMessage({ messageId, conversationId: conversationId as string });
+    };
+
+    const handleOpenForward = (msg: MessageProps) => {
+        setForwardingMessage(msg);
+        getConversations((res: any) => {
+            if (res?.success && Array.isArray(res.data)) {
+                setRecentConversations(res.data.filter((c: any) => c._id !== conversationId));
+            }
+        });
+        setForwardModalVisible(true);
+    };
+
+    const handleSendForward = (targetConvId: string) => {
+        if (!forwardingMessage) return;
+        forwardMessage({ messageId: forwardingMessage.id, targetConversationIds: [targetConvId] });
+        setForwardModalVisible(false);
+        setForwardingMessage(null);
+        Alert.alert("Forwarded", "Message forwarded successfully!");
+    };
+
+    const handleMuteOptions = () => {
+        Alert.alert(
+            "Mute Notifications",
+            "Select duration to mute notifications:",
+            [
+                { text: "8 Hours", onPress: () => toggleMuteConversation({ conversationId: conversationId as string, durationHours: 8 }) },
+                { text: "1 Week", onPress: () => toggleMuteConversation({ conversationId: conversationId as string, durationHours: 168 }) },
+                { text: "Always", onPress: () => toggleMuteConversation({ conversationId: conversationId as string, durationHours: 0 }) },
+                { text: "Unmute", onPress: () => toggleMuteConversation({ conversationId: conversationId as string, unmute: true }) },
+                { text: "Cancel", style: "cancel" },
+            ]
+        );
+    };
+
+    const handleOpenMoreMenu = () => {
+        const options: { text: string; onPress?: () => void; style?: "default" | "cancel" | "destructive" }[] = [
+            {
+                text: isSearching ? "Close Search" : "Search in Chat",
+                onPress: () => {
+                    setIsSearching(prev => !prev);
+                    if (isSearching) setSearchQuery('');
+                },
+            },
+            {
+                text: "Chat Wallpaper & Theme",
+                onPress: () => setShowThemeModal(true),
+            },
+            { text: "Mute Notifications", onPress: handleMuteOptions },
+        ];
+        if (type === 'group') {
+            options.push({ text: "Group Members & Info", onPress: () => setGroupInfoVisible(true) });
+        }
+        options.push({ text: "Cancel", style: "cancel" });
+
+        Alert.alert("Chat Options", undefined, options);
+    };
+
+    const handlePromoteAdmin = (targetUserId: string) => {
+        setGroupAdmin({ conversationId: conversationId as string, targetUserId, promote: true });
+    };
+
+    const handleDemoteAdmin = (targetUserId: string) => {
+        setGroupAdmin({ conversationId: conversationId as string, targetUserId, promote: false });
+    };
+
+    const searchMatches = useMemo(() => {
+        if (!searchQuery.trim()) return [];
+        const q = searchQuery.toLowerCase();
+        const matches: number[] = [];
+        messagesWithSeparators.forEach((item, index) => {
+            if (item.type === 'message' && item.message.content?.toLowerCase().includes(q)) {
+                matches.push(index);
+            }
+        });
+        return matches;
+    }, [messagesWithSeparators, searchQuery]);
+
+    const handleSearchPrev = () => {
+        if (searchMatches.length === 0) return;
+        const nextIdx = (activeSearchIndex - 1 + searchMatches.length) % searchMatches.length;
+        setActiveSearchIndex(nextIdx);
+        flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
+    };
+
+    const handleSearchNext = () => {
+        if (searchMatches.length === 0) return;
+        const nextIdx = (activeSearchIndex + 1) % searchMatches.length;
+        setActiveSearchIndex(nextIdx);
+        flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
+    };
 
     const canSend = message.trim().length > 0 || selectedFile !== null;
 
@@ -854,6 +1568,9 @@ const Conversation = () => {
 
                     {/* ── Header Right ── */}
                     <View style={styles.headerRight}>
+                        <TouchableOpacity style={styles.callBtn} onPress={() => setIsSearching(prev => !prev)} activeOpacity={0.7}>
+                            <Icons.MagnifyingGlass weight="bold" color={colors.white} size={verticalScale(18)} />
+                        </TouchableOpacity>
                         {isDirect && (
                             <>
                                 <TouchableOpacity style={styles.callBtn} onPress={() => handleStartCall('voice')} activeOpacity={0.7}>
@@ -864,15 +1581,38 @@ const Conversation = () => {
                                 </TouchableOpacity>
                             </>
                         )}
-                        <TouchableOpacity style={styles.moreBtn} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.moreBtn} activeOpacity={0.7} onPress={handleOpenMoreMenu}>
                             <Icons.DotsThreeVertical weight="bold" color={colors.white} size={verticalScale(20)} />
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
 
-                {/* ── White Sheet ── */}
-                <View style={styles.content}>
+                {/* ── Content Sheet with Custom Theme Background ── */}
+                <View style={[styles.content, { backgroundColor: selectedTheme.bg }]}>
+                    {/* ── Search Bar ── */}
+                    {isSearching && (
+                        <ChatSearchBar
+                            query={searchQuery}
+                            onChangeQuery={(q) => { setSearchQuery(q); setActiveSearchIndex(0); }}
+                            matchCount={searchMatches.length}
+                            currentIndex={activeSearchIndex}
+                            onPrev={handleSearchPrev}
+                            onNext={handleSearchNext}
+                            onClose={() => { setIsSearching(false); setSearchQuery(''); }}
+                        />
+                    )}
+
+                    {/* ── Pinned Message Banner ── */}
+                    {pinnedMessages.length > 0 && !isSearching && (
+                        <PinnedMessageBanner
+                            pinnedMessages={pinnedMessages}
+                            onPress={handleJumpToMessage}
+                            onUnpin={handleUnpin}
+                        />
+                    )}
+
                     <FlatList
+                        ref={flatListRef}
                         data={messagesWithSeparators}
                         inverted={true}
                         showsVerticalScrollIndicator={false}
@@ -892,7 +1632,14 @@ const Conversation = () => {
                                     isDirect={isDirect as boolean}
                                     onReply={handleReply}
                                     onReact={handleReaction}
+                                    onForward={handleOpenForward}
+                                    onToggleStar={handleToggleStar}
+                                    onPin={handlePin}
+                                    onUnpin={handleUnpin}
                                     deliveryStatus={messageStatuses[item.message.id]}
+                                    searchHighlight={isSearching && searchQuery.trim() ? searchQuery.trim() : undefined}
+                                    customBubbleMine={selectedTheme.bubbleMine}
+                                    customBubbleOther={selectedTheme.bubbleOther}
                                 />
                             );
                         }}
@@ -914,7 +1661,14 @@ const Conversation = () => {
                     {/* ── Input Bar ── */}
                     <View style={styles.inputBar}>
                         {replyTo && <ReplyPreviewBar replyTo={replyTo} onCancel={handleCancelReply} />}
-                        {selectedFile && <FilePreviewBar file={selectedFile} onRemove={() => setSelectedFile(null)} />}
+                        {selectedFile && (
+                            <FilePreviewBar
+                                file={selectedFile}
+                                isViewOnce={isViewOnce}
+                                onToggleViewOnce={() => setIsViewOnce(prev => !prev)}
+                                onRemove={() => { setSelectedFile(null); setIsViewOnce(false); }}
+                            />
+                        )}
                         {showAttachOptions && (
                             <AttachmentOptions
                                 onPickImage={onPickImage}
@@ -1063,6 +1817,37 @@ const Conversation = () => {
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
+
+            {/* ── Forward Modal ── */}
+            <ForwardModal
+                visible={forwardModalVisible}
+                conversations={recentConversations}
+                currentUserId={currentUser?.id || ''}
+                onSelect={handleSendForward}
+                onClose={() => { setForwardModalVisible(false); setForwardingMessage(null); }}
+            />
+
+            {/* ── Group Info Modal ── */}
+            <GroupInfoModal
+                visible={groupInfoVisible}
+                conversationName={conversationName}
+                conversationAvatar={conversationAvatar as string}
+                participants={participants}
+                admins={[]}
+                createdBy={undefined}
+                currentUserId={currentUser?.id || ''}
+                onPromote={handlePromoteAdmin}
+                onDemote={handleDemoteAdmin}
+                onClose={() => setGroupInfoVisible(false)}
+            />
+
+            {/* ── Chat Wallpaper & Theme Modal ── */}
+            <ChatThemeModal
+                visible={showThemeModal}
+                currentThemeId={selectedTheme.id}
+                onSelectTheme={handleSelectTheme}
+                onClose={() => setShowThemeModal(false)}
+            />
         </ScreenWrapper>
     );
 };

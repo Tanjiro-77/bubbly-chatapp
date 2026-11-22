@@ -25,15 +25,25 @@ const Register = () => {
     const { signUp } = useAuth();
 
     const handleSubmit = async () => {
-        if (!emailRef.current || !passwordRef.current || !nameRef.current) {
+        const cleanName = nameRef.current.trim();
+        const cleanEmail = emailRef.current.trim().toLowerCase();
+        const cleanPassword = passwordRef.current;
+
+        if (!cleanEmail || !cleanPassword || !cleanName) {
             Alert.alert('Sign Up', "Please fill all the fields");
             return;
         }
+
+        if (cleanPassword.length < 6) {
+            Alert.alert('Sign Up', "Password must be at least 6 characters");
+            return;
+        }
+
         try {
             setIsLoading(true);
-            await signUp(emailRef.current, passwordRef.current, nameRef.current, "");
+            await signUp(cleanEmail, cleanPassword, cleanName, "");
         } catch (error: any) {
-            Alert.alert("Registration Error", error.message)
+            Alert.alert("Registration Error", error.message);
         } finally {
             setIsLoading(false);
         }

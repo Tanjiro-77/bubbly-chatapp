@@ -1,7 +1,8 @@
 import {
     StyleSheet, View, Modal, FlatList,
     TouchableOpacity, TouchableWithoutFeedback,
-    Pressable, TextInput, Dimensions, ScrollView, Alert, Linking
+    Pressable, TextInput, Dimensions, ScrollView, Alert, Linking,
+    PanResponder, Animated as RNAnimated
 } from 'react-native'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { AttachmentMetaProps, MessageProps, PollProps, ReactionProps, ReplyToProps } from "../types"
@@ -20,8 +21,9 @@ import Animated, {
 } from "react-native-reanimated"
 import ImageViewing from "react-native-image-viewing"
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
-import { deleteMessage, editMessage, votePoll, closePoll } from "../socket/socketEvents"
+import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pinMessage, unpinMessage, openViewOnce } from "../socket/socketEvents"
 import { getFileIcon, formatFileSize } from "../services/imageService"
+import FormattedText from "./FormattedText"
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -376,10 +378,23 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe }: { voiceUrl: s
     const player = useAudioPlayer(voiceUrl, { updateInterval: 200 });
     const status = useAudioPlayerStatus(player);
     const BARS = [3, 5, 8, 6, 10, 7, 4, 9, 6, 8, 5, 7, 10, 4, 6, 8, 5, 9, 7, 4, 6, 8, 10, 5, 7];
+    const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
     const progress = totalDuration > 0 ? currentTime / totalDuration : 0;
     const dot1 = useSharedValue(1);
     const dot2 = useSharedValue(1);
     const dot3 = useSharedValue(1);
+
+    const handleToggleSpeed = () => {
+        const nextSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1;
+        setPlaybackSpeed(nextSpeed);
+        try {
+            if ((player as any).setPlaybackRate) {
+                (player as any).setPlaybackRate(nextSpeed);
+            } else if ('playbackRate' in player) {
+                (player as any).playbackRate = nextSpeed;
+            }
+        } catch {}
+    };
 
     useEffect(() => {
         setIsPlaying(status.playing);
@@ -463,13 +478,144 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe }: { voiceUrl: s
                         return <View key={index} style={[voiceStyles.bar, { height: verticalScale(height), backgroundColor: isActive ? activeColor : inactiveColor }]} />;
                     })}
                 </View>
-                <Typo size={10} fontWeight="500" color={isMe ? colors.neutral600 : colors.neutral500}>
-                    {isPlaying || currentTime > 0 ? `${formatDuration(currentTime)} / ${formatDuration(totalDuration)}` : formatDuration(totalDuration)}
-                </Typo>
+                <View style={voiceStyles.metaRow}>
+                    <Typo size={10} fontWeight="500" color={isMe ? colors.neutral600 : colors.neutral500}>
+                        {isPlaying || currentTime > 0 ? `${formatDuration(currentTime)} / ${formatDuration(totalDuration)}` : formatDuration(totalDuration)}
+                    </Typo>
+                    <TouchableOpacity onPress={handleToggleSpeed} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                        <Typo size={9} fontWeight="700" color={colors.neutral800}>{playbackSpeed}x</Typo>
+                    </TouchableOpacity>
+                </View>
             </View>
         </View>
     );
 };
+
+// ─────────────────────────────────────────────
+// LINK PREVIEW CARD (Feature 8)
+// ─────────────────────────────────────────────
+const LinkPreviewCard = ({ url }: { url: string }) => {
+    const domain = useMemo(() => {
+        try {
+            const clean = url.startsWith("http") ? url : `https://${url}`;
+            const parsed = new URL(clean);
+            return parsed.hostname.replace(/^www\./, "");
+        } catch {
+            return url;
+        }
+    }, [url]);
+
+    const handlePress = () => {
+        const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+        Linking.canOpenURL(fullUrl).then(ok => { if (ok) Linking.openURL(fullUrl); }).catch(() => {});
+    };
+
+    return (
+        <TouchableOpacity onPress={handlePress} activeOpacity={0.8} style={previewCardStyles.container}>
+            <View style={previewCardStyles.iconWrap}>
+                <Icons.GlobeHemisphereWest size={16} color={colors.neutral700} weight="regular" />
+            </View>
+            <View style={previewCardStyles.textWrap}>
+                <Typo size={12} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>{domain}</Typo>
+                <Typo size={11} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>{url}</Typo>
+            </View>
+            <Icons.ArrowUpRight size={14} color={colors.neutral500} weight="bold" />
+        </TouchableOpacity>
+    );
+};
+
+const previewCardStyles = StyleSheet.create({
+    container: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacingX._8,
+        backgroundColor: "rgba(0,0,0,0.04)",
+        borderRadius: radius._10,
+        paddingHorizontal: spacingX._10,
+        paddingVertical: spacingY._7,
+        marginTop: spacingY._5,
+        borderWidth: 1,
+        borderColor: "rgba(0,0,0,0.06)",
+    },
+    iconWrap: {
+        width: scale(26),
+        height: scale(26),
+        borderRadius: radius._6,
+        backgroundColor: colors.white,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    textWrap: {
+        flex: 1,
+        gap: 1,
+    },
+});
+
+// ─────────────────────────────────────────────
+// VIEW ONCE PHOTO BUBBLE (Feature 7)
+// ─────────────────────────────────────────────
+const ViewOnceBubble = ({
+    isOpened,
+    isMe,
+    onPress,
+}: {
+    isOpened: boolean;
+    isMe: boolean;
+    onPress: () => void;
+}) => {
+    if (isOpened) {
+        return (
+            <View style={[viewOnceStyles.container, isMe ? viewOnceStyles.myBubble : viewOnceStyles.theirBubble, viewOnceStyles.opened]}>
+                <Icons.CircleDashed size={verticalScale(18)} color={colors.neutral400} weight="bold" />
+                <Typo size={14} fontWeight="600" color={colors.neutral400} style={{ fontStyle: "italic" }}>
+                    Opened Photo
+                </Typo>
+            </View>
+        );
+    }
+
+    return (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[viewOnceStyles.container, isMe ? viewOnceStyles.myBubble : viewOnceStyles.theirBubble]}>
+            <View style={viewOnceStyles.badge}>
+                <Typo size={12} fontWeight="800" color={colors.primaryDark}>①</Typo>
+            </View>
+            <Typo size={14} fontWeight="700" color={colors.neutral900}>
+                View Once Photo
+            </Typo>
+        </TouchableOpacity>
+    );
+};
+
+const viewOnceStyles = StyleSheet.create({
+    container: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacingX._10,
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._12,
+        borderRadius: radius._12,
+        minWidth: scale(160),
+    },
+    myBubble: {
+        backgroundColor: "rgba(0,0,0,0.06)",
+    },
+    theirBubble: {
+        backgroundColor: "rgba(0,0,0,0.06)",
+    },
+    opened: {
+        opacity: 0.65,
+    },
+    badge: {
+        width: scale(26),
+        height: scale(26),
+        borderRadius: radius.full,
+        backgroundColor: colors.primaryLight,
+        borderWidth: 1.5,
+        borderColor: colors.primaryDark,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+});
 
 const voiceStyles = StyleSheet.create({
     container: { flexDirection: "row", alignItems: "center", gap: spacingX._10, minWidth: scale(180), maxWidth: scale(220) },
@@ -479,6 +625,8 @@ const voiceStyles = StyleSheet.create({
     rightSection: { flex: 1, gap: 4 },
     waveform: { flexDirection: "row", alignItems: "center", gap: 2, height: verticalScale(20) },
     bar: { width: 3, borderRadius: 2 },
+    metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    speedBtn: { paddingHorizontal: spacingX._6, paddingVertical: verticalScale(2), borderRadius: radius.full },
 });
 
 const CallMessageBubble = ({
@@ -1577,7 +1725,7 @@ const DeliveryStatusIcon = ({
                     size={verticalScale(14)}
                     color={
                         status === "seen"
-                            ? colors.primaryDark
+                            ? "#0284c7"
                             : colors.neutral500
                     }
                     weight="bold"
@@ -1595,13 +1743,27 @@ const MessageItem = ({
     isDirect,
     onReply,
     onReact,
+    onForward,
+    onToggleStar,
+    onPin,
+    onUnpin,
     deliveryStatus,
+    searchHighlight,
+    customBubbleMine,
+    customBubbleOther,
 }: {
     item: MessageProps;
     isDirect: boolean;
     onReply: (item: MessageProps) => void;
     onReact: (messageId: string, emoji: string) => void;
+    onForward?: (item: MessageProps) => void;
+    onToggleStar?: (messageId: string) => void;
+    onPin?: (messageId: string) => void;
+    onUnpin?: (messageId: string) => void;
     deliveryStatus?: DeliveryStatus;
+    searchHighlight?: string;
+    customBubbleMine?: string;
+    customBubbleOther?: string;
 }) => {
     const { user: currentUser } = useAuth();
     const isMe = currentUser?.id == item?.sender?.id;
@@ -1618,7 +1780,12 @@ const MessageItem = ({
     const isVoiceMessage = !!item.voiceUrl;
     const isDeleted = !!item.isDeleted;
     const isFileMessage = !!item.attachmentMeta && item.type === "file";
-    const isImageMessage = !!item.attachement && !isFileMessage;
+    const isViewOnce = !!item.isViewOnce;
+    const isViewOnceOpened = isViewOnce && (
+        (item.viewOnceOpenedBy || []).includes(currentUser?.id || "") ||
+        (!isMe && (item.viewOnceOpenedBy || []).length > 0)
+    );
+    const isImageMessage = !!item.attachement && !isFileMessage && !isViewOnce;
     const isPollMessage =
         item.type === "poll" ||
         (
@@ -1633,6 +1800,89 @@ const MessageItem = ({
         !!item.callMeta &&
         (item.callMeta.kind === "voice" || item.callMeta.kind === "video");
 
+    const detectedUrl = useMemo(() => {
+        if (!item.content || isVoiceMessage || isFileMessage || isCallMessage) return null;
+        const match = item.content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/i);
+        return match ? match[0] : null;
+    }, [item.content, isVoiceMessage, isFileMessage, isCallMessage]);
+
+    // ── Swipe-to-reply & Double-tap quick heart react ──
+    const swipeX = useRef(new RNAnimated.Value(0)).current;
+    const lastTapRef = useRef<number>(0);
+    const heartScale = useRef(new RNAnimated.Value(0)).current;
+    const heartOpacity = useRef(new RNAnimated.Value(0)).current;
+    const heartTranslateY = useRef(new RNAnimated.Value(0)).current;
+    const [showHeartBurst, setShowHeartBurst] = useState(false);
+
+    const triggerHeartBurst = () => {
+        setShowHeartBurst(true);
+        heartScale.setValue(0.2);
+        heartOpacity.setValue(1);
+        heartTranslateY.setValue(0);
+
+        RNAnimated.parallel([
+            RNAnimated.sequence([
+                RNAnimated.spring(heartScale, { toValue: 1.4, friction: 4, useNativeDriver: true }),
+                RNAnimated.timing(heartScale, { toValue: 1.0, duration: 200, useNativeDriver: true }),
+            ]),
+            RNAnimated.timing(heartTranslateY, { toValue: -35, duration: 650, useNativeDriver: true }),
+            RNAnimated.sequence([
+                RNAnimated.delay(400),
+                RNAnimated.timing(heartOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+            ]),
+        ]).start(() => {
+            setShowHeartBurst(false);
+        });
+    };
+
+    const handleBubblePress = () => {
+        const now = Date.now();
+        if (now - lastTapRef.current < 320) {
+            triggerHeartBurst();
+            onReact(item.id, "❤️");
+            lastTapRef.current = 0;
+        } else {
+            lastTapRef.current = now;
+            if (isViewOnce) {
+                handleViewOncePress();
+            } else if (isImageMessage) {
+                handleImagePress();
+            }
+        }
+    };
+
+    const panResponder = useMemo(() =>
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => false,
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                return !isDeleted && gestureState.dx > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+            },
+            onPanResponderMove: (_, gestureState) => {
+                if (gestureState.dx > 0) {
+                    const clamped = Math.min(gestureState.dx * 0.55, 70);
+                    swipeX.setValue(clamped);
+                }
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                if (gestureState.dx > 45) {
+                    onReply(item);
+                }
+                RNAnimated.spring(swipeX, {
+                    toValue: 0,
+                    friction: 6,
+                    tension: 60,
+                    useNativeDriver: true,
+                }).start();
+            },
+            onPanResponderTerminate: () => {
+                RNAnimated.spring(swipeX, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                }).start();
+            },
+        }),
+    [isDeleted, item, onReply]);
+
     const handleLongPress = () => { if (isDeleted || isPollMessage) return; setShowActions(true); };
     const handleDismiss = () => setShowActions(false);
 
@@ -1644,6 +1894,29 @@ const MessageItem = ({
     };
 
     const handleReply = () => { setShowActions(false); onReply(item); };
+    const handleForward = () => { setShowActions(false); onForward?.(item); };
+    const handleToggleStar = () => {
+        setShowActions(false);
+        toggleStarMessage({ messageId: item.id, conversationId: item.conversationId });
+        onToggleStar?.(item.id);
+    };
+    const handlePinToggle = () => {
+        setShowActions(false);
+        if (item.isPinned) {
+            unpinMessage({ conversationId: item.conversationId, messageId: item.id });
+            onUnpin?.(item.id);
+        } else {
+            pinMessage({ conversationId: item.conversationId, messageId: item.id });
+            onPin?.(item.id);
+        }
+    };
+    const handleViewOncePress = () => {
+        if (isViewOnceOpened) return;
+        setShowImageViewer(true);
+        if (!isMe && item.conversationId) {
+            openViewOnce({ messageId: item.id, conversationId: item.conversationId });
+        }
+    };
     const handleOpenEmojiGrid = () => { setShowActions(false); setTimeout(() => setShowEmojiGrid(true), 150); };
     const handleEmojiSelect = (emoji: string) => { setShowEmojiGrid(false); onReact(item.id, emoji); };
     const handleQuickEmoji = (emoji: string) => { setShowActions(false); onReact(item.id, emoji); };
@@ -1694,45 +1967,119 @@ const MessageItem = ({
     // ── MESSAGE RENDER ──
     return (
         <>
-            <View style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}>
-                {!isMe && !isDirect && (
-                    <Avatar
-                        size={28}
-                        uri={item?.sender?.avatar}
-                        style={styles.messageAvatar}
-                    />
-                )}
+            <View style={styles.swipeContainer} {...panResponder.panHandlers}>
+                {/* ── Swipe-to-reply background icon ── */}
+                <RNAnimated.View
+                    pointerEvents="none"
+                    style={[
+                        styles.swipeReplyIconWrap,
+                        {
+                            opacity: swipeX.interpolate({
+                                inputRange: [0, 15, 45],
+                                outputRange: [0, 0.6, 1],
+                                extrapolate: 'clamp',
+                            }),
+                            transform: [
+                                {
+                                    scale: swipeX.interpolate({
+                                        inputRange: [0, 45],
+                                        outputRange: [0.5, 1],
+                                        extrapolate: 'clamp',
+                                    }),
+                                },
+                                {
+                                    translateX: swipeX.interpolate({
+                                        inputRange: [0, 60],
+                                        outputRange: [-15, 8],
+                                        extrapolate: 'clamp',
+                                    }),
+                                },
+                            ],
+                        },
+                    ]}
+                >
+                    <View style={styles.swipeReplyIconCircle}>
+                        <Icons.ArrowBendUpLeft size={verticalScale(16)} color={colors.white} weight="bold" />
+                    </View>
+                </RNAnimated.View>
 
-                <View style={styles.bubbleColumn}>
-                    {isPollMessage ? (
-                        <PollBubble
-                            messageId={item.id}
-                            conversationId={item.conversationId || ''}
-                            poll={item.poll!}
-                            isMe={isMe}
-                            currentUserId={currentUser?.id || ''}
-                            senderName={item.sender?.name}
-                            formattedTime={formattedTime}
+                <RNAnimated.View
+                    style={[
+                        styles.messageContainer,
+                        isMe ? styles.myMessage : styles.theirMessage,
+                        { transform: [{ translateX: swipeX }] },
+                    ]}
+                >
+                    {!isMe && !isDirect && (
+                        <Avatar
+                            size={28}
+                            uri={item?.sender?.avatar}
+                            style={styles.messageAvatar}
                         />
-                    ) : isCallMessage ? (
-                        <CallMessageBubble
-                            kind={item.callMeta!.kind}
-                            status={item.callMeta!.status}
-                            duration={item.callMeta!.duration || 0}
-                            isMe={isMe}
-                            formattedTime={formattedTime}
-                        />
-                    ) : (
-                        <Pressable
-                            onLongPress={handleLongPress}
-                            delayLongPress={200}
-                            style={({ pressed }) => [
-                                styles.messageBubble,
-                                isMe ? styles.myBubble : styles.theirBubble,
-                                isMe ? styles.myBubbleRadius : styles.theirBubbleRadius,
-                                pressed && styles.bubblePressed,
-                            ]}
-                        >
+                    )}
+
+                    <View style={styles.bubbleColumn}>
+                        {/* Double-tap Heart Burst Overlay */}
+                        {showHeartBurst && (
+                            <RNAnimated.View
+                                pointerEvents="none"
+                                style={[
+                                    styles.heartBurstWrap,
+                                    {
+                                        opacity: heartOpacity,
+                                        transform: [
+                                            { scale: heartScale },
+                                            { translateY: heartTranslateY },
+                                        ],
+                                    },
+                                ]}
+                            >
+                                <Typo size={46}>❤️</Typo>
+                            </RNAnimated.View>
+                        )}
+
+                        {isPollMessage ? (
+                            <PollBubble
+                                messageId={item.id}
+                                conversationId={item.conversationId || ''}
+                                poll={item.poll!}
+                                isMe={isMe}
+                                currentUserId={currentUser?.id || ''}
+                                senderName={item.sender?.name}
+                                formattedTime={formattedTime}
+                            />
+                        ) : isCallMessage ? (
+                            <CallMessageBubble
+                                kind={item.callMeta!.kind}
+                                status={item.callMeta!.status}
+                                duration={item.callMeta!.duration || 0}
+                                isMe={isMe}
+                                formattedTime={formattedTime}
+                            />
+                        ) : (
+                            <Pressable
+                                onPress={handleBubblePress}
+                                onLongPress={handleLongPress}
+                                delayLongPress={220}
+                                style={({ pressed }) => [
+                                    styles.messageBubble,
+                                    isMe
+                                        ? (customBubbleMine ? { backgroundColor: customBubbleMine } : styles.myBubble)
+                                        : (customBubbleOther ? { backgroundColor: customBubbleOther } : styles.theirBubble),
+                                    isMe ? styles.myBubbleRadius : styles.theirBubbleRadius,
+                                    pressed && styles.bubblePressed,
+                                ]}
+                            >
+                            {/* ── Forwarded badge ── */}
+                            {item.isForwarded && (
+                                <View style={styles.forwardedRow}>
+                                    <Icons.ArrowBendUpRight size={verticalScale(11)} color={colors.neutral500} weight="bold" />
+                                    <Typo size={11} color={colors.neutral500} style={{ fontStyle: "italic" }}>
+                                        Forwarded
+                                    </Typo>
+                                </View>
+                            )}
+
                             {/* ── Sender name group only ── */}
                             {!isMe && !isDirect && (
                                 <Typo
@@ -1759,6 +2106,15 @@ const MessageItem = ({
                                     voiceUrl={item.voiceUrl!}
                                     voiceDuration={item.voiceDuration || 0}
                                     isMe={isMe}
+                                />
+                            )}
+
+                            {/* ── View Once Photo ── */}
+                            {isViewOnce && (
+                                <ViewOnceBubble
+                                    isOpened={!!isViewOnceOpened}
+                                    isMe={isMe}
+                                    onPress={handleViewOncePress}
                                 />
                             )}
 
@@ -1794,15 +2150,30 @@ const MessageItem = ({
                                 />
                             )}
 
-                            {/* ── Text content ── */}
+                            {/* ── Text content with Markdown ── */}
                             {item.content ? (
-                                <Typo size={15} color={colors.neutral900}>
-                                    {item.content}
-                                </Typo>
+                                <FormattedText
+                                    content={item.content}
+                                    size={15}
+                                    searchHighlight={searchHighlight}
+                                />
                             ) : null}
+
+                            {/* ── Link Preview Card ── */}
+                            {detectedUrl && (
+                                <LinkPreviewCard url={detectedUrl} />
+                            )}
 
                             {/* ── Time + edited ── */}
                             <View style={styles.timeRow}>
+                                {item.isSaved && (
+                                    <Icons.Star size={verticalScale(11)} color="#eab308" weight="fill" />
+                                )}
+
+                                {item.isPinned && (
+                                    <Icons.PushPin size={verticalScale(11)} color={colors.primaryDark} weight="fill" />
+                                )}
+
                                 {item.isEdited && (
                                     <Typo
                                         size={10}
@@ -1839,7 +2210,8 @@ const MessageItem = ({
                         />
                     )}
                 </View>
-            </View>
+            </RNAnimated.View>
+        </View>
 
             {/* ── Image Viewer ── */}
             {isImageMessage && (
@@ -1911,6 +2283,28 @@ const MessageItem = ({
                                     <TouchableOpacity style={styles.actionRow} onPress={handleReply} activeOpacity={0.7}>
                                         <View style={styles.actionIconWrap}><Icons.ArrowBendUpLeft size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>
                                         <Typo size={15} fontWeight="500" color={colors.neutral800}>Reply</Typo>
+                                    </TouchableOpacity>
+
+                                    {/* ── Forward ── */}
+                                    <TouchableOpacity style={styles.actionRow} onPress={handleForward} activeOpacity={0.7}>
+                                        <View style={styles.actionIconWrap}><Icons.ArrowBendUpRight size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>
+                                        <Typo size={15} fontWeight="500" color={colors.neutral800}>Forward</Typo>
+                                    </TouchableOpacity>
+
+                                    {/* ── Star / Unstar ── */}
+                                    <TouchableOpacity style={styles.actionRow} onPress={handleToggleStar} activeOpacity={0.7}>
+                                        <View style={styles.actionIconWrap}>
+                                            <Icons.Star size={verticalScale(18)} color={item.isSaved ? "#eab308" : colors.neutral700} weight={item.isSaved ? "fill" : "regular"} />
+                                        </View>
+                                        <Typo size={15} fontWeight="500" color={colors.neutral800}>{item.isSaved ? "Unstar Message" : "Star Message"}</Typo>
+                                    </TouchableOpacity>
+
+                                    {/* ── Pin / Unpin ── */}
+                                    <TouchableOpacity style={styles.actionRow} onPress={handlePinToggle} activeOpacity={0.7}>
+                                        <View style={styles.actionIconWrap}>
+                                            <Icons.PushPin size={verticalScale(18)} color={item.isPinned ? colors.primaryDark : colors.neutral700} weight={item.isPinned ? "fill" : "regular"} />
+                                        </View>
+                                        <Typo size={15} fontWeight="500" color={colors.neutral800}>{item.isPinned ? "Unpin Message" : "Pin Message"}</Typo>
                                     </TouchableOpacity>
 
                                     {/* ── Edit ── */}
@@ -1990,6 +2384,42 @@ const MessageItem = ({
 export default MessageItem;
 
 const styles = StyleSheet.create({
+    swipeContainer: {
+        width: "100%",
+        position: "relative",
+        marginVertical: 1,
+    },
+    swipeReplyIconWrap: {
+        position: "absolute",
+        left: scale(8),
+        top: "50%",
+        marginTop: -verticalScale(15),
+        zIndex: 10,
+    },
+    swipeReplyIconCircle: {
+        width: verticalScale(30),
+        height: verticalScale(30),
+        borderRadius: radius.full,
+        backgroundColor: colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 5,
+        elevation: 3,
+    },
+    heartBurstWrap: {
+        position: "absolute",
+        top: "20%",
+        alignSelf: "center",
+        zIndex: 99,
+        shadowColor: "#e11d48",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 8,
+    },
     messageContainer: { flexDirection: "row", gap: spacingX._7, maxWidth: "80%" },
     myMessage: { alignSelf: "flex-end" },
     theirMessage: { alignSelf: "flex-start" },
@@ -1997,6 +2427,9 @@ const styles = StyleSheet.create({
     messageBubble: {
         paddingHorizontal: spacingX._12, paddingVertical: spacingY._7,
         borderRadius: radius._15, gap: spacingY._5, maxWidth: "100%",
+        shadowColor: "rgba(0,0,0,0.04)", shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 1, shadowRadius: 3, elevation: 1,
+        borderWidth: 1, borderColor: "rgba(0,0,0,0.03)",
     },
     bubblePressed: { opacity: 0.75 },
     myBubble: { backgroundColor: colors.myBubble },
@@ -2004,6 +2437,7 @@ const styles = StyleSheet.create({
     myBubbleRadius: { borderBottomRightRadius: radius._3 },
     theirBubbleRadius: { borderBottomLeftRadius: radius._3 },
     senderName: { marginBottom: spacingY._5 },
+    forwardedRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: spacingY._3 },
     attachement: { height: verticalScale(180), width: verticalScale(180), borderRadius: radius._10 },
     zoomHint: {
         position: "absolute", bottom: verticalScale(8), right: verticalScale(8),

@@ -6,6 +6,7 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { Home, RotateCcw, AlertTriangle, Wifi } from "lucide-react";
@@ -111,13 +112,20 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
 
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
+
+  const errorMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+      ? error
+      : "An unexpected error occurred";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4 overflow-hidden">
@@ -174,11 +182,11 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           </div>
 
           {/* Error message pill */}
-          {error?.message && (
+          {errorMessage && (
             <div className="mx-auto mt-5 max-w-xs overflow-hidden rounded-xl border border-border bg-surface px-4 py-3">
               <p className="font-mono text-xs text-muted-foreground/80 truncate">
                 <span className="text-destructive/60 mr-1">✕</span>
-                {error.message}
+                {errorMessage}
               </p>
             </div>
           )}

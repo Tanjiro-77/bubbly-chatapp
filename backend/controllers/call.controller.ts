@@ -4,9 +4,6 @@ import { RtcTokenBuilder, RtcRole } from "agora-token";
 import { isValidObjectId } from "mongoose";
 import Call from "../modals/Call";
 
-const APP_ID = process.env.AGORA_APP_ID!;
-const APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE!;
-
 const getAgoraUid = (userId: string): number => {
     const hash = createHash("sha256")
         .update(userId)
@@ -21,6 +18,9 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
         const { callId: rawCallId } = req.body;
+
+        const appId = process.env.AGORA_APP_ID || "";
+        const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
 
         if (!userId) {
             return res.status(401).json({
@@ -42,7 +42,7 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
 
         const callId = rawCallId;
 
-        if (!APP_ID || !APP_CERTIFICATE) {
+        if (!appId || !appCertificate) {
             console.error("Agora credentials are missing");
 
             return res.status(500).json({
@@ -89,8 +89,8 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
         // Generate token for the SAME numeric UID
         // that the frontend will use in joinChannel().
         const token = RtcTokenBuilder.buildTokenWithUid(
-            APP_ID,
-            APP_CERTIFICATE,
+            appId,
+            appCertificate,
             channelName,
             uid,
             RtcRole.PUBLISHER,
@@ -102,7 +102,7 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
             success: true,
             data: {
                 token,
-                appId: APP_ID,
+                appId,
                 channelName,
                 uid,
             },
@@ -120,7 +120,8 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
 export const getCallHistory = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const page = parseInt(req.query.page as string) || 0;
+        const rawPage = parseInt(req.query.page as string, 10);
+        const page = Number.isInteger(rawPage) && rawPage >= 0 ? rawPage : 0;
         const limit = 20;
 
         const calls = await Call.find({
@@ -144,6 +145,7 @@ export const getCallHistory = async (req: Request, res: Response) => {
             page,
         });
     } catch (error: any) {
-        return res.status(500).json({ success: false, msg: error.message });
+        console.error("getCallHistory error:", error?.message || error);
+        return res.status(500).json({ success: false, msg: "Failed to fetch call history" });
     }
 };

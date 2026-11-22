@@ -4,7 +4,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { registerUserEvents } from "./useEvents";
 import { registerChatEvents } from "./chatEvents";
 import { registerGroupEvents } from "./groupEvents";
-import { registerCallEvents } from "./callEvents";
+import { registerCallEvents, handleUserDisconnectCalls } from "./callEvents";
 import { registerAppEvents } from "./appEvents";
 import Conversation from "../modals/Conversation";
 import User from "../modals/User";
@@ -14,8 +14,12 @@ import { sanitizeLastSeen } from "../utils/permissions";
 dotenv.config();
 
 export function intializeSocket(server: any): SocketIOServer {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
+        : "*";
+
     const io = new SocketIOServer(server, {
-        cors: { origin: "*" }
+        cors: { origin: allowedOrigins }
     });
     setIO(io);
 
@@ -25,13 +29,17 @@ export function intializeSocket(server: any): SocketIOServer {
             return next(new Error("Authentication error: no token provided"));
         }
 
-        jwt.verify(token, process.env.JWT_SECRET as string, (err: any, decoded: any) => {
-            if (err) {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+            return next(new Error("Authentication error: server misconfigured"));
+        }
+
+        jwt.verify(token, secret, { algorithms: ["HS256"] }, (err: any, decoded: any) => {
+            if (err || !decoded?.user?.id) {
                 return next(new Error("Authentication error: invalid token"));
             }
             let userData = decoded.user;
-            socket.data = userData;
-            socket.data.userId = userData.id;
+            socket.data = { ...userData, userId: userData.id };
             next();
         });
     });
@@ -82,6 +90,11 @@ export function intializeSocket(server: any): SocketIOServer {
 
         socket.on('disconnect', async () => {
             console.log(`user disconnected: ${userId}`);
+
+            // Clean up any pending or ongoing calls for this user
+            handleUserDisconnectCalls(io, userId).catch((err) => {
+                console.error("Error handling user disconnect calls:", err);
+            });
 
             const lastSeen = new Date();
 

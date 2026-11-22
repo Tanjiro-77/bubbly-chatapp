@@ -13,7 +13,9 @@ function escapeRegex(value: string) {
 export async function searchAll(req: AuthRequest, res: Response) {
     try {
         const userId = req.userId!;
-        const q = String(req.query.q || "").trim();
+        // Sanitize and bound query length to prevent ReDoS
+        const rawQ = String(req.query.q || "").trim();
+        const q = rawQ.slice(0, 100);
         const type = String(req.query.type || "all");
         const from = req.query.from ? new Date(String(req.query.from)) : null;
         const to = req.query.to ? new Date(String(req.query.to)) : null;
@@ -103,20 +105,40 @@ export async function searchAll(req: AuthRequest, res: Response) {
 export async function translateText(req: AuthRequest, res: Response) {
     try {
         const { text, targetLang } = req.body as { text?: string; targetLang?: string };
-          const safeTargetLang = typeof targetLang === "string" ? targetLang.trim() : "";
-        if (!text?.trim() || !safeTargetLang) {
+        const safeTargetLang = typeof targetLang === "string" ? targetLang.trim() : "";
+        const safeText = typeof text === "string" ? text.trim().slice(0, 1000) : "";
+
+        if (!safeText || !safeTargetLang) {
             res.status(400).json({ success: false, msg: "text and targetLang are required" });
             return;
         }
-        const hash = crypto.createHash("sha256").update(`${text}::${safeTargetLang}`).digest("hex");
+
+        // Validate target language format (e.g. "es", "en", "pt-BR")
+        if (!/^[a-zA-Z]{2,5}(-[a-zA-Z0-9]{2,5})?$/.test(safeTargetLang)) {
+            res.status(400).json({ success: false, msg: "Invalid target language format" });
+            return;
+        }
+
+        const hash = crypto.createHash("sha256").update(`${safeText}::${safeTargetLang}`).digest("hex");
         const cached = await TranslationCache.findOne({ sourceHash: hash, targetLang: { $eq: safeTargetLang } }).lean();
         if (cached) {
             res.json({ success: true, data: { translatedText: cached.translatedText, cached: true } });
             return;
         }
 
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 500))}&langpair=autodetect|${encodeURIComponent(safeTargetLang)}`;
-        const response = await fetch(url);
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(safeText.slice(0, 500))}&langpair=autodetect|${encodeURIComponent(safeTargetLang)}`;
+        
+        // Use timeout to prevent hanging on external API
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        let response: any;
+        try {
+            response = await fetch(url, { signal: controller.signal });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+
         if (!response.ok) throw new Error("Translation service unavailable");
         const json: any = await response.json();
         const translatedText = json?.responseData?.translatedText;
@@ -125,12 +147,13 @@ export async function translateText(req: AuthRequest, res: Response) {
         await TranslationCache.create({
             sourceHash: hash,
             targetLang: safeTargetLang,
-            sourceText: text.slice(0, 500),
+            sourceText: safeText.slice(0, 500),
             translatedText,
         });
 
         res.json({ success: true, data: { translatedText, cached: false } });
     } catch (error: any) {
-        res.status(500).json({ success: false, msg: error.message || "Translation failed" });
+        console.error("translateText error:", error?.message || error);
+        res.status(500).json({ success: false, msg: error.name === "AbortError" ? "Translation request timed out" : (error.message || "Translation failed") });
     }
 }

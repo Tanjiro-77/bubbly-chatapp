@@ -9,5 +9,6 @@ const translationCacheSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 translationCacheSchema.index({ sourceHash: 1, targetLang: 1 }, { unique: true });
+translationCacheSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // 30-day TTL eviction
 
 export default mongoose.model("TranslationCache", translationCacheSchema);
