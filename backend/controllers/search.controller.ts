@@ -103,18 +103,19 @@ export async function searchAll(req: AuthRequest, res: Response) {
 export async function translateText(req: AuthRequest, res: Response) {
     try {
         const { text, targetLang } = req.body as { text?: string; targetLang?: string };
-        if (!text?.trim() || !targetLang) {
+          const safeTargetLang = typeof targetLang === "string" ? targetLang.trim() : "";
+        if (!text?.trim() || !safeTargetLang) {
             res.status(400).json({ success: false, msg: "text and targetLang are required" });
             return;
         }
-        const hash = crypto.createHash("sha256").update(`${text}::${targetLang}`).digest("hex");
-        const cached = await TranslationCache.findOne({ sourceHash: hash, targetLang }).lean();
+        const hash = crypto.createHash("sha256").update(`${text}::${safeTargetLang}`).digest("hex");
+        const cached = await TranslationCache.findOne({ sourceHash: hash, targetLang: { $eq: safeTargetLang } }).lean();
         if (cached) {
             res.json({ success: true, data: { translatedText: cached.translatedText, cached: true } });
             return;
         }
 
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 500))}&langpair=autodetect|${encodeURIComponent(targetLang)}`;
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 500))}&langpair=autodetect|${encodeURIComponent(safeTargetLang)}`;
         const response = await fetch(url);
         if (!response.ok) throw new Error("Translation service unavailable");
         const json: any = await response.json();
@@ -123,7 +124,7 @@ export async function translateText(req: AuthRequest, res: Response) {
 
         await TranslationCache.create({
             sourceHash: hash,
-            targetLang,
+            targetLang: safeTargetLang,
             sourceText: text.slice(0, 500),
             translatedText,
         });

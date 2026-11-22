@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { createHash } from "crypto";
 import { RtcTokenBuilder, RtcRole } from "agora-token";
+import { isValidObjectId } from "mongoose";
 import Call from "../modals/Call";
 
 const APP_ID = process.env.AGORA_APP_ID!;
@@ -19,7 +20,7 @@ const getAgoraUid = (userId: string): number => {
 export const generateAgoraToken = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const { callId } = req.body;
+        const { callId: rawCallId } = req.body;
 
         if (!userId) {
             return res.status(401).json({
@@ -28,12 +29,18 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
             });
         }
 
-        if (!callId) {
+         if (
+            typeof rawCallId !== "string" ||
+            !rawCallId ||
+            !isValidObjectId(rawCallId)
+        ) {
             return res.status(400).json({
                 success: false,
-                msg: "callId is required",
+                msg: "Valid callId is required",
             });
         }
+
+        const callId = rawCallId;
 
         if (!APP_ID || !APP_CERTIFICATE) {
             console.error("Agora credentials are missing");

@@ -6,8 +6,12 @@ import { generateToken } from "../utils/token";
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
     const { email, password, name, avatar } = req.body;
     try {
+        if (typeof email !== "string" || typeof password !== "string") {
+            res.status(400).json({ success: false, msg: "Invalid input" });
+            return;
+        }
         // check if it already exists
-        let user = await User.findOne({ email });
+        let user = await User.findOne({ email: { $eq: email } });
         if (user) {
             res.status(400).json({ success: false, msg: "User already exists" });
             return;
@@ -44,10 +48,18 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
+    if (typeof email !== "string" || typeof password !== "string") {
+        res.status(400).json({ success: false, msg: "Invalid Credentials" });
+        return;
+    }
     try {
+        if (typeof email !== "string" || typeof password !== "string") {
+            res.status(400).json({ success: false, msg: "Invalid input" });
+            return;
+        }
         // find user by email
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email: { $eq: email } });
         if (!user) {
             res.status(400).json({ success: false, msg: "Invalid Credentials" });
             return;
