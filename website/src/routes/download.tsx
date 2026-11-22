@@ -72,9 +72,9 @@ const steps = [
 ];
 
 const stats = [
-  { label: "File size", value: "[APK_SIZE]" },
-  { label: "Compatibility", value: "[ANDROID_VERSION]" },
-  { label: "Last updated", value: "[LAST_UPDATED]" },
+  { label: "File size", value: "361 MB" },
+  { label: "Compatibility", value: "Android 8.0+" },
+  { label: "Last updated", value: "2026-11-21" },
 ];
 
 const trust = [
