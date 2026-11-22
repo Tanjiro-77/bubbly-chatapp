@@ -34,8 +34,8 @@ const translateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-router.get("/search", authMiddleware, searchLimiter, searchAll);
-router.post("/translate", authMiddleware, translateLimiter, translateText);
+router.get("/search", searchLimiter, authMiddleware, searchAll);
+router.post("/translate", translateLimiter, authMiddleware, translateText);
 
 // ── Call routes ──
 router.post("/call/token", callTokenLimiter, authMiddleware, generateAgoraToken);
