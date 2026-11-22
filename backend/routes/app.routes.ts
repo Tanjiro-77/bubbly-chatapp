@@ -13,11 +13,18 @@ const callHistoryLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const callTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // limit token generation attempts per user/IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 router.get("/search", authMiddleware, searchAll);
 router.post("/translate", authMiddleware, translateText);
 
 // ── Call routes ──
-router.post("/call/token", authMiddleware, generateAgoraToken);
+router.post("/call/token", authMiddleware, callTokenLimiter, generateAgoraToken);
 router.get("/call/history", authMiddleware, callHistoryLimiter, getCallHistory);
 
 export default router;
