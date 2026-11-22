@@ -6,6 +6,13 @@ import { generateAgoraToken, getCallHistory } from "../controllers/call.controll
 
 const router = Router();
 
+const searchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit search requests per user/IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const callHistoryLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 60, // limit each user/IP to 60 requests per window
@@ -20,11 +27,18 @@ const callTokenLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-router.get("/search", authMiddleware, searchAll);
-router.post("/translate", authMiddleware, translateText);
+const translateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // limit translation requests per user/IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.get("/search", authMiddleware, searchLimiter, searchAll);
+router.post("/translate", authMiddleware, translateLimiter, translateText);
 
 // ── Call routes ──
-router.post("/call/token", authMiddleware, callTokenLimiter, generateAgoraToken);
-router.get("/call/history", authMiddleware, callHistoryLimiter, getCallHistory);
+router.post("/call/token", callTokenLimiter, authMiddleware, generateAgoraToken);
+router.get("/call/history", callHistoryLimiter, authMiddleware, getCallHistory);
 
 export default router;
