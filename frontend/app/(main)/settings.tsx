@@ -515,7 +515,6 @@ export default function SettingsScreen() {
                         iconBg={colors.primaryLight + "55"}
                         label="Sound & Vibration"
                         subtitle="Playback for incoming messages"
-                        isLast
                         right={
                             <Switch
                                 value={soundEnabled}
@@ -529,11 +528,28 @@ export default function SettingsScreen() {
                             />
                         }
                     />
+                    <Row
+                        icon="phone"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "55"}
+                        label="Call History & Logs"
+                        subtitle="View incoming, outgoing, and missed calls"
+                        onPress={() => router.push("/(main)/callLogs")}
+                        isLast
+                    />
                 </SectionCard>
 
                 {/* ── Privacy & Security ── */}
                 <SectionLabel label="Privacy & Security" />
                 <SectionCard>
+                    <Row
+                        icon="lock"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Secret Chat Vault"
+                        subtitle="Protect locked chats with a secret PIN"
+                        onPress={() => router.push("/(main)/vault")}
+                    />
                     <Row
                         icon="fingerprint"
                         iconColor="#16a34a"
@@ -558,10 +574,8 @@ export default function SettingsScreen() {
                         iconColor="#eab308"
                         iconBg="#fef08a55"
                         label="Starred Messages"
-                        subtitle="View your bookmarked messages"
-                        onPress={() =>
-                            Alert.alert("Starred Messages", "Star any message by long-pressing it in any conversation to view it in your saved vault.")
-                        }
+                        subtitle="View all bookmarked & saved messages"
+                        onPress={() => router.push("/(main)/starredMessages")}
                     />
                     <Row
                         icon="shield"
@@ -640,7 +654,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={12} color={colors.neutral400} fontWeight="600">
-                        Bubbly v3.0.0 · Release Edition
+                        Bubbly v3.1.2 · Flagship Edition
                     </Typo>
                     <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
                         Made with care for seamless connection

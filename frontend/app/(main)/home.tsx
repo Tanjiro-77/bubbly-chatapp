@@ -1,5 +1,6 @@
-import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput } from 'react-native';
-import React, { useEffect, useState, useMemo } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform } from 'react-native';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenWrapper from "../../components/ScreenWrapper";
 import Typo from "../../components/Typo";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
@@ -10,10 +11,12 @@ import {
     getConversations, newConversation, newMessage,
     onUnreadCountUpdate,
     onUserStatus,
+    onTyping,
+    onStopTyping,
 } from "../../socket/socketEvents";
 import { verticalScale, scale } from "../../utils/styling";
 import * as Icons from 'phosphor-react-native';
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import ConversationItem from "../../components/ConversationItem";
 import Loading from "../../components/Loading";
 import { ConversationProps, ResponseProps } from "../../types";
@@ -39,13 +42,55 @@ const Home = () => {
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearchActive, setIsSearchActive] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
+    const [typingMap, setTypingMap] = useState<Record<string, string>>({});
+    const [draftMap, setDraftMap] = useState<Record<string, string>>({});
+    const [lockedChatIds, setLockedChatIds] = useState<string[]>([]);
+    const typingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+    const loadDraftsAndLocked = useCallback(async () => {
+        try {
+            const storedLocked = await AsyncStorage.getItem('@bubbly_locked_chats');
+            if (storedLocked) {
+                try {
+                    setLockedChatIds(JSON.parse(storedLocked));
+                } catch (_) {}
+            } else {
+                setLockedChatIds([]);
+            }
+
+            const allKeys = await AsyncStorage.getAllKeys();
+            const draftKeys = allKeys.filter(k => k.startsWith('@bubbly_draft_'));
+            if (draftKeys.length > 0) {
+                const pairs = await AsyncStorage.multiGet(draftKeys);
+                const drafts: Record<string, string> = {};
+                pairs.forEach(([key, val]) => {
+                    if (val && val.trim()) {
+                        const cId = key.replace('@bubbly_draft_', '');
+                        drafts[cId] = val;
+                    }
+                });
+                setDraftMap(drafts);
+            } else {
+                setDraftMap({});
+            }
+        } catch (_) {}
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadDraftsAndLocked();
+        }, [loadDraftsAndLocked])
+    );
 
     useEffect(() => {
+        loadDraftsAndLocked();
         getConversations(processConversations);
         newConversation(newConversationHandler);
         newMessage(newMessageHandler);
         onUnreadCountUpdate(unreadCountHandler);
         onUserStatus(userStatusHandler);
+        onTyping(typingHandler);
+        onStopTyping(stopTypingHandler);
         getConversations(null);
 
         return () => {
@@ -54,8 +99,36 @@ const Home = () => {
             newMessage(newMessageHandler, true);
             onUnreadCountUpdate(unreadCountHandler, true);
             onUserStatus(userStatusHandler, true);
+            onTyping(typingHandler, true);
+            onStopTyping(stopTypingHandler, true);
+            Object.values(typingTimers.current).forEach(t => clearTimeout(t));
         };
-    }, []);
+    }, [loadDraftsAndLocked]);
+
+    const typingHandler = (data: { conversationId: string; senderName?: string; senderId?: string }) => {
+        if (data?.conversationId && data.senderId !== currentUser?.id) {
+            setTypingMap(prev => ({ ...prev, [data.conversationId]: data.senderName || 'Typing...' }));
+            if (typingTimers.current[data.conversationId]) clearTimeout(typingTimers.current[data.conversationId]);
+            typingTimers.current[data.conversationId] = setTimeout(() => {
+                setTypingMap(prev => {
+                    const next = { ...prev };
+                    delete next[data.conversationId];
+                    return next;
+                });
+            }, 3500);
+        }
+    };
+
+    const stopTypingHandler = (data: { conversationId: string }) => {
+        if (data?.conversationId) {
+            if (typingTimers.current[data.conversationId]) clearTimeout(typingTimers.current[data.conversationId]);
+            setTypingMap(prev => {
+                const next = { ...prev };
+                delete next[data.conversationId];
+                return next;
+            });
+        }
+    };
 
     const userStatusHandler = (data: { userId: string; isOnline: boolean; lastSeen?: any }) => {
         if (data?.userId) {
@@ -64,16 +137,21 @@ const Home = () => {
     };
 
     const newMessageHandler = (res: ResponseProps) => {
-        if (res.success) {
+        if (res.success && res.data) {
             const conversationId = res.data.conversationId;
-            setConversations((prev) =>
-                prev.map((item) => {
+            setConversations((prev) => {
+                const exists = prev.some((item) => item._id == conversationId);
+                if (!exists) {
+                    getConversations(null);
+                    return prev;
+                }
+                return prev.map((item) => {
                     if (item._id == conversationId) {
                         return { ...item, lastMessage: res.data };
                     }
                     return item;
-                })
-            );
+                });
+            });
         }
     };
 
@@ -107,11 +185,11 @@ const Home = () => {
     };
 
     const directConversations = conversations
-        .filter((item) => item.type === "direct")
+        .filter((item) => item.type === "direct" && !lockedChatIds.includes(item._id))
         .sort(sortByDate);
 
     const groupConversations = conversations
-        .filter((item) => item.type === "group")
+        .filter((item) => item.type === "group" && !lockedChatIds.includes(item._id))
         .sort(sortByDate);
 
     const activeList = selectedTab === 0 ? directConversations : groupConversations;
@@ -161,6 +239,27 @@ const Home = () => {
         setFilterCategory("all");
     };
 
+    const renderConversationItem = useCallback(({ item, index }: { item: ConversationProps; index: number }) => {
+        const other = item.type === 'direct'
+            ? item.participants?.find((p: any) => p._id !== currentUser?.id)
+            : null;
+        const isOnline = other ? !!onlineUsers[other._id] : false;
+        const typingUser = typingMap[item._id] || null;
+        const draftText = draftMap[item._id] || null;
+
+        return (
+            <ConversationItem
+                item={item}
+                router={router}
+                showDivider={filteredList.length !== index + 1}
+                searchQuery={searchQuery}
+                isOnline={isOnline}
+                typingUser={typingUser}
+                draftText={draftText}
+            />
+        );
+    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap]);
+
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.4}>
             <View style={styles.container}>
@@ -174,7 +273,7 @@ const Home = () => {
                         <View style={styles.brandRow}>
                             <View style={styles.brandBadge}>
                                 <Typo size={10} fontWeight="800" color={colors.neutral900}>
-                                    V3.0
+                                    V3.1.2
                                 </Typo>
                             </View>
                             <Typo size={12.5} color={'rgba(255,255,255,0.6)'} fontWeight="500">
@@ -193,6 +292,22 @@ const Home = () => {
 
                     {/* Header Quick Actions */}
                     <View style={styles.headerActions}>
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/callLogs")}
+                            style={styles.headerIconBtn}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.PhoneCall size={verticalScale(20)} color={colors.white} weight="regular" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/vault")}
+                            style={styles.headerIconBtn}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.LockKey size={verticalScale(20)} color={colors.white} weight="regular" />
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             onPress={() => router.push("/(main)/settings")}
                             style={styles.headerIconBtn}
@@ -399,96 +514,80 @@ const Home = () => {
                         )}
                     </View>
 
-                    {/* ── Conversations List ── */}
-                    <ScrollView
+                    {/* ── Virtualized Conversations List ── */}
+                    <FlatList
+                        data={filteredList}
+                        keyExtractor={(item) => item._id}
+                        renderItem={renderConversationItem}
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.listContent}
                         keyboardShouldPersistTaps="handled"
-                    >
-                        {loading && (
-                            <View style={styles.centerState}>
-                                <Loading />
-                            </View>
-                        )}
-
-                        {/* Search empty state */}
-                        {!loading && searchQuery.trim() && filteredList.length === 0 && (
-                            <View style={styles.emptyState}>
-                                <View style={styles.emptyIconWrap}>
-                                    <Icons.MagnifyingGlass
-                                        size={verticalScale(30)}
-                                        color={colors.neutral300}
-                                        weight="regular"
-                                    />
+                        initialNumToRender={12}
+                        maxToRenderPerBatch={10}
+                        windowSize={7}
+                        removeClippedSubviews={Platform.OS === 'android'}
+                        ListEmptyComponent={
+                            loading ? (
+                                <View style={styles.centerState}>
+                                    <Loading />
                                 </View>
-                                <Typo size={15} fontWeight="600" color={colors.neutral600}>
-                                    No results found
-                                </Typo>
-                                <Typo
-                                    size={13}
-                                    color={colors.neutral400}
-                                    style={{ textAlign: 'center' }}
-                                >
-                                    No {selectedTab === 0 ? "conversations" : "groups"} match "{searchQuery}"
-                                </Typo>
-                            </View>
-                        )}
-
-                        {/* Normal empty state */}
-                        {!loading && !searchQuery.trim() && filteredList.length === 0 && (
-                            <View style={styles.emptyState}>
-                                <View style={styles.emptyIconWrap}>
-                                    {selectedTab === 0 ? (
-                                        <Icons.ChatCircleDots
-                                            size={verticalScale(34)}
-                                            color={colors.primaryDark}
+                            ) : searchQuery.trim() ? (
+                                <View style={styles.emptyState}>
+                                    <View style={styles.emptyIconWrap}>
+                                        <Icons.MagnifyingGlass
+                                            size={verticalScale(30)}
+                                            color={colors.neutral300}
                                             weight="regular"
                                         />
-                                    ) : (
-                                        <Icons.Users
-                                            size={verticalScale(34)}
-                                            color={colors.primaryDark}
-                                            weight="regular"
-                                        />
-                                    )}
+                                    </View>
+                                    <Typo size={15} fontWeight="600" color={colors.neutral600}>
+                                        No results found
+                                    </Typo>
+                                    <Typo
+                                        size={13}
+                                        color={colors.neutral400}
+                                        style={{ textAlign: 'center' }}
+                                    >
+                                        No {selectedTab === 0 ? "conversations" : "groups"} match "{searchQuery}"
+                                    </Typo>
                                 </View>
-                                <Typo size={16} fontWeight="700" color={colors.neutral800}>
-                                    {filterCategory !== "all"
-                                        ? `No ${filterCategory} ${selectedTab === 0 ? "chats" : "groups"}`
-                                        : selectedTab === 0
-                                            ? "Your inbox is clear"
-                                            : "No groups yet"}
-                                </Typo>
-                                <Typo
-                                    size={13}
-                                    color={colors.neutral400}
-                                    style={{ textAlign: 'center', maxWidth: scale(260) }}
-                                >
-                                    {selectedTab === 0
-                                        ? "Connect with your friends by tapping the start chat button below"
-                                        : "Create a group conversation to share stories and plans together"}
-                                </Typo>
-                            </View>
-                        )}
-
-                        {/* Results list */}
-                        {!loading && filteredList.map((item: ConversationProps, index) => {
-                            const other = item.type === 'direct'
-                                ? item.participants?.find((p: any) => p._id !== currentUser?.id)
-                                : null;
-                            const isOnline = other ? !!onlineUsers[other._id] : false;
-                            return (
-                                <ConversationItem
-                                    item={item}
-                                    key={item._id || index}
-                                    router={router}
-                                    showDivider={filteredList.length !== index + 1}
-                                    searchQuery={searchQuery}
-                                    isOnline={isOnline}
-                                />
-                            );
-                        })}
-                    </ScrollView>
+                            ) : (
+                                <View style={styles.emptyState}>
+                                    <View style={styles.emptyIconWrap}>
+                                        {selectedTab === 0 ? (
+                                            <Icons.ChatCircleDots
+                                                size={verticalScale(34)}
+                                                color={colors.primaryDark}
+                                                weight="regular"
+                                            />
+                                        ) : (
+                                            <Icons.Users
+                                                size={verticalScale(34)}
+                                                color={colors.primaryDark}
+                                                weight="regular"
+                                            />
+                                        )}
+                                    </View>
+                                    <Typo size={16} fontWeight="700" color={colors.neutral800}>
+                                        {filterCategory !== "all"
+                                            ? `No ${filterCategory} ${selectedTab === 0 ? "chats" : "groups"}`
+                                            : selectedTab === 0
+                                                ? "Your inbox is clear"
+                                                : "No groups yet"}
+                                    </Typo>
+                                    <Typo
+                                        size={13}
+                                        color={colors.neutral400}
+                                        style={{ textAlign: 'center', maxWidth: scale(260) }}
+                                    >
+                                        {selectedTab === 0
+                                            ? "Connect with your friends by tapping the start chat button below"
+                                            : "Create a group conversation to share stories and plans together"}
+                                    </Typo>
+                                </View>
+                            )
+                        }
+                    />
                 </Animated.View>
             </View>
 

@@ -425,6 +425,17 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe }: { voiceUrl: s
         if (progressInterval.current) { clearInterval(progressInterval.current); progressInterval.current = null; }
     };
 
+    useEffect(() => {
+        return () => {
+            clearProgressInterval();
+            try {
+                if (player && (player as any).playing) {
+                    player.pause();
+                }
+            } catch {}
+        };
+    }, []);
+
     const startProgressTracking = () => {
         clearProgressInterval();
         progressInterval.current = setInterval(() => {
@@ -2430,14 +2441,23 @@ const MessageItem = ({
 export default React.memo(MessageItem, (prev, next) => {
     return (
         prev.item.id === next.item.id &&
+        prev.item.type === next.item.type &&
         prev.item.content === next.item.content &&
+        prev.item.attachement === next.item.attachement &&
+        prev.item.attachmentMeta?.url === next.item.attachmentMeta?.url &&
+        prev.item.voiceUrl === next.item.voiceUrl &&
+        prev.item.voiceDuration === next.item.voiceDuration &&
         prev.item.isDeleted === next.item.isDeleted &&
         prev.item.isEdited === next.item.isEdited &&
         prev.item.isSaved === next.item.isSaved &&
         prev.item.isPinned === next.item.isPinned &&
         prev.item.isForwarded === next.item.isForwarded &&
+        prev.item.callMeta?.status === next.item.callMeta?.status &&
+        prev.item.callMeta?.duration === next.item.callMeta?.duration &&
         prev.item.reactions === next.item.reactions &&
+        prev.item.reactions?.length === next.item.reactions?.length &&
         prev.item.poll === next.item.poll &&
+        prev.item.poll?.isClosed === next.item.poll?.isClosed &&
         prev.item.viewOnceOpenedBy?.length === next.item.viewOnceOpenedBy?.length &&
         prev.deliveryStatus === next.deliveryStatus &&
         prev.searchHighlight === next.searchHighlight &&

@@ -63,6 +63,8 @@ const ConversationItem = ({
     router,
     searchQuery = "",
     isOnline,
+    typingUser,
+    draftText,
 }: ConversationListItemProps & { searchQuery?: string }) => {
 
     const { user: currentUser } = useAuth();
@@ -192,32 +194,61 @@ const ConversationItem = ({
                                 </View>
                             )}
 
-                            {/* Media Type Icon */}
-                            {isVoice && (
-                                <Icons.Microphone
-                                    size={verticalScale(13)}
-                                    color={colors.primaryDark}
-                                    weight="fill"
-                                    style={{ marginRight: 3 }}
-                                />
-                            )}
-                            {isImage && (
-                                <Icons.Image
-                                    size={verticalScale(13)}
-                                    color={colors.primaryDark}
-                                    weight="fill"
-                                    style={{ marginRight: 3 }}
-                                />
-                            )}
+                            {/* Live Typing or Draft or Last Message Preview */}
+                            {typingUser ? (
+                                <View style={styles.liveTypingRow}>
+                                    <View style={styles.liveTypingDot} />
+                                    <Typo
+                                        size={13.5}
+                                        color={colors.green}
+                                        fontWeight="700"
+                                        textProps={{ numberOfLines: 1 }}
+                                    >
+                                        {isDirect ? "typing..." : `${typingUser} is typing...`}
+                                    </Typo>
+                                </View>
+                            ) : draftText && !hasUnread ? (
+                                <View style={styles.draftRow}>
+                                    <Typo size={13.5} color={colors.rose} fontWeight="700">Draft: </Typo>
+                                    <Typo
+                                        size={13.5}
+                                        color={colors.neutral600}
+                                        fontWeight="500"
+                                        textProps={{ numberOfLines: 1 }}
+                                    >
+                                        {draftText}
+                                    </Typo>
+                                </View>
+                            ) : (
+                                <>
+                                    {/* Media Type Icon */}
+                                    {isVoice && (
+                                        <Icons.Microphone
+                                            size={verticalScale(13)}
+                                            color={colors.primaryDark}
+                                            weight="fill"
+                                            style={{ marginRight: 3 }}
+                                        />
+                                    )}
+                                    {isImage && (
+                                        <Icons.Image
+                                            size={verticalScale(13)}
+                                            color={colors.primaryDark}
+                                            weight="fill"
+                                            style={{ marginRight: 3 }}
+                                        />
+                                    )}
 
-                            <HighlightText
-                                text={lastMessageContent}
-                                query={searchQuery}
-                                size={13.5}
-                                color={hasUnread ? colors.neutral900 : colors.neutral500}
-                                fontWeight={hasUnread ? "600" : "400"}
-                                numberOfLines={1}
-                            />
+                                    <HighlightText
+                                        text={lastMessageContent}
+                                        query={searchQuery}
+                                        size={13.5}
+                                        color={hasUnread ? colors.neutral900 : colors.neutral500}
+                                        fontWeight={hasUnread ? "600" : "400"}
+                                        numberOfLines={1}
+                                    />
+                                </>
+                            )}
                         </View>
 
                         {/* Unread count badge */}
@@ -242,13 +273,21 @@ const ConversationItem = ({
 export default React.memo(ConversationItem, (prev, next) => {
     return (
         prev.item._id === next.item._id &&
+        prev.item.name === next.item.name &&
+        prev.item.avatar === next.item.avatar &&
         prev.item.unreadCount === next.item.unreadCount &&
         prev.item.isMuted === next.item.isMuted &&
+        prev.item.pinnedMessages?.length === next.item.pinnedMessages?.length &&
         prev.item.lastMessage?.content === next.item.lastMessage?.content &&
         prev.item.lastMessage?.createdAt === next.item.lastMessage?.createdAt &&
+        prev.item.lastMessage?.voiceUrl === next.item.lastMessage?.voiceUrl &&
+        prev.item.lastMessage?.attachement === next.item.lastMessage?.attachement &&
+        prev.item.participants?.length === next.item.participants?.length &&
         prev.showDivider === next.showDivider &&
         prev.searchQuery === next.searchQuery &&
-        prev.isOnline === next.isOnline
+        prev.isOnline === next.isOnline &&
+        prev.typingUser === next.typingUser &&
+        prev.draftText === next.draftText
     );
 });
 
@@ -315,6 +354,21 @@ const styles = StyleSheet.create({
     },
     deliveryTickWrap: {
         marginRight: scale(4),
+    },
+    liveTypingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: scale(5),
+    },
+    liveTypingDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: colors.green,
+    },
+    draftRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     divider: {
         height: 1,

@@ -52,7 +52,7 @@ import Animated, {
     withRepeat, withTiming, withDelay, withSpring
 } from 'react-native-reanimated'
 import moment from 'moment'
-import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio'
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 
 // ── Types ──
 type SeparatorItem = {
@@ -354,11 +354,15 @@ const FilePreviewBar = ({
     file,
     isViewOnce,
     onToggleViewOnce,
+    isHd,
+    onToggleHd,
     onRemove,
 }: {
     file: SelectedFileProps;
     isViewOnce?: boolean;
     onToggleViewOnce?: () => void;
+    isHd?: boolean;
+    onToggleHd?: () => void;
     onRemove: () => void;
 }) => (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={filePreviewStyles.container}>
@@ -373,6 +377,15 @@ const FilePreviewBar = ({
             <Typo size={12} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>{file.name}</Typo>
             <Typo size={11} color={colors.neutral400}>{formatFileSize(file.size)}</Typo>
         </View>
+        {file.isImage && onToggleHd && (
+            <TouchableOpacity
+                onPress={onToggleHd}
+                activeOpacity={0.7}
+                style={[filePreviewStyles.hdBtn, isHd && filePreviewStyles.hdActive]}
+            >
+                <Typo size={11} fontWeight="800" color={isHd ? colors.primaryDark : colors.neutral400}>HD</Typo>
+            </TouchableOpacity>
+        )}
         {file.isImage && onToggleViewOnce && (
             <TouchableOpacity
                 onPress={onToggleViewOnce}
@@ -394,6 +407,20 @@ const filePreviewStyles = StyleSheet.create({
     iconWrap: { width: verticalScale(42), height: verticalScale(42), borderRadius: radius._10, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.neutral200 },
     info: { flex: 1, gap: 2 },
     closeBtn: { padding: spacingX._5 },
+    hdBtn: {
+        paddingHorizontal: scale(7),
+        height: verticalScale(28),
+        borderRadius: radius._6,
+        backgroundColor: colors.neutral100,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1.5,
+        borderColor: colors.neutral300,
+    },
+    hdActive: {
+        backgroundColor: colors.primaryLight,
+        borderColor: colors.primaryDark,
+    },
     viewOnceBtn: {
         width: verticalScale(30),
         height: verticalScale(30),
@@ -910,15 +937,32 @@ const Conversation = () => {
     const micAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: micScale.value }] }));
 
     const isDirect = type === 'direct';
-    const otherParticipant = isDirect ? participants.find((p: any) => p._id !== currentUser?.id) : null;
+    const otherParticipant = useMemo(() => {
+        const fromParticipants = isDirect ? participants.find((p: any) => (p._id || p.id) !== currentUser?.id) : null;
+        if (fromParticipants) return fromParticipants;
+        if (!isDirect) return null;
+        const otherMsg = messages.find(m => m.sender?.id && m.sender.id !== currentUser?.id);
+        if (otherMsg?.sender) {
+            return {
+                _id: otherMsg.sender.id,
+                name: otherMsg.sender.name,
+                avatar: otherMsg.sender.avatar,
+            };
+        }
+        return null;
+    }, [isDirect, participants, currentUser?.id, messages]);
 
     let conversationAvatar = avatar;
     if (isDirect && otherParticipant) conversationAvatar = otherParticipant.avatar;
     let conversationName = isDirect ? otherParticipant?.name : name;
 
-    // ── Advanced Features State (Features 2, 3, 4, 5, 7, 9, 10) ──
+    // ── Advanced Features State (Features 2, 3, 4, 5, 7, 9, 10, V3.1.2) ──
     const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
     const [isViewOnce, setIsViewOnce] = useState(false);
+    const [isHd, setIsHd] = useState(false);
+    const [voiceReview, setVoiceReview] = useState<{ uri: string; duration: number } | null>(null);
+    const reviewPlayer = useAudioPlayer(voiceReview?.uri ? { uri: voiceReview.uri } : null);
+    const reviewPlayerStatus = useAudioPlayerStatus(reviewPlayer);
     const [isSearching, setIsSearching] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeSearchIndex, setActiveSearchIndex] = useState(0);
@@ -927,6 +971,16 @@ const Conversation = () => {
     const [recentConversations, setRecentConversations] = useState<any[]>([]);
     const [groupInfoVisible, setGroupInfoVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
+
+    // ── Draft Restoration (V3.1.2) ──
+    useEffect(() => {
+        if (!conversationId) return;
+        AsyncStorage.getItem(`@bubbly_draft_${conversationId}`).then((draft) => {
+            if (draft && draft.trim()) {
+                setMessage(draft);
+            }
+        }).catch(() => {});
+    }, [conversationId]);
 
     // ── Chat Wallpaper & Theme (Feature 14) ──
     const [selectedTheme, setSelectedTheme] = useState<ChatTheme>(CHAT_THEMES[0]);
@@ -967,6 +1021,10 @@ const Conversation = () => {
                 setShowThemeModal(false);
                 return true;
             }
+            if (showPollModal) {
+                setShowPollModal(false);
+                return true;
+            }
             if (groupInfoVisible) {
                 setGroupInfoVisible(false);
                 return true;
@@ -982,7 +1040,7 @@ const Conversation = () => {
             return false;
         });
         return () => backHandler.remove();
-    }, [isSearching, showThemeModal, groupInfoVisible, forwardModalVisible, showAttachOptions]);
+    }, [isSearching, showThemeModal, showPollModal, groupInfoVisible, forwardModalVisible, showAttachOptions]);
 
     // ── Connection Status Listener ──
     useEffect(() => {
@@ -1029,10 +1087,6 @@ const Conversation = () => {
         getMessages({ conversationId, page: 0, limit: 30 });
         markAsRead(conversationId as string);
 
-        if (isDirect && otherParticipant) {
-            getUserStatus({ userId: otherParticipant._id });
-        }
-
         return () => {
             newMessage(newMessageHandler, true);
             getMessages(messagesHandler, true);
@@ -1053,8 +1107,15 @@ const Conversation = () => {
             onMessageStarred(starMessageHandler, true);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
             stopRecording(true);
+            try { reviewPlayer.pause(); } catch (_) {}
         };
     }, []);
+
+    useEffect(() => {
+        if (isDirect && otherParticipant?._id) {
+            getUserStatus({ userId: otherParticipant._id });
+        }
+    }, [isDirect, otherParticipant?._id]);
 
     // ─────────────────────────────────────────────
     // MESSAGE RECEIPT HANDLERS
@@ -1239,7 +1300,10 @@ const Conversation = () => {
             setHasMore(res.hasMore ?? false);
             setIsLoadingMore(false);
             isLoadingMoreRef.current = false;
-            const pageMessages = res.data as MessageProps[];
+            const pageMessages = (res.data as MessageProps[]).map(msg => ({
+                ...msg,
+                conversationId: msg.conversationId || (conversationId as string),
+            }));
             setMessageStatuses(prev => {
                 const next = { ...prev };
                 for (const msg of pageMessages) {
@@ -1354,10 +1418,17 @@ const Conversation = () => {
     }, [currentUser, conversationId]);
 
     // ─────────────────────────────────────────────
-    // TYPING
+    // TYPING & DRAFTS (V3.1.2)
     // ─────────────────────────────────────────────
     const handleMessageChange = (text: string) => {
         setMessage(text);
+        if (conversationId) {
+            if (text.trim()) {
+                AsyncStorage.setItem(`@bubbly_draft_${conversationId}`, text).catch(() => {});
+            } else {
+                AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+            }
+        }
         if (!currentUser || !conversationId) return;
         if (!isTypingRef.current) {
             isTypingRef.current = true;
@@ -1380,7 +1451,7 @@ const Conversation = () => {
     const handleCancelReply = () => setReplyTo(null);
 
     // ─────────────────────────────────────────────
-    // VOICE RECORDING
+    // VOICE RECORDING & REVIEW (V3.1.2)
     // ─────────────────────────────────────────────
     const startRecording = async () => {
         try {
@@ -1399,6 +1470,29 @@ const Conversation = () => {
         } catch (error) {
             console.log("startRecording error:", error);
             Alert.alert("Error", "Could not start recording");
+        }
+    };
+
+    const pauseForReview = async () => {
+        try {
+            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+            micScale.value = withSpring(1);
+            if (!recordingRef.current) { setIsRecording(false); return; }
+            const recording = recordingRef.current;
+            recordingRef.current = null;
+            await recording.stop();
+            await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+            setIsRecording(false);
+            if (recordingDuration < 1 || !recording.uri) {
+                setRecordingDuration(0);
+                return;
+            }
+            setVoiceReview({ uri: recording.uri, duration: recordingDuration });
+            setRecordingDuration(0);
+        } catch (error) {
+            console.log("pauseForReview error:", error);
+            setIsRecording(false);
+            setRecordingDuration(0);
         }
     };
 
@@ -1440,11 +1534,11 @@ const Conversation = () => {
     };
 
     // ─────────────────────────────────────────────
-    // IMAGE PICKER
+    // IMAGE PICKER (V3.1.2 HD Photo Support)
     // ─────────────────────────────────────────────
     const onPickImage = async () => {
         setShowAttachOptions(false);
-        let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], aspect: [4, 3], quality: 0.7 });
+        let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], aspect: [4, 3], quality: isHd ? 1.0 : 0.7 });
         if (!result.canceled) {
             const asset = result.assets[0];
             setSelectedFile({ uri: asset.uri, name: asset.uri.split('/').pop() || 'image.jpg', mimeType: asset.mimeType || 'image/jpeg', size: asset.fileSize || 0, isImage: true });
@@ -1491,6 +1585,7 @@ const Conversation = () => {
                     const uploadResult = await uploadFileToCloudinary({ uri: selectedFile.uri }, "message-attachements");
                     if (!uploadResult.success) { setLoading(false); Alert.alert("Error", "Could not send the image!"); return; }
                     attachement = uploadResult.data;
+                    attachmentMeta = { url: uploadResult.data, name: selectedFile.name, size: selectedFile.size, mimeType: selectedFile.mimeType, isViewOnce, isHd };
                     messageType = 'image';
                 } else {
                     const uploadResult = await uploadDocumentToCloudinary(selectedFile.uri, selectedFile.mimeType, selectedFile.name, "chat-files");
@@ -1511,7 +1606,10 @@ const Conversation = () => {
                 replyTo: replyTo?.id || null,
                 isViewOnce: selectedFile?.isImage ? isViewOnce : false,
             });
-            setMessage(""); setSelectedFile(null); setReplyTo(null); setIsViewOnce(false);
+            if (conversationId) {
+                AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+            }
+            setMessage(""); setSelectedFile(null); setReplyTo(null); setIsViewOnce(false); setIsHd(false);
         } catch { Alert.alert("Error", "Failed to send message"); }
         finally { setLoading(false); }
     };
@@ -1535,7 +1633,7 @@ const Conversation = () => {
 
             if (msgDateStr !== lastDateStr) {
                 result.push({
-                    id: `separator-${msgDateStr}-${msg.id}`,
+                    id: `separator-${msgDateStr}`,
                     type: 'separator',
                     date: msg.createdAt
                 });
@@ -1606,6 +1704,30 @@ const Conversation = () => {
         );
     };
 
+    const handleLockCurrentChat = async () => {
+        try {
+            const stored = await AsyncStorage.getItem('@bubbly_locked_chats');
+            let list: string[] = [];
+            if (stored) {
+                try { list = JSON.parse(stored); } catch (_) {}
+            }
+            if (!list.includes(conversationId as string)) {
+                list.push(conversationId as string);
+                await AsyncStorage.setItem('@bubbly_locked_chats', JSON.stringify(list));
+            }
+            Alert.alert(
+                "Chat Locked",
+                "This conversation is now hidden from the main chats list. You can view it anytime in your Secret Chat Vault.",
+                [
+                    { text: "Stay Here", style: "cancel" },
+                    { text: "Go to Vault", onPress: () => router.push("/(main)/vault") },
+                ]
+            );
+        } catch (_) {
+            Alert.alert("Error", "Could not lock chat");
+        }
+    };
+
     const handleOpenMoreMenu = () => {
         const options: { text: string; onPress?: () => void; style?: "default" | "cancel" | "destructive" }[] = [
             {
@@ -1614,6 +1736,22 @@ const Conversation = () => {
                     setIsSearching(prev => !prev);
                     if (isSearching) setSearchQuery('');
                 },
+            },
+            {
+                text: "Shared Media & Docs",
+                onPress: () => {
+                    router.push({
+                        pathname: "/(main)/sharedMedia",
+                        params: {
+                            conversationId: conversationId as string,
+                            name: (isDirect ? otherParticipant?.name : name) || "Chat",
+                        },
+                    });
+                },
+            },
+            {
+                text: "Lock Chat (Move to Vault)",
+                onPress: handleLockCurrentChat,
             },
             {
                 text: "Chat Wallpaper & Theme",
@@ -1673,10 +1811,7 @@ const Conversation = () => {
 
         return (
             <MessageItem
-                item={{
-                    ...item.message,
-                    conversationId: conversationId as string,
-                }}
+                item={item.message}
                 isDirect={isDirect as boolean}
                 onReply={handleReply}
                 onReact={handleReaction}
@@ -1691,7 +1826,6 @@ const Conversation = () => {
             />
         );
     }, [
-        conversationId,
         isDirect,
         handleReply,
         handleReaction,
@@ -1849,7 +1983,9 @@ const Conversation = () => {
                                 file={selectedFile}
                                 isViewOnce={isViewOnce}
                                 onToggleViewOnce={() => setIsViewOnce(prev => !prev)}
-                                onRemove={() => { setSelectedFile(null); setIsViewOnce(false); }}
+                                isHd={isHd}
+                                onToggleHd={() => setIsHd(prev => !prev)}
+                                onRemove={() => { setSelectedFile(null); setIsViewOnce(false); setIsHd(false); }}
                             />
                         )}
                         {showAttachOptions && (
@@ -1862,12 +1998,72 @@ const Conversation = () => {
                         )}
 
                         <View style={styles.inputRow}>
-                            {isRecording ? (
+                            {voiceReview ? (
+                                <View style={styles.reviewDock}>
+                                    <TouchableOpacity
+                                        style={styles.trashRecordBtn}
+                                        onPress={() => {
+                                            reviewPlayer.pause();
+                                            setVoiceReview(null);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icons.Trash size={verticalScale(18)} color={colors.white} weight="fill" />
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.playReviewBtn}
+                                        onPress={() => {
+                                            if (reviewPlayerStatus.playing) {
+                                                reviewPlayer.pause();
+                                            } else {
+                                                reviewPlayer.play();
+                                            }
+                                        }}
+                                        activeOpacity={0.8}
+                                    >
+                                        {reviewPlayerStatus.playing ? (
+                                            <Icons.Pause size={verticalScale(18)} color={colors.neutral900} weight="fill" />
+                                        ) : (
+                                            <Icons.Play size={verticalScale(18)} color={colors.neutral900} weight="fill" />
+                                        )}
+                                    </TouchableOpacity>
+
+                                    <View style={styles.reviewInfo}>
+                                        <Typo size={13} fontWeight="600" color={colors.neutral800}>
+                                            Voice Note Preview
+                                        </Typo>
+                                        <Typo size={11} color={colors.neutral400}>
+                                            {formatDuration(voiceReview.duration)}
+                                        </Typo>
+                                    </View>
+
+                                    <TouchableOpacity
+                                        style={styles.sendBtn}
+                                        onPress={async () => {
+                                            reviewPlayer.pause();
+                                            const { uri, duration } = voiceReview;
+                                            setVoiceReview(null);
+                                            await sendVoiceMessage(uri, duration);
+                                        }}
+                                        activeOpacity={0.8}
+                                    >
+                                        {isUploadingVoice ? (
+                                            <Loading size="small" color={colors.black} />
+                                        ) : (
+                                            <Icons.PaperPlaneTilt color={colors.black} weight="fill" size={verticalScale(18)} />
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
+                            ) : isRecording ? (
                                 <View style={styles.recordingRow}>
                                     <TouchableOpacity style={styles.trashRecordBtn} onPress={cancelRecording} activeOpacity={0.7}>
                                         <Icons.Trash size={verticalScale(18)} color={colors.white} weight="fill" />
                                     </TouchableOpacity>
                                     <RecordingIndicator duration={recordingDuration} />
+                                    <TouchableOpacity style={styles.pauseRecordBtn} onPress={pauseForReview} activeOpacity={0.7}>
+                                        <Icons.Pause size={verticalScale(18)} color={colors.white} weight="bold" />
+                                    </TouchableOpacity>
                                     <TouchableOpacity style={styles.sendBtn} onPress={() => stopRecording(false)} activeOpacity={0.8}>
                                         <Icons.PaperPlaneTilt color={colors.black} weight="fill" size={verticalScale(18)} />
                                     </TouchableOpacity>
@@ -2091,6 +2287,37 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 4,
         elevation: 3,
+    },
+    pauseRecordBtn: {
+        width: verticalScale(38),
+        height: verticalScale(38),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral700,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    reviewDock: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.neutral100,
+        borderRadius: radius._15,
+        paddingHorizontal: spacingX._10,
+        paddingVertical: spacingY._7,
+        gap: spacingX._10,
+    },
+    playReviewBtn: {
+        width: verticalScale(38),
+        height: verticalScale(38),
+        borderRadius: radius.full,
+        backgroundColor: colors.white,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.neutral200,
+    },
+    reviewInfo: {
+        flex: 1,
     },
     scrollToBottomWrap: {
         position: 'absolute',

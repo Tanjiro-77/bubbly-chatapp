@@ -30,7 +30,11 @@ function NotFoundComponent() {
       {/* Smaller fast orb — bottom right */}
       <div
         className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full opacity-10 blur-3xl float-soft"
-        style={{ background: "var(--gradient-warm)", animationDelay: "3s", animationDuration: "7s" }}
+        style={{
+          background: "var(--gradient-warm)",
+          animationDelay: "3s",
+          animationDuration: "7s",
+        }}
       />
 
       {/* ── Card ── */}
@@ -52,7 +56,8 @@ function NotFoundComponent() {
             <span
               className="select-none font-display text-[9rem] font-bold leading-none text-gradient"
               style={{
-                filter: "drop-shadow(0 0 80px color-mix(in oklab, var(--primary) 45%, transparent))",
+                filter:
+                  "drop-shadow(0 0 80px color-mix(in oklab, var(--primary) 45%, transparent))",
               }}
             >
               404
@@ -73,12 +78,12 @@ function NotFoundComponent() {
           {/* Badge */}
           <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-destructive animate-pulse" />
-            <span className="font-mono text-xs text-muted-foreground tracking-widest uppercase">Page not found</span>
+            <span className="font-mono text-xs text-muted-foreground tracking-widest uppercase">
+              Page not found
+            </span>
           </div>
 
-          <h2 className="font-display text-2xl font-bold text-foreground">
-            Lost in the void?
-          </h2>
+          <h2 className="font-display text-2xl font-bold text-foreground">Lost in the void?</h2>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
             The page you're looking for doesn't exist or has been moved somewhere else.
             <br />
@@ -124,8 +129,8 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
     error instanceof Error
       ? error.message
       : typeof error === "string"
-      ? error
-      : "An unexpected error occurred";
+        ? error
+        : "An unexpected error occurred";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4 overflow-hidden">
@@ -169,9 +174,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
             </div>
           </div>
 
-          <h1 className="font-display text-2xl font-bold text-foreground">
-            Something broke
-          </h1>
+          <h1 className="font-display text-2xl font-bold text-foreground">Something broke</h1>
 
           {/* Status badge */}
           <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-destructive/20 bg-destructive/8 px-4 py-1.5">
@@ -192,7 +195,8 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
           )}
 
           <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
-            Something went wrong on our end. You can try again or head back home — we'll get it sorted.
+            Something went wrong on our end. You can try again or head back home — we'll get it
+            sorted.
           </p>
 
           {/* Divider */}
@@ -227,7 +231,10 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         {/* Card outer glow — destructive tint */}
         <div
           className="pointer-events-none absolute inset-0 -z-10 rounded-3xl opacity-20 blur-2xl"
-          style={{ backgroundColor: "var(--destructive)", transform: "scale(0.85) translateY(16px)" }}
+          style={{
+            backgroundColor: "var(--destructive)",
+            transform: "scale(0.85) translateY(16px)",
+          }}
         />
       </div>
     </div>
@@ -239,9 +246,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Bubbly — Chat. Connect. Bubbly." },
-      { name: "description", content: "Bubbly, a self-built Android chat app." },
-      { name: "author", content: "Arnav" },
+      { title: "Bubbly v3.0 — Connect Beyond Messages" },
+      {
+        name: "description",
+        content:
+          "Bubbly is a full-stack, real-time messaging application for conversations, groups, stories, media sharing, and Agora voice/video communication.",
+      },
+      { name: "author", content: "Arnav Khari" },
+      { name: "theme-color", content: "#f59e0b" },
+      { property: "og:title", content: "Bubbly v3.0 — Connect Beyond Messages" },
+      {
+        property: "og:description",
+        content:
+          "Full-stack real-time chat, Agora HD audio/video calling, Story Studio with 7 presets, and Spanish translation. Free & Open Source.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -250,7 +268,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap",
       },
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/png", href: "/favicon.png" },

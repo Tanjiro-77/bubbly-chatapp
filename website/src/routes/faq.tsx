@@ -1,20 +1,36 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, MessageCircle, Github, Mail } from "lucide-react";
-import { PageHero, CtaBand, GITHUB_URL, FEEDBACK_EMAIL } from "@/components/site/shared";
+import { useState, useMemo } from "react";
+import {
+  ChevronDown,
+  MessageSquare,
+  Github,
+  Mail,
+  Search,
+  Sparkles,
+  HelpCircle,
+} from "lucide-react";
+import {
+  PageHero,
+  CtaBand,
+  GITHUB_URL,
+  FEEDBACK_EMAIL,
+  APP_VERSION,
+} from "@/components/site/shared";
+import { sounds } from "@/lib/sound";
 
 export const Route = createFileRoute("/faq")({
   head: () => ({
     meta: [
-      { title: "FAQ — Bubbly Chat App" },
+      { title: `Frequently Asked Questions — Bubbly ${APP_VERSION}` },
       {
         name: "description",
         content:
-          "Answers to common questions about installing and using the Bubbly Android chat app.",
+          "Answers to common questions about installing the Bubbly APK, Agora voice/video calls, Story Studio, privacy, and permissions.",
       },
-      { property: "og:title", content: "FAQ — Bubbly Chat App" },
+      { property: "og:title", content: "Bubbly FAQ — All Questions Answered" },
       {
         property: "og:description",
-        content: "Common questions about installing and using Bubbly.",
+        content: "Common questions about installing and using Bubbly v3.0.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -25,176 +41,208 @@ export const Route = createFileRoute("/faq")({
 
 const faqs = [
   {
-    q: "Is Bubbly free?",
-    a: "Yes. It's a personal project shared for testing — there's nothing to pay.",
+    q: "Is Bubbly completely free to use?",
+    a: "Yes, 100% free! Bubbly is an open-source, full-stack messaging application built by Arnav Khari. There are zero subscriptions, paywalls, or in-app purchases.",
+    category: "General",
     emoji: "💸",
-    category: "General",
   },
   {
-    q: "Is it on the Play Store?",
-    a: "Not yet. For now you install it directly from the APK file on the Download page.",
-    emoji: "🏪",
-    category: "Install",
+    q: "Why is Bubbly distributed as an APK rather than through Google Play?",
+    a: "Direct APK distribution allows rapid release iteration and gives users direct access to the latest v3.0 builds without Play Store approval gatekeeping or developer account fees.",
+    category: "Installation",
+    emoji: "📦",
   },
   {
-    q: "Why does Android show a warning?",
-    a: "Android warns about any app installed outside the Play Store. Only install it if you trust the source.",
+    q: "Why does Android show a 'File might be harmful' warning during download?",
+    a: "Android shows this standard notification whenever you download any executable (.apk) from a web browser instead of the Play Store. It is normal security behavior. You can safely tap 'Download anyway'.",
+    category: "Installation",
     emoji: "⚠️",
-    category: "Install",
   },
   {
-    q: "Does it work on iPhone?",
-    a: "Currently Bubbly is available for Android only.",
-    emoji: "📱",
-    category: "General",
+    q: "How does Agora power Voice and Video calling in Bubbly?",
+    a: "Bubbly integrates the Agora RTC SDK. When you initiate a call, our Express backend generates a dynamic, secure RTC channel token. Agora then delivers low-latency, peer-to-peer audio and video streams.",
+    category: "Calls & Voice",
+    emoji: "📞",
   },
   {
-    q: "Why does it ask for permissions?",
-    a: "Camera, microphone and notifications are only needed for features like calls, voice notes and alerts.",
+    q: "How does Story Studio work and what are the 7 presets?",
+    a: "Story Studio lets you share ephemeral text and photo stories. For text stories, you can choose from 7 bespoke color gradient presets: Sunset Amber, Midnight Neon, Cyber Mint, Berry Ruby, Deep Charcoal, Ocean Dusk, and Warm Espresso, with text alignment and segmented timer bars.",
+    category: "Story Studio",
+    emoji: "🎨",
+  },
+  {
+    q: "How does on-the-fly Spanish translation work?",
+    a: "Inside any conversation, tapping the translation toggle button sends the message payload to the backend translation service with cached results, rendering the translated text seamlessly.",
+    category: "Features",
+    emoji: "🌐",
+  },
+  {
+    q: "What permissions does Bubbly request and why?",
+    a: "Camera (for video calling and story photos), Microphone (for voice notes and calls), Storage/Photos (for sending attachments), and Notifications (for message alerts). You can deny optional permissions and still use core messaging.",
+    category: "Privacy & Security",
     emoji: "🔐",
-    category: "Privacy",
   },
   {
-    q: "Can I see the code?",
-    a: "Yes — the full source code is on GitHub.",
-    emoji: "👨‍💻",
+    q: "Can I inspect the full source code?",
+    a: "Yes! The complete source code — including the React Native frontend, Node.js/Express backend, MongoDB models, and TanStack Start website — is publicly available on GitHub.",
+    category: "Open Source",
+    emoji: "💻",
+  },
+  {
+    q: "Does Bubbly work on iPhones (iOS)?",
+    a: "Bubbly is built with React Native and Expo, meaning the codebase is cross-platform. While direct .apk sideloading is specific to Android, developers can run Bubbly on iOS using Expo Go or by generating an iOS development profile with EAS.",
     category: "General",
+    emoji: "🍎",
   },
   {
-    q: "How do I report a bug?",
-    a: "Use the Send feedback link on the Story page, or open an issue on GitHub.",
-    emoji: "🐛",
+    q: "How do I report a bug or suggest a feature?",
+    a: "You can use the interactive feedback form on our Story page, send an email directly to arnavkhari.77@gmail.com, or open a GitHub Issue on the repository.",
     category: "Support",
+    emoji: "🐛",
   },
 ];
 
-const categoryColor: Record<string, string> = {
-  General: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  Install: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-  Privacy: "text-green-400 bg-green-400/10 border-green-400/20",
-  Support: "text-purple-400 bg-purple-400/10 border-purple-400/20",
-};
+export function FaqPage() {
+  const [search, setSearch] = useState("");
+  const [selectedCat, setSelectedCat] = useState("All");
 
-function FaqPage() {
+  const categories = [
+    "All",
+    "General",
+    "Installation",
+    "Calls & Voice",
+    "Story Studio",
+    "Privacy & Security",
+    "Open Source",
+  ];
+
+  const filteredFaqs = useMemo(() => {
+    return faqs.filter((f) => {
+      const matchCat = selectedCat === "All" || f.category === selectedCat;
+      const matchQuery =
+        f.q.toLowerCase().includes(search.toLowerCase()) ||
+        f.a.toLowerCase().includes(search.toLowerCase());
+      return matchCat && matchQuery;
+    });
+  }, [search, selectedCat]);
+
   return (
     <>
       <PageHero
-        eyebrow="FAQ"
-        title="Questions? Bubbled up answers."
-        text="Quick answers to what people ask most."
+        eyebrow="Help & Knowledge Base"
+        title="Frequently Asked Questions."
+        text="Everything you need to know about installing, using, and understanding Bubbly."
+        badge={`${APP_VERSION} FAQ`}
       />
 
-      {/* ── FAQ List ──────────────────────────────────────── */}
-      <section className="relative overflow-hidden px-5 pb-24">
-        <div className="pointer-events-none absolute inset-0 grid-bg opacity-25" />
-        {/* Ambient orb */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-0 h-64 w-125 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-20 blur-3xl"
-          style={{ background: "var(--gradient-warm)" }}
-        />
+      <section className="relative overflow-hidden px-5 pb-28 pt-4">
+        <div className="pointer-events-none absolute inset-0 grid-bg opacity-20" />
 
-        <div className="relative mx-auto max-w-3xl">
-          {/* Count badge */}
-          <div className="mb-8 flex items-center justify-between">
-            <span className="chip inline-flex">
-              <MessageCircle className="h-3 w-3" />
-              {faqs.length} questions answered
-            </span>
-            <span className="font-mono text-xs text-muted-foreground/50 tracking-widest uppercase">
-              Updated regularly
-            </span>
+        <div className="relative mx-auto max-w-4xl">
+          {/* ── Search & Filter Controls ── */}
+          <div className="rounded-3xl border border-border bg-card/90 p-6 backdrop-blur-xl shadow-lg mb-12">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search FAQ (e.g. Agora, translation, install, permissions)..."
+                className="w-full rounded-full border border-border bg-surface pl-10 pr-4 py-2 text-sm focus:outline-hidden focus:border-primary"
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-1.5 border-t border-border/70 pt-4">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    sounds.playTap();
+                    setSelectedCat(cat);
+                  }}
+                  className={`rounded-full px-3.5 py-1 text-xs font-bold transition-all ${
+                    selectedCat === cat
+                      ? "bg-primary text-primary-foreground shadow-xs scale-102"
+                      : "bg-surface text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {faqs.map(({ q, a, emoji, category }, i) => (
-              <details
-                key={q}
-                className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 open:border-primary/40"
-                style={{ boxShadow: "var(--shadow-soft)" }}
-              >
-                {/* Left accent bar — visible when open */}
-                <div className="absolute inset-y-0 left-0 w-0.5 rounded-l-2xl bg-linear-to-b from-primary/80 to-primary/20 opacity-0 transition-opacity duration-300 group-open:opacity-100" />
-
-                {/* Top shimmer when open */}
-                <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/40 to-transparent opacity-0 transition-opacity duration-300 group-open:opacity-100" />
-
-                <summary className="flex cursor-pointer list-none items-center gap-4 px-6 py-5">
-                  {/* Emoji badge */}
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-lg transition-transform duration-200 group-open:scale-110">
-                    {emoji}
-                  </span>
-
-                  {/* Question text */}
-                  <span className="flex-1 font-bold text-foreground">{q}</span>
-
-                  {/* Category pill — hidden on mobile */}
-                  <span
-                    className={`hidden shrink-0 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-semibold tracking-widest uppercase sm:inline-flex ${categoryColor[category]}`}
+          {/* ── Accordion List ── */}
+          <div className="space-y-3.5">
+            {filteredFaqs.length === 0 ? (
+              <div className="rounded-3xl border border-border bg-card p-12 text-center">
+                <HelpCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-display text-lg font-bold">No matching questions found</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Try searching for something else or reach out to Arnav directly.
+                </p>
+              </div>
+            ) : (
+              filteredFaqs.map(({ q, a, emoji, category }) => (
+                <details
+                  key={q}
+                  className="group relative overflow-hidden rounded-3xl border border-border bg-card transition-all duration-300 open:border-primary/50 shadow-xs"
+                >
+                  <summary
+                    onClick={() => sounds.playTap()}
+                    className="flex cursor-pointer list-none items-center gap-4 px-6 py-5 select-none"
                   >
-                    {category}
-                  </span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-surface border border-border text-lg group-open:scale-110 transition-transform">
+                      {emoji}
+                    </span>
+                    <span className="flex-1 font-display font-bold text-foreground text-base">
+                      {q}
+                    </span>
+                    <span className="hidden sm:inline-flex rounded-full bg-surface px-2.5 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">
+                      {category}
+                    </span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180" />
+                  </summary>
 
-                  {/* Chevron */}
-                  <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180" />
-                </summary>
-
-                {/* Answer */}
-                <div className="px-6 pb-5 pl-17">
-                  <div className="h-px w-full bg-border mb-4" />
-                  <p className="text-sm leading-relaxed text-muted-foreground">{a}</p>
-                </div>
-              </details>
-            ))}
+                  <div className="px-6 pb-6 pt-1 text-sm leading-relaxed text-muted-foreground border-t border-border/50 mt-1 pl-19">
+                    {a}
+                  </div>
+                </details>
+              ))
+            )}
           </div>
 
-          {/* Still have questions card */}
-          <div
-            className="relative mt-10 overflow-hidden rounded-3xl border border-border bg-card p-7"
-            style={{ boxShadow: "var(--shadow-soft)" }}
-          >
-            {/* Shimmer */}
-            <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/50 to-transparent" />
-
-            {/* Glow blob */}
-            <div
-              className="pointer-events-none absolute right-0 top-0 h-32 w-32 -translate-y-1/2 translate-x-1/2 rounded-full opacity-20 blur-2xl"
-              style={{ background: "var(--gradient-warm)" }}
-            />
-
-            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          {/* ── Still Have Questions Card ── */}
+          <div className="mt-14 rounded-3xl border border-border bg-card p-8 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-foreground">
+                <h3 className="font-display text-xl font-bold text-foreground">
                   Still have a question?
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Reach out directly — I read every message.
+                  Ask the creator directly — questions and suggestions are always welcome.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2.5 shrink-0">
                 <a
                   href={FEEDBACK_EMAIL}
-                  className="btn-base btn-primary py-2.5! px-5! text-sm!"
+                  onClick={() => sounds.playPop()}
+                  className="btn-base btn-primary text-xs!"
                 >
-                  <Mail className="h-4 w-4" />
-                  Email me
+                  <Mail className="h-4 w-4" /> Email Arnav
                 </a>
                 <a
-                  href={GITHUB_URL}
+                  href={`${GITHUB_URL}/issues`}
                   target="_blank"
                   rel="noreferrer"
-                  className="btn-base btn-ghost-outline py-2.5! px-5! text-sm!"
+                  className="btn-base btn-ghost-outline text-xs!"
                 >
-                  <Github className="h-4 w-4" />
-                  Open an issue
+                  <Github className="h-4 w-4" /> GitHub Issues
                 </a>
               </div>
             </div>
           </div>
-
-          {/* Bottom mono tag */}
-          <p className="mt-8 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground/40">
-            Bubbly · FAQ
-          </p>
         </div>
       </section>
 

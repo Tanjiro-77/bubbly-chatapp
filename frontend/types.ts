@@ -136,6 +136,8 @@ export type ConversationListItemProps = {
   isGroup?: boolean;
   router: typeof router;
   isOnline?: boolean;
+  typingUser?: string | null;
+  draftText?: string | null;
 };
 
 export type ConversationProps = {

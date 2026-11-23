@@ -897,8 +897,18 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
+            let convId: string | undefined = data.conversationId;
+            if (!convId && data.messageId) {
+                const foundMsg: any = await Message.findById(data.messageId).select("conversationId").lean();
+                convId = foundMsg?.conversationId?.toString();
+            }
+            if (!convId) {
+                socket.emit("toggleStarMessage", { success: false, msg: "Conversation not found" });
+                return;
+            }
+
             const conversation = await Conversation.findOne({
-                _id: data.conversationId,
+                _id: convId,
                 participants: userId,
             });
             if (!conversation) {
@@ -915,14 +925,14 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 await SavedMessage.create({
                     userId,
                     messageId: data.messageId,
-                    conversationId: data.conversationId,
+                    conversationId: convId,
                 });
                 isSaved = true;
             }
 
             socket.emit("toggleStarMessage", {
                 success: true,
-                data: { messageId: data.messageId, conversationId: data.conversationId, isSaved },
+                data: { messageId: data.messageId, conversationId: convId, isSaved },
             });
         } catch (error: any) {
             console.log("toggleStarMessage error:", error);
@@ -958,9 +968,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const formatted = saved
                 .filter((s: any) => s.messageId && !s.messageId.isDeleted)
                 .map((s: any) => ({
-                    savedId: s._id.toString(),
+                    savedId: s._id?.toString() || "",
                     savedAt: s.createdAt,
-                    conversationId: s.conversationId.toString(),
+                    conversationId: (s.conversationId ? s.conversationId.toString() : s.messageId?.conversationId?.toString()) || "",
                     message: formatMessagePayload(s.messageId, {
                         sender: s.messageId.senderId ? {
                             id: s.messageId.senderId._id?.toString(),
