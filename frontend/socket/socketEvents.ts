@@ -456,3 +456,22 @@ export const onGroupUpdated = (payload: any, off: boolean = false) => {
     if (off) { socket.off("groupUpdated", payload); }
     else { socket.on("groupUpdated", payload); }
 };
+
+// ── CONNECTION STATUS (Feature 18) ──
+export const isSocketConnected = (): boolean => {
+    const socket = getSocket();
+    return !!socket && socket.connected;
+};
+
+export const onSocketConnectionChange = (handler: (connected: boolean) => void) => {
+    const socket = getSocket();
+    if (!socket) return () => {};
+    const handleConnect = () => handler(true);
+    const handleDisconnect = () => handler(false);
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    return () => {
+        socket.off("connect", handleConnect);
+        socket.off("disconnect", handleDisconnect);
+    };
+};

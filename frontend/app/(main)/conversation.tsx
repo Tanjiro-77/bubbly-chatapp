@@ -2,7 +2,7 @@ import {
     FlatList, KeyboardAvoidingView, Platform,
     StyleSheet, TouchableOpacity, View, Alert,
     ActivityIndicator, Modal, TouchableWithoutFeedback,
-    TextInput, ScrollView,
+    TextInput, ScrollView, BackHandler,
 } from 'react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -40,6 +40,7 @@ import {
     toggleStarMessage, onMessageStarred,
     forwardMessage, toggleMuteConversation,
     setGroupAdmin, getConversations,
+    isSocketConnected, onSocketConnectionChange,
 } from "../../socket/socketEvents"
 import {
     MessageProps, ReplyToProps, ResponseProps,
@@ -628,7 +629,7 @@ const forwardStyles = StyleSheet.create({
     empty: { padding: spacingY._30, alignItems: 'center' },
 });
 
-// ── Group Info Modal (Feature 10) ──
+// ── Group Info Modal (Feature 10 & 20) ──
 const GroupInfoModal = ({
     visible,
     conversationName,
@@ -637,6 +638,7 @@ const GroupInfoModal = ({
     admins,
     createdBy,
     currentUserId,
+    mediaItems = [],
     onPromote,
     onDemote,
     onClose,
@@ -648,11 +650,13 @@ const GroupInfoModal = ({
     admins: any[];
     createdBy?: string;
     currentUserId: string;
+    mediaItems?: MessageProps[];
     onPromote: (userId: string) => void;
     onDemote: (userId: string) => void;
     onClose: () => void;
 }) => {
     const isAdmin = admins?.some((a: any) => (a._id || a).toString() === currentUserId);
+    const [infoTab, setInfoTab] = useState<'members' | 'media'>('members');
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -666,44 +670,106 @@ const GroupInfoModal = ({
                                 <Typo size={18} fontWeight="700" color={colors.neutral900}>{conversationName || "Group"}</Typo>
                                 <Typo size={13} color={colors.neutral500}>{participants.length} members</Typo>
                             </View>
-                            <View style={groupInfoStyles.divider} />
-                            <Typo size={12} fontWeight="700" color={colors.neutral400} style={groupInfoStyles.sectionTitle}>MEMBERS</Typo>
-                            <FlatList
-                                data={participants}
-                                keyExtractor={(p) => p._id}
-                                contentContainerStyle={groupInfoStyles.list}
-                                renderItem={({ item }) => {
-                                    const userIsAdmin = admins?.some((a: any) => (a._id || a).toString() === item._id);
-                                    const userIsCreator = createdBy?.toString() === item._id;
-                                    return (
-                                        <View style={groupInfoStyles.memberRow}>
-                                            <Avatar size={38} uri={item.avatar} />
-                                            <View style={groupInfoStyles.memberInfo}>
-                                                <Typo size={14} fontWeight="600" color={colors.neutral900}>
-                                                    {item.name} {item._id === currentUserId ? "(You)" : ""}
-                                                </Typo>
-                                                {userIsCreator ? (
-                                                    <Typo size={11} color={colors.primaryDark} fontWeight="700">Creator</Typo>
-                                                ) : userIsAdmin ? (
-                                                    <Typo size={11} color={colors.green} fontWeight="700">Admin</Typo>
-                                                ) : (
-                                                    <Typo size={11} color={colors.neutral400}>Member</Typo>
+
+                            {/* ── Segmented Tabs ── */}
+                            <View style={groupInfoStyles.tabRow}>
+                                <TouchableOpacity
+                                    onPress={() => setInfoTab('members')}
+                                    style={[groupInfoStyles.tabBtn, infoTab === 'members' && groupInfoStyles.tabBtnActive]}
+                                    activeOpacity={0.7}
+                                >
+                                    <Typo size={13} fontWeight={infoTab === 'members' ? "700" : "500"} color={infoTab === 'members' ? colors.neutral900 : colors.neutral400}>
+                                        Members ({participants.length})
+                                    </Typo>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => setInfoTab('media')}
+                                    style={[groupInfoStyles.tabBtn, infoTab === 'media' && groupInfoStyles.tabBtnActive]}
+                                    activeOpacity={0.7}
+                                >
+                                    <Typo size={13} fontWeight={infoTab === 'media' ? "700" : "500"} color={infoTab === 'media' ? colors.neutral900 : colors.neutral400}>
+                                        Media & Docs ({mediaItems.length})
+                                    </Typo>
+                                </TouchableOpacity>
+                            </View>
+
+                            {infoTab === 'members' ? (
+                                <FlatList
+                                    data={participants}
+                                    keyExtractor={(p) => p._id}
+                                    contentContainerStyle={groupInfoStyles.list}
+                                    renderItem={({ item }) => {
+                                        const userIsAdmin = admins?.some((a: any) => (a._id || a).toString() === item._id);
+                                        const userIsCreator = createdBy?.toString() === item._id;
+                                        return (
+                                            <View style={groupInfoStyles.memberRow}>
+                                                <Avatar size={38} uri={item.avatar} />
+                                                <View style={groupInfoStyles.memberInfo}>
+                                                    <Typo size={14} fontWeight="600" color={colors.neutral900}>
+                                                        {item.name} {item._id === currentUserId ? "(You)" : ""}
+                                                    </Typo>
+                                                    {userIsCreator ? (
+                                                        <Typo size={11} color={colors.primaryDark} fontWeight="700">Creator</Typo>
+                                                    ) : userIsAdmin ? (
+                                                        <Typo size={11} color={colors.green} fontWeight="700">Admin</Typo>
+                                                    ) : (
+                                                        <Typo size={11} color={colors.neutral400}>Member</Typo>
+                                                    )}
+                                                </View>
+                                                {isAdmin && item._id !== currentUserId && !userIsCreator && (
+                                                    <TouchableOpacity
+                                                        onPress={() => userIsAdmin ? onDemote(item._id) : onPromote(item._id)}
+                                                        style={groupInfoStyles.roleBtn}
+                                                    >
+                                                        <Typo size={11} fontWeight="600" color={colors.primaryDark}>
+                                                            {userIsAdmin ? "Demote" : "Make Admin"}
+                                                        </Typo>
+                                                    </TouchableOpacity>
                                                 )}
                                             </View>
-                                            {isAdmin && item._id !== currentUserId && !userIsCreator && (
-                                                <TouchableOpacity
-                                                    onPress={() => userIsAdmin ? onDemote(item._id) : onPromote(item._id)}
-                                                    style={groupInfoStyles.roleBtn}
-                                                >
-                                                    <Typo size={11} fontWeight="600" color={colors.primaryDark}>
-                                                        {userIsAdmin ? "Demote" : "Make Admin"}
-                                                    </Typo>
-                                                </TouchableOpacity>
-                                            )}
+                                        );
+                                    }}
+                                />
+                            ) : (
+                                <ScrollView contentContainerStyle={groupInfoStyles.mediaScroll} showsVerticalScrollIndicator={false}>
+                                    {mediaItems.length === 0 ? (
+                                        <View style={groupInfoStyles.emptyMedia}>
+                                            <Icons.Images size={32} color={colors.neutral300} />
+                                            <Typo size={13} color={colors.neutral400}>No photos or documents shared yet</Typo>
                                         </View>
-                                    );
-                                }}
-                            />
+                                    ) : (
+                                        <View style={groupInfoStyles.mediaGrid}>
+                                            {mediaItems.map((m) => {
+                                                if (m.attachement) {
+                                                    return (
+                                                        <View key={m.id} style={groupInfoStyles.mediaThumbWrap}>
+                                                            <Image source={m.attachement} style={groupInfoStyles.mediaThumb} contentFit="cover" />
+                                                        </View>
+                                                    );
+                                                }
+                                                if (m.attachmentMeta) {
+                                                    return (
+                                                        <View key={m.id} style={groupInfoStyles.docItem}>
+                                                            <View style={groupInfoStyles.docIconWrap}>
+                                                                <Icons.FileText size={20} color={colors.primaryDark} />
+                                                            </View>
+                                                            <View style={{ flex: 1 }}>
+                                                                <Typo size={12} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                                                    {m.attachmentMeta.name}
+                                                                </Typo>
+                                                                <Typo size={10} color={colors.neutral400}>
+                                                                    {formatFileSize(m.attachmentMeta.size)}
+                                                                </Typo>
+                                                            </View>
+                                                        </View>
+                                                    );
+                                                }
+                                                return null;
+                                            })}
+                                        </View>
+                                    )}
+                                </ScrollView>
+                            )}
                         </View>
                     </TouchableWithoutFeedback>
                 </View>
@@ -717,12 +783,20 @@ const groupInfoStyles = StyleSheet.create({
     sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius._30, borderTopRightRadius: radius._30, paddingBottom: verticalScale(34), maxHeight: '85%' },
     handle: { width: scale(36), height: verticalScale(4), borderRadius: radius.full, backgroundColor: colors.neutral300, alignSelf: 'center', marginTop: verticalScale(10), marginBottom: verticalScale(4) },
     header: { alignItems: 'center', gap: spacingY._6, paddingVertical: spacingY._15 },
-    divider: { height: 1, backgroundColor: colors.neutral100, marginHorizontal: spacingX._20 },
-    sectionTitle: { paddingHorizontal: spacingX._20, paddingTop: spacingY._15, paddingBottom: spacingY._5 },
+    tabRow: { flexDirection: 'row', paddingHorizontal: spacingX._20, gap: spacingX._10, marginBottom: spacingY._10 },
+    tabBtn: { flex: 1, alignItems: 'center', paddingVertical: spacingY._10, borderBottomWidth: 2, borderBottomColor: colors.neutral200 },
+    tabBtnActive: { borderBottomColor: colors.primary },
     list: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
     memberRow: { flexDirection: 'row', alignItems: 'center', gap: spacingX._12, paddingVertical: spacingY._10 },
     memberInfo: { flex: 1, gap: 2 },
     roleBtn: { paddingHorizontal: spacingX._10, paddingVertical: spacingY._5, backgroundColor: colors.primaryLight, borderRadius: radius.full },
+    mediaScroll: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
+    emptyMedia: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacingY._30, gap: spacingY._7 },
+    mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(8) },
+    mediaThumbWrap: { width: scale(100), height: scale(100), borderRadius: radius._10, overflow: 'hidden' },
+    mediaThumb: { width: '100%', height: '100%' },
+    docItem: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: spacingX._10, paddingVertical: spacingY._8, borderBottomWidth: 1, borderBottomColor: colors.neutral100 },
+    docIconWrap: { width: scale(36), height: scale(36), borderRadius: radius._10, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
 });
 
 // ── Attachment Options ──
@@ -874,6 +948,60 @@ const Conversation = () => {
         if (conversationId) {
             AsyncStorage.setItem(`@bubbly_chat_theme_${conversationId}`, th.id).catch(() => {});
         }
+    };
+
+    // ── Network status & Auto-scroll pill (Features 17 & 18) ──
+    const [isOnlineNetwork, setIsOnlineNetwork] = useState(isSocketConnected());
+    const [isScrolledUp, setIsScrolledUp] = useState(false);
+    const [newMessagesBelow, setNewMessagesBelow] = useState(0);
+
+    // ── Android Back Button Listener ──
+    useEffect(() => {
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (isSearching) {
+                setIsSearching(false);
+                setSearchQuery('');
+                return true;
+            }
+            if (showThemeModal) {
+                setShowThemeModal(false);
+                return true;
+            }
+            if (groupInfoVisible) {
+                setGroupInfoVisible(false);
+                return true;
+            }
+            if (forwardModalVisible) {
+                setForwardModalVisible(false);
+                return true;
+            }
+            if (showAttachOptions) {
+                setShowAttachOptions(false);
+                return true;
+            }
+            return false;
+        });
+        return () => backHandler.remove();
+    }, [isSearching, showThemeModal, groupInfoVisible, forwardModalVisible, showAttachOptions]);
+
+    // ── Connection Status Listener ──
+    useEffect(() => {
+        return onSocketConnectionChange(setIsOnlineNetwork);
+    }, []);
+
+    const handleScroll = (event: any) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        const scrolled = offsetY > 180;
+        setIsScrolledUp(scrolled);
+        if (!scrolled) {
+            setNewMessagesBelow(0);
+        }
+    };
+
+    const scrollToBottom = () => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        setNewMessagesBelow(0);
+        setIsScrolledUp(false);
     };
 
     // ─────────────────────────────────────────────
@@ -1088,6 +1216,9 @@ const Conversation = () => {
                 messageId: normalizedMessage.id,
                 conversationId: conversationId as string,
             });
+            if (isScrolledUp) {
+                setNewMessagesBelow(prev => prev + 1);
+            }
         }
 
         setMessages((prev) => {
@@ -1388,6 +1519,10 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     // DATE SEPARATORS
     // ─────────────────────────────────────────────
+    const mediaMessages = useMemo(() => {
+        return messages.filter(m => (!!m.attachement && !m.isViewOnce) || !!m.attachmentMeta);
+    }, [messages]);
+
     const messagesWithSeparators = useMemo((): MessageListItem[] => {
         if (messages.length === 0) return [];
 
@@ -1530,12 +1665,53 @@ const Conversation = () => {
 
     const canSend = message.trim().length > 0 || selectedFile !== null;
 
+    // ── Memoized Message Item Renderer (High Performance) ──
+    const renderMessageItem = useCallback(({ item }: { item: MessageListItem }) => {
+        if (item.type === 'separator') {
+            return <DateSeparator date={item.date} />;
+        }
+
+        return (
+            <MessageItem
+                item={{
+                    ...item.message,
+                    conversationId: conversationId as string,
+                }}
+                isDirect={isDirect as boolean}
+                onReply={handleReply}
+                onReact={handleReaction}
+                onForward={handleOpenForward}
+                onToggleStar={handleToggleStar}
+                onPin={handlePin}
+                onUnpin={handleUnpin}
+                deliveryStatus={messageStatuses[item.message.id]}
+                searchHighlight={isSearching && searchQuery.trim() ? searchQuery.trim() : undefined}
+                customBubbleMine={selectedTheme.bubbleMine}
+                customBubbleOther={selectedTheme.bubbleOther}
+            />
+        );
+    }, [
+        conversationId,
+        isDirect,
+        handleReply,
+        handleReaction,
+        handleOpenForward,
+        handleToggleStar,
+        handlePin,
+        handleUnpin,
+        messageStatuses,
+        isSearching,
+        searchQuery,
+        selectedTheme.bubbleMine,
+        selectedTheme.bubbleOther,
+    ]);
+
     // ─────────────────────────────────────────────
     // RENDER
     // ─────────────────────────────────────────────
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.5}>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : "height"} style={styles.container}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : undefined} style={styles.container}>
 
                 {/* ── Header ── */}
                 <Animated.View entering={FadeInDown.duration(400).springify()} style={styles.header}>
@@ -1587,6 +1763,14 @@ const Conversation = () => {
                     </View>
                 </Animated.View>
 
+                {/* ── Network Offline Reconnecting Banner (Feature 18) ── */}
+                {!isOnlineNetwork && (
+                    <Animated.View entering={FadeInDown.duration(250)} exiting={FadeOut.duration(200)} style={styles.networkBanner}>
+                        <Icons.WifiSlash size={verticalScale(14)} color={colors.rose} weight="bold" />
+                        <Typo size={12} color={colors.rose} fontWeight="600">Waiting for network...</Typo>
+                    </Animated.View>
+                )}
+
                 {/* ── Content Sheet with Custom Theme Background ── */}
                 <View style={[styles.content, { backgroundColor: selectedTheme.bg }]}>
                     {/* ── Search Bar ── */}
@@ -1618,33 +1802,16 @@ const Conversation = () => {
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.messagesContent}
                         keyExtractor={(item) => item.id}
-                        renderItem={({ item }) => {
-                            if (item.type === 'separator') {
-                                return <DateSeparator date={item.date} />;
-                            }
-
-                            return (
-                                <MessageItem
-                                    item={{
-                                        ...item.message,
-                                        conversationId: conversationId as string,
-                                    }}
-                                    isDirect={isDirect as boolean}
-                                    onReply={handleReply}
-                                    onReact={handleReaction}
-                                    onForward={handleOpenForward}
-                                    onToggleStar={handleToggleStar}
-                                    onPin={handlePin}
-                                    onUnpin={handleUnpin}
-                                    deliveryStatus={messageStatuses[item.message.id]}
-                                    searchHighlight={isSearching && searchQuery.trim() ? searchQuery.trim() : undefined}
-                                    customBubbleMine={selectedTheme.bubbleMine}
-                                    customBubbleOther={selectedTheme.bubbleOther}
-                                />
-                            );
-                        }}
+                        renderItem={renderMessageItem}
                         onEndReached={handleLoadMore}
                         onEndReachedThreshold={0.3}
+                        initialNumToRender={15}
+                        maxToRenderPerBatch={10}
+                        windowSize={11}
+                        removeClippedSubviews={Platform.OS === 'android'}
+                        keyboardShouldPersistTaps="handled"
+                        onScroll={handleScroll}
+                        scrollEventThrottle={32}
                         ListFooterComponent={isLoadingMore ? <LoadMoreIndicator /> : null}
                         ListHeaderComponent={typingUser ? <TypingIndicator name={typingUser} isDirect={isDirect as boolean} /> : null}
                         ListEmptyComponent={
@@ -1657,6 +1824,22 @@ const Conversation = () => {
                             </View>
                         }
                     />
+
+                    {/* ── Auto-Scroll to Bottom Floating Pill (Feature 17) ── */}
+                    {isScrolledUp && (
+                        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} style={styles.scrollToBottomWrap}>
+                            <TouchableOpacity style={styles.scrollToBottomBtn} onPress={scrollToBottom} activeOpacity={0.8}>
+                                <Icons.CaretDown size={verticalScale(18)} color={colors.neutral800} weight="bold" />
+                                {newMessagesBelow > 0 && (
+                                    <View style={styles.newMsgBadge}>
+                                        <Typo size={10} color={colors.white} fontWeight="800">
+                                            {newMessagesBelow > 99 ? '99+' : newMessagesBelow}
+                                        </Typo>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        </Animated.View>
+                    )}
 
                     {/* ── Input Bar ── */}
                     <View style={styles.inputBar}>
@@ -1680,15 +1863,15 @@ const Conversation = () => {
 
                         <View style={styles.inputRow}>
                             {isRecording ? (
-                                <>
-                                    <TouchableOpacity style={styles.cancelRecordBtn} onPress={cancelRecording} activeOpacity={0.7}>
-                                        <Icons.X size={verticalScale(18)} color={colors.rose} weight="bold" />
+                                <View style={styles.recordingRow}>
+                                    <TouchableOpacity style={styles.trashRecordBtn} onPress={cancelRecording} activeOpacity={0.7}>
+                                        <Icons.Trash size={verticalScale(18)} color={colors.white} weight="fill" />
                                     </TouchableOpacity>
                                     <RecordingIndicator duration={recordingDuration} />
                                     <TouchableOpacity style={styles.sendBtn} onPress={() => stopRecording(false)} activeOpacity={0.8}>
                                         <Icons.PaperPlaneTilt color={colors.black} weight="fill" size={verticalScale(18)} />
                                     </TouchableOpacity>
-                                </>
+                                </View>
                             ) : (
                                 <>
                                     <TouchableOpacity
@@ -1836,6 +2019,7 @@ const Conversation = () => {
                 admins={[]}
                 createdBy={undefined}
                 currentUserId={currentUser?.id || ''}
+                mediaItems={mediaMessages}
                 onPromote={handlePromoteAdmin}
                 onDemote={handleDemoteAdmin}
                 onClose={() => setGroupInfoVisible(false)}
@@ -1878,6 +2062,71 @@ const styles = StyleSheet.create({
     sendBtn: { width: verticalScale(46), height: verticalScale(46), borderRadius: radius.full, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", shadowColor: colors.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 },
     micBtn: { width: verticalScale(46), height: verticalScale(46), borderRadius: radius.full, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", shadowColor: colors.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 },
     cancelRecordBtn: { width: verticalScale(42), height: verticalScale(42), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.rose },
+    networkBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacingX._7,
+        backgroundColor: '#fff1f2',
+        paddingVertical: spacingY._5,
+        borderBottomWidth: 1,
+        borderBottomColor: '#fecdd3',
+    },
+    recordingRow: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: spacingX._10,
+    },
+    trashRecordBtn: {
+        width: verticalScale(40),
+        height: verticalScale(40),
+        borderRadius: radius.full,
+        backgroundColor: colors.rose,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: colors.rose,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    scrollToBottomWrap: {
+        position: 'absolute',
+        bottom: verticalScale(85),
+        right: spacingX._15,
+        zIndex: 50,
+    },
+    scrollToBottomBtn: {
+        width: verticalScale(40),
+        height: verticalScale(40),
+        borderRadius: radius.full,
+        backgroundColor: colors.white,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.18,
+        shadowRadius: 6,
+        elevation: 5,
+        borderWidth: 1,
+        borderColor: colors.neutral100,
+    },
+    newMsgBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        backgroundColor: colors.primary,
+        borderRadius: radius.full,
+        minWidth: scale(18),
+        height: scale(18),
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 4,
+        borderWidth: 1.5,
+        borderColor: colors.white,
+    },
 });
 
 const pollModalStyles = StyleSheet.create({

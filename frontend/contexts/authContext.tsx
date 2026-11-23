@@ -5,6 +5,7 @@ import { login, register } from "../services/authService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode } from 'jwt-decode';
 import { connectSocket, disconnectSocket } from "../socket/socket";
+import { markOnboardingCompleted } from "../hooks/useOnboarding";
 
 
 export const AuthContext = createContext<AuthContextProps>({
@@ -82,6 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await login(email, password);
         await updateToken(response.token);
         await connectSocket();
+        await markOnboardingCompleted();
         router.replace("/(main)/home");
     };
 
@@ -89,6 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await register(email, password, name, avatar);
         await updateToken(response.token);
         await connectSocket();
+        await markOnboardingCompleted();
         router.replace("/(main)/home");
     };
 

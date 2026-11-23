@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import {
     View,
     StyleSheet,
@@ -9,11 +9,13 @@ import {
     FlatList,
     ListRenderItemInfo,
     StatusBar,
+    Alert,
+    AppState,
+    AppStateStatus,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
-import * as Notifications from "expo-notifications";
 
 import Animated, {
     useSharedValue,
@@ -30,34 +32,30 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import Typo from "../components/Typo";
+import { markOnboardingCompleted } from "../hooks/useOnboarding";
+import {
+    checkAllPermissions,
+    requestPermissionByKey,
+    openDeviceSettings,
+    AllPermissionsStatus,
+    PermissionKey,
+    PERMISSION_METADATA,
+} from "../services/permissionService";
 
 type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
-    Dimensions.get("window");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-/*
- * IMPORTANT:
- * These values are calculated outside Reanimated worklets.
- * Calling scale() directly inside useAnimatedStyle can cause:
- *
- * [Worklets] Tried to synchronously call a Remote Function
- *
- * on newer Reanimated/Worklets versions.
- */
 const DOT_SMALL_WIDTH = scale(7);
 const DOT_ACTIVE_WIDTH = scale(22);
 const ARROW_SHIFT = scale(4);
-
-const AnimatedFlatList =
-    Animated.createAnimatedComponent(FlatList<Slide>);
 
 interface Slide {
     id: string;
     icon: IconName;
     title: string;
     subtitle: string;
-    type?: "permission";
+    type?: "intro" | "permissions" | "complete";
     accentColor: string;
     bgGradient: [string, string, string];
     illustrationBg: string;
@@ -70,91 +68,76 @@ const SLIDES: Slide[] = [
         icon: "chat-bubble",
         title: "Welcome to Bubbly",
         subtitle:
-            "A real-time communication app built for seamless, personal connection.",
+            "A modern, warm, real-time messaging space built for personal, genuine connection.",
+        type: "intro",
         accentColor: "#facc15",
         bgGradient: ["#fffbeb", "#fef9c3", "#fef08a"],
         illustrationBg: "#fef08a",
-        badge: "✨ New",
+        badge: "✨ Welcome",
     },
     {
         id: "messaging",
         icon: "send",
         title: "Instant Messaging",
         subtitle:
-            "Send and receive messages in real time. Your conversations, always in sync.",
+            "Send messages in real time with typing indicators, delivery receipts, replies, and 1-tap Spanish translations.",
+        type: "intro",
         accentColor: "#f59e0b",
         bgGradient: ["#fffbeb", "#fef3c7", "#fde68a"],
         illustrationBg: "#fde68a",
-        badge: "⚡ Fast",
+        badge: "⚡ Real-Time",
     },
     {
         id: "calls",
         icon: "call",
         title: "Voice & Video Calls",
         subtitle:
-            "Crystal-clear voice and video calls — connect face to face, anywhere.",
+            "Crystal-clear audio and video calls powered by Agora — connect face-to-face with your contacts anywhere.",
+        type: "intro",
         accentColor: "#eab308",
         bgGradient: ["#fefce8", "#fef9c3", "#fef08a"],
         illustrationBg: "#fef08a",
-        badge: "📞 HD",
-    },
-    {
-        id: "groups",
-        icon: "group",
-        title: "Group Chats",
-        subtitle:
-            "Create groups, share updates, and stay in sync with everyone at once.",
-        accentColor: "#ca8a04",
-        bgGradient: ["#fffbeb", "#fef3c7", "#fde68a"],
-        illustrationBg: "#fde68a",
-        badge: "👥 Social",
+        badge: "📞 HD Calls",
     },
     {
         id: "stories",
         icon: "auto-awesome",
-        title: "Stories",
+        title: "Stories, Polls & Groups",
         subtitle:
-            "Share moments with your contacts through photos and short stories.",
+            "Share 24-hour visual stories, run group polls, and browse shared media galleries effortlessly.",
+        type: "intro",
         accentColor: "#d97706",
         bgGradient: ["#fffbeb", "#fef9c3", "#fef08a"],
         illustrationBg: "#fef08a",
-        badge: "📸 Live",
+        badge: "📸 Moments",
     },
     {
-        id: "translation",
-        icon: "translate",
-        title: "Smart Translation",
+        id: "permissions",
+        icon: "security",
+        title: "Permission Setup",
         subtitle:
-            "Chat across languages effortlessly — Bubbly translates messages for you.",
-        accentColor: "#b45309",
+            "Choose the permissions you want to enable for calling, voice notes, media sharing, and instant alerts.",
+        type: "permissions",
+        accentColor: "#ca8a04",
         bgGradient: ["#fefce8", "#fef3c7", "#fde68a"],
         illustrationBg: "#fde68a",
-        badge: "🌍 Global",
+        badge: "🔒 Permissions",
     },
     {
-        id: "saved-scheduled",
-        icon: "schedule",
-        title: "Save & Schedule",
+        id: "complete",
+        icon: "check-circle",
+        title: "You're All Set!",
         subtitle:
-            "Bookmark important messages, or schedule them to send at the perfect time.",
-        accentColor: "#a16207",
-        bgGradient: ["#fffbeb", "#fef9c3", "#fef08a"],
-        illustrationBg: "#fef08a",
-        badge: "⏰ Smart",
-    },
-    {
-        id: "notifications",
-        icon: "notifications-active",
-        title: "Stay in the Loop",
-        subtitle:
-            "Turn on notifications so you never miss a message, call, or story.",
-        type: "permission",
-        accentColor: "#facc15",
-        bgGradient: ["#fffbeb", "#fef3c7", "#fde68a"],
-        illustrationBg: "#fde68a",
-        badge: "🔔 Alerts",
+            "Your Bubbly space is prepared and ready. Let's jump in and start connecting.",
+        type: "complete",
+        accentColor: "#16a34a",
+        bgGradient: ["#f0fdf4", "#dcfce7", "#bbf7d0"],
+        illustrationBg: "#bbf7d0",
+        badge: "🚀 Ready",
     },
 ];
+
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<Slide>);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Floating Particle
@@ -170,21 +153,14 @@ const FloatingParticle: React.FC<{
 }> = ({ size, left, top, delay, scrollX }) => {
     const animStyle = useAnimatedStyle(() => {
         const progress = (scrollX.value / SCREEN_WIDTH) % 1;
-
-        const floatY =
-            Math.sin(scrollX.value / 100 + delay) * 8;
-
+        const floatY = Math.sin(scrollX.value / 100 + delay) * 8;
         const opacity = interpolate(
             progress,
             [0, 0.5, 1],
             [0.15, 0.4, 0.15],
             Extrapolation.CLAMP
         );
-
-        return {
-            transform: [{ translateY: floatY }],
-            opacity,
-        };
+        return { transform: [{ translateY: floatY }], opacity };
     });
 
     return (
@@ -209,37 +185,24 @@ const FloatingParticle: React.FC<{
 // Background Gradient
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BackgroundGradient: React.FC<{
-    scrollX: SharedValue<number>;
-}> = ({ scrollX }) => {
+const BackgroundGradient: React.FC<{ scrollX: SharedValue<number> }> = ({
+    scrollX,
+}) => {
     const animStyle = useAnimatedStyle(() => {
         const index = scrollX.value / SCREEN_WIDTH;
-
         const opacity = interpolate(
             index % 1,
             [0, 0.5, 1],
             [1, 0.85, 1],
             Extrapolation.CLAMP
         );
-
-        return {
-            opacity,
-        };
+        return { opacity };
     });
 
     return (
-        <Animated.View
-            style={[
-                StyleSheet.absoluteFill,
-                animStyle,
-            ]}
-        >
+        <Animated.View style={[StyleSheet.absoluteFill, animStyle]}>
             <LinearGradient
-                colors={[
-                    "#fffbeb",
-                    "#fef9c3",
-                    "#fefce8",
-                ]}
+                colors={["#fffbeb", "#fef9c3", "#fefce8"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -249,7 +212,7 @@ const BackgroundGradient: React.FC<{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Progress Indicator
+// Progress Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ProgressBar: React.FC<{
@@ -266,35 +229,14 @@ const ProgressBar: React.FC<{
             [0, TRACK_WIDTH],
             Extrapolation.CLAMP
         );
-
-        return {
-            width: progress,
-        };
+        return { width: progress };
     });
 
     return (
         <View style={styles.progressContainer}>
-            <View
-                style={[
-                    styles.progressTrack,
-                    {
-                        width: TRACK_WIDTH,
-                    },
-                ]}
-            >
-                <Animated.View
-                    style={[
-                        styles.progressGlow,
-                        animatedFillStyle,
-                    ]}
-                />
-
-                <Animated.View
-                    style={[
-                        styles.progressFill,
-                        animatedFillStyle,
-                    ]}
-                >
+            <View style={[styles.progressTrack, { width: TRACK_WIDTH }]}>
+                <Animated.View style={[styles.progressGlow, animatedFillStyle]} />
+                <Animated.View style={[styles.progressFill, animatedFillStyle]}>
                     <LinearGradient
                         colors={[
                             colors.primaryLight,
@@ -335,34 +277,19 @@ const AnimatedDot: React.FC<{
             index * SCREEN_WIDTH,
             (index + 1) * SCREEN_WIDTH,
         ];
-
-        /*
-         * IMPORTANT:
-         * Do NOT call scale() here.
-         * Use pre-calculated constants instead.
-         */
         const widthVal = interpolate(
             scrollX.value,
             inputRange,
-            [
-                DOT_SMALL_WIDTH,
-                DOT_ACTIVE_WIDTH,
-                DOT_SMALL_WIDTH,
-            ],
+            [DOT_SMALL_WIDTH, DOT_ACTIVE_WIDTH, DOT_SMALL_WIDTH],
             Extrapolation.CLAMP
         );
-
         const opacityVal = interpolate(
             scrollX.value,
             inputRange,
             [0.35, 1, 0.35],
             Extrapolation.CLAMP
         );
-
-        return {
-            width: widthVal,
-            opacity: opacityVal,
-        };
+        return { width: widthVal, opacity: opacityVal };
     });
 
     return (
@@ -370,9 +297,7 @@ const AnimatedDot: React.FC<{
             style={[
                 styles.dot,
                 animStyle,
-                {
-                    backgroundColor: colors.primary,
-                },
+                { backgroundColor: colors.primary },
             ]}
         />
     );
@@ -396,96 +321,121 @@ const Dots: React.FC<{
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Illustration Rings
+// Permission Item Card for Onboarding Slide 5
 // ─────────────────────────────────────────────────────────────────────────────
 
-const IllustrationRings: React.FC<{
-    scrollX: SharedValue<number>;
-    index: number;
-    accentColor: string;
-}> = ({ scrollX, index, accentColor }) => {
-    const inputRange = [
-        (index - 1) * SCREEN_WIDTH,
-        index * SCREEN_WIDTH,
-        (index + 1) * SCREEN_WIDTH,
+interface PermissionSetupCardProps {
+    permissions: AllPermissionsStatus;
+    onRequestPermission: (key: PermissionKey) => void;
+    onEnableAll: () => void;
+}
+
+const PermissionSetupCard: React.FC<PermissionSetupCardProps> = ({
+    permissions,
+    onRequestPermission,
+    onEnableAll,
+}) => {
+    const permKeys: PermissionKey[] = [
+        "camera",
+        "microphone",
+        "mediaLibrary",
+        "notifications",
     ];
 
-    const ring1Style = useAnimatedStyle(() => {
-        const scale1 = interpolate(
-            scrollX.value,
-            inputRange,
-            [0.7, 1, 0.7],
-            Extrapolation.CLAMP
-        );
-
-        const opacity = interpolate(
-            scrollX.value,
-            inputRange,
-            [0, 0.12, 0],
-            Extrapolation.CLAMP
-        );
-
-        return {
-            transform: [{ scale: scale1 }],
-            opacity,
-        };
-    });
-
-    const ring2Style = useAnimatedStyle(() => {
-        const scale2 = interpolate(
-            scrollX.value,
-            inputRange,
-            [0.6, 1, 0.6],
-            Extrapolation.CLAMP
-        );
-
-        const opacity = interpolate(
-            scrollX.value,
-            inputRange,
-            [0, 0.08, 0],
-            Extrapolation.CLAMP
-        );
-
-        return {
-            transform: [{ scale: scale2 }],
-            opacity,
-        };
-    });
-
-    const ICON_SIZE = scale(120);
+    const allGranted = permKeys.every((k) => permissions[k].granted);
 
     return (
-        <>
-            <Animated.View
-                style={[
-                    styles.ring,
-                    {
-                        width: ICON_SIZE * 2.1,
-                        height: ICON_SIZE * 2.1,
-                        borderRadius: ICON_SIZE * 2.1,
-                        borderColor: accentColor,
-                        top: -ICON_SIZE * 0.55,
-                        left: -ICON_SIZE * 0.55,
-                    },
-                    ring1Style,
-                ]}
-            />
+        <View style={styles.permCardWrapper}>
+            <View style={styles.permCard}>
+                {permKeys.map((key, i) => {
+                    const meta = PERMISSION_METADATA[key];
+                    const isGranted = permissions[key].granted;
+                    const canAsk = permissions[key].canAskAgain;
 
-            <Animated.View
-                style={[
-                    styles.ring,
-                    {
-                        width: ICON_SIZE * 2.9,
-                        height: ICON_SIZE * 2.9,
-                        borderRadius: ICON_SIZE * 2.9,
-                        borderColor: accentColor,
-                        top: -ICON_SIZE * 0.95,
-                        left: -ICON_SIZE * 0.95,
-                    },
-                    ring2Style,
-                ]}
-            />
-        </>
+                    let iconName: IconName = "security";
+                    if (key === "camera") iconName = "camera-alt";
+                    if (key === "microphone") iconName = "mic";
+                    if (key === "mediaLibrary") iconName = "photo-library";
+                    if (key === "notifications") iconName = "notifications";
+
+                    return (
+                        <View
+                            key={key}
+                            style={[
+                                styles.permItemRow,
+                                i < permKeys.length - 1 && styles.permItemBorder,
+                            ]}
+                        >
+                            <View
+                                style={[
+                                    styles.permIconBadge,
+                                    {
+                                        backgroundColor: isGranted
+                                            ? "#dcfce7"
+                                            : "#fef3c7",
+                                    },
+                                ]}
+                            >
+                                <MaterialIcons
+                                    name={iconName}
+                                    size={scale(18)}
+                                    color={isGranted ? "#16a34a" : "#d97706"}
+                                />
+                            </View>
+
+                            <View style={{ flex: 1 }}>
+                                <Typo size={13.5} fontWeight="700" color={colors.neutral900}>
+                                    {meta.title}
+                                </Typo>
+                                <Typo size={11} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
+                                    {meta.subtitle}
+                                </Typo>
+                            </View>
+
+                            {isGranted ? (
+                                <View style={styles.permGrantedBadge}>
+                                    <MaterialIcons name="check" size={13} color="#16a34a" />
+                                    <Typo size={11} fontWeight="700" color="#16a34a">
+                                        Allowed
+                                    </Typo>
+                                </View>
+                            ) : (
+                                <TouchableOpacity
+                                    style={styles.permAllowBtn}
+                                    onPress={() => onRequestPermission(key)}
+                                    activeOpacity={0.75}
+                                >
+                                    <Typo
+                                        size={11}
+                                        fontWeight="700"
+                                        color={colors.neutral900}
+                                    >
+                                        {canAsk ? "Allow" : "Settings"}
+                                    </Typo>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    );
+                })}
+            </View>
+
+            {!allGranted && (
+                <TouchableOpacity
+                    style={styles.enableAllBtn}
+                    onPress={onEnableAll}
+                    activeOpacity={0.8}
+                >
+                    <MaterialIcons
+                        name="check-circle"
+                        size={scale(16)}
+                        color={colors.neutral900}
+                    />
+                    <Typo size={13} fontWeight="700" color={colors.neutral900}>
+                        Enable All Permissions
+                    </Typo>
+                </TouchableOpacity>
+            )}
+        </View>
     );
 };
 
@@ -497,327 +447,165 @@ const SlideItem: React.FC<{
     item: Slide;
     index: number;
     scrollX: SharedValue<number>;
-    notifGranted: boolean;
-    onRequestNotifications: () => void;
+    permissions: AllPermissionsStatus;
+    onRequestPermission: (key: PermissionKey) => void;
+    onEnableAll: () => void;
 }> = ({
     item,
     index,
     scrollX,
-    notifGranted,
-    onRequestNotifications,
+    permissions,
+    onRequestPermission,
+    onEnableAll,
 }) => {
-        const inputRange = [
-            (index - 1) * SCREEN_WIDTH,
-            index * SCREEN_WIDTH,
-            (index + 1) * SCREEN_WIDTH,
-        ];
+    const inputRange = [
+        (index - 1) * SCREEN_WIDTH,
+        index * SCREEN_WIDTH,
+        (index + 1) * SCREEN_WIDTH,
+    ];
 
-        const iconContainerStyle = useAnimatedStyle(() => {
-            const scaleVal = interpolate(
-                scrollX.value,
-                inputRange,
-                [0.6, 1, 0.6],
-                Extrapolation.CLAMP
-            );
+    const iconContainerStyle = useAnimatedStyle(() => {
+        const scaleVal = interpolate(
+            scrollX.value,
+            inputRange,
+            [0.6, 1, 0.6],
+            Extrapolation.CLAMP
+        );
+        const rotateVal = interpolate(
+            scrollX.value,
+            inputRange,
+            [-15, 0, 15],
+            Extrapolation.CLAMP
+        );
+        const opacity = interpolate(
+            scrollX.value,
+            inputRange,
+            [0, 1, 0],
+            Extrapolation.CLAMP
+        );
+        return {
+            transform: [{ scale: scaleVal }, { rotate: `${rotateVal}deg` }],
+            opacity,
+        };
+    });
 
-            const rotateVal = interpolate(
-                scrollX.value,
-                inputRange,
-                [-15, 0, 15],
-                Extrapolation.CLAMP
-            );
+    const titleStyle = useAnimatedStyle(() => {
+        const translateY = interpolate(
+            scrollX.value,
+            inputRange,
+            [30, 0, -30],
+            Extrapolation.CLAMP
+        );
+        const opacity = interpolate(
+            scrollX.value,
+            inputRange,
+            [0, 1, 0],
+            Extrapolation.CLAMP
+        );
+        return { transform: [{ translateY }], opacity };
+    });
 
-            const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0, 1, 0],
-                Extrapolation.CLAMP
-            );
+    const subtitleStyle = useAnimatedStyle(() => {
+        const translateY = interpolate(
+            scrollX.value,
+            inputRange,
+            [50, 0, -50],
+            Extrapolation.CLAMP
+        );
+        const opacity = interpolate(
+            scrollX.value,
+            inputRange,
+            [0, 1, 0],
+            Extrapolation.CLAMP
+        );
+        return { transform: [{ translateY }], opacity };
+    });
 
-            return {
-                transform: [
-                    { scale: scaleVal },
-                    { rotate: `${rotateVal}deg` },
-                ],
-                opacity,
-            };
-        });
+    const ICON_SIZE = scale(100);
 
-        const titleStyle = useAnimatedStyle(() => {
-            const translateY = interpolate(
-                scrollX.value,
-                inputRange,
-                [30, 0, -30],
-                Extrapolation.CLAMP
-            );
-
-            const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0, 1, 0],
-                Extrapolation.CLAMP
-            );
-
-            return {
-                transform: [{ translateY }],
-                opacity,
-            };
-        });
-
-        const subtitleStyle = useAnimatedStyle(() => {
-            const translateY = interpolate(
-                scrollX.value,
-                inputRange,
-                [50, 0, -50],
-                Extrapolation.CLAMP
-            );
-
-            const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0, 1, 0],
-                Extrapolation.CLAMP
-            );
-
-            return {
-                transform: [{ translateY }],
-                opacity,
-            };
-        });
-
-        const badgeStyle = useAnimatedStyle(() => {
-            const translateX = interpolate(
-                scrollX.value,
-                inputRange,
-                [-20, 0, 20],
-                Extrapolation.CLAMP
-            );
-
-            const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0, 1, 0],
-                Extrapolation.CLAMP
-            );
-
-            return {
-                transform: [{ translateX }],
-                opacity,
-            };
-        });
-
-        const ICON_SIZE = scale(120);
-
-        return (
-            <View
-                style={[
-                    styles.slide,
-                    {
-                        width: SCREEN_WIDTH,
-                    },
-                ]}
-            >
-                {/* Icon Illustration */}
-                <Animated.View
+    return (
+        <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
+            {/* Main Visual */}
+            <Animated.View style={[iconContainerStyle, styles.iconWrapper]}>
+                <View
                     style={[
-                        iconContainerStyle,
-                        styles.iconWrapper,
+                        styles.iconCard,
+                        { width: ICON_SIZE, height: ICON_SIZE },
                     ]}
                 >
-                    {/* Decorative Rings */}
-                    <View style={{ position: "relative" }}>
-                        <IllustrationRings
-                            scrollX={scrollX}
-                            index={index}
-                            accentColor={item.accentColor}
-                        />
+                    <LinearGradient
+                        colors={["#fffbeb", "#fef3c7"]}
+                        style={[
+                            StyleSheet.absoluteFill,
+                            { borderRadius: radius._30 },
+                        ]}
+                    />
+                    <View
+                        style={[
+                            styles.iconInnerGlow,
+                            { backgroundColor: item.accentColor + "25" },
+                        ]}
+                    />
+                    <MaterialIcons
+                        name={item.icon}
+                        size={scale(44)}
+                        color={item.accentColor}
+                    />
+                </View>
+            </Animated.View>
 
-                        {/* Main Icon Card */}
-                        <View
-                            style={[
-                                styles.iconCard,
-                                {
-                                    width: ICON_SIZE,
-                                    height: ICON_SIZE,
-                                },
-                            ]}
-                        >
-                            <LinearGradient
-                                colors={[
-                                    "#fffbeb",
-                                    "#fef3c7",
-                                ]}
-                                style={[
-                                    StyleSheet.absoluteFill,
-                                    {
-                                        borderRadius: radius._30,
-                                    },
-                                ]}
-                            />
+            {/* Badge */}
+            {item.badge && (
+                <View style={styles.badge}>
+                    <LinearGradient
+                        colors={[colors.primaryLight, colors.primary]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.badgeGradient}
+                    >
+                        <Typo size={11} fontWeight="700" color={colors.neutral800}>
+                            {item.badge}
+                        </Typo>
+                    </LinearGradient>
+                </View>
+            )}
 
-                            {/* Inner glow */}
-                            <View
-                                style={[
-                                    styles.iconInnerGlow,
-                                    {
-                                        backgroundColor:
-                                            item.accentColor + "25",
-                                    },
-                                ]}
-                            />
-
-                            <MaterialIcons
-                                name={item.icon}
-                                size={scale(48)}
-                                color={item.accentColor}
-                            />
-
-                            {/* Top-right sparkle */}
-                            <View style={styles.sparkle}>
-                                <MaterialIcons
-                                    name="star"
-                                    size={scale(10)}
-                                    color={item.accentColor}
-                                />
-                            </View>
-                        </View>
-                    </View>
+            {/* Header Text */}
+            <View style={styles.textContainer}>
+                <Animated.View style={titleStyle}>
+                    <Typo
+                        size={25}
+                        fontWeight="800"
+                        color={colors.neutral900}
+                        style={styles.slideTitle}
+                    >
+                        {item.title}
+                    </Typo>
                 </Animated.View>
 
-                {/* Badge */}
-                {item.badge && (
-                    <Animated.View
-                        style={[
-                            styles.badge,
-                            badgeStyle,
-                        ]}
+                <Animated.View style={subtitleStyle}>
+                    <Typo
+                        size={14.5}
+                        color={colors.neutral500}
+                        fontWeight="400"
+                        style={styles.slideSubtitle}
                     >
-                        <LinearGradient
-                            colors={[
-                                colors.primaryLight,
-                                colors.primary,
-                            ]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.badgeGradient}
-                        >
-                            <Typo
-                                size={11}
-                                fontWeight="700"
-                                color={colors.neutral800}
-                            >
-                                {item.badge}
-                            </Typo>
-                        </LinearGradient>
-                    </Animated.View>
-                )}
-
-                {/* Text Content */}
-                <View style={styles.textContainer}>
-                    <Animated.View style={titleStyle}>
-                        <Typo
-                            size={26}
-                            fontWeight="800"
-                            color={colors.neutral900}
-                            style={styles.slideTitle}
-                        >
-                            {item.title}
-                        </Typo>
-                    </Animated.View>
-
-                    <Animated.View style={subtitleStyle}>
-                        <Typo
-                            size={15}
-                            color={colors.neutral500}
-                            fontWeight="400"
-                            style={styles.slideSubtitle}
-                        >
-                            {item.subtitle}
-                        </Typo>
-
-                        {item.type === "permission" && (
-                            <TouchableOpacity
-                                style={[
-                                    styles.permissionBtn,
-                                    notifGranted &&
-                                    styles.permissionBtnGranted,
-                                ]}
-                                onPress={onRequestNotifications}
-                                activeOpacity={0.8}
-                                disabled={notifGranted}
-                            >
-                                {notifGranted ? (
-                                    <>
-                                        <LinearGradient
-                                            colors={[
-                                                "#d1fae5",
-                                                "#a7f3d0",
-                                            ]}
-                                            style={
-                                                StyleSheet.absoluteFill
-                                            }
-                                        />
-
-                                        <MaterialIcons
-                                            name="check-circle"
-                                            size={scale(18)}
-                                            color="#16a34a"
-                                        />
-
-                                        <Typo
-                                            size={13.5}
-                                            fontWeight="700"
-                                            color="#16a34a"
-                                        >
-                                            Notifications Enabled!
-                                        </Typo>
-                                    </>
-                                ) : (
-                                    <>
-                                        <LinearGradient
-                                            colors={[
-                                                colors.primary,
-                                                colors.primaryDark,
-                                            ]}
-                                            start={{
-                                                x: 0,
-                                                y: 0,
-                                            }}
-                                            end={{
-                                                x: 1,
-                                                y: 0,
-                                            }}
-                                            style={
-                                                StyleSheet.absoluteFill
-                                            }
-                                        />
-
-                                        <MaterialIcons
-                                            name="notifications-active"
-                                            size={scale(18)}
-                                            color={
-                                                colors.neutral900
-                                            }
-                                        />
-
-                                        <Typo
-                                            size={13.5}
-                                            fontWeight="700"
-                                            color={
-                                                colors.neutral900
-                                            }
-                                        >
-                                            Enable Notifications
-                                        </Typo>
-                                    </>
-                                )}
-                            </TouchableOpacity>
-                        )}
-                    </Animated.View>
-                </View>
+                        {item.subtitle}
+                    </Typo>
+                </Animated.View>
             </View>
-        );
-    };
+
+            {/* Interactive Permissions List on Slide 5 */}
+            {item.type === "permissions" && (
+                <PermissionSetupCard
+                    permissions={permissions}
+                    onRequestPermission={onRequestPermission}
+                    onEnableAll={onEnableAll}
+                />
+            )}
+        </View>
+    );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Next Button
@@ -829,118 +617,81 @@ const NextButton: React.FC<{
     onPress: () => void;
     scrollX: SharedValue<number>;
     total: number;
-}> = ({
-    isLast,
-    isReplay,
-    onPress,
-    scrollX,
-    total,
-}) => {
-        const buttonScale = useSharedValue(1);
+}> = ({ isLast, isReplay, onPress, scrollX, total }) => {
+    const buttonScale = useSharedValue(1);
 
-        const handlePress = () => {
-            buttonScale.value = withSequence(
-                withSpring(0.95, {
-                    damping: 10,
-                }),
-                withSpring(1, {
-                    damping: 10,
-                })
-            );
-
-            onPress();
-        };
-
-        const animStyle = useAnimatedStyle(() => ({
-            transform: [
-                {
-                    scale: buttonScale.value,
-                },
-            ],
-        }));
-
-        const arrowStyle = useAnimatedStyle(() => {
-            const progress = interpolate(
-                scrollX.value,
-                [0, SCREEN_WIDTH * (total - 1)],
-                [0, 1],
-                Extrapolation.CLAMP
-            );
-
-            /*
-             * IMPORTANT:
-             * ARROW_SHIFT is calculated outside the worklet.
-             */
-            const translateX = interpolate(
-                progress,
-                [0.85, 1],
-                [0, ARROW_SHIFT],
-                Extrapolation.CLAMP
-            );
-
-            return {
-                transform: [
-                    {
-                        translateX,
-                    },
-                ],
-            };
-        });
-
-        return (
-            <Animated.View
-                style={[
-                    styles.nextBtnWrapper,
-                    animStyle,
-                ]}
-            >
-                <TouchableOpacity
-                    onPress={handlePress}
-                    activeOpacity={0.9}
-                    style={styles.nextBtnTouchable}
-                >
-                    <LinearGradient
-                        colors={[
-                            colors.primaryLight,
-                            colors.primary,
-                            colors.primaryDark,
-                        ]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.nextBtnGradient}
-                    >
-                        <Typo
-                            size={16}
-                            fontWeight="800"
-                            color={colors.neutral900}
-                            style={styles.nextBtnText}
-                        >
-                            {isLast
-                                ? isReplay
-                                    ? "Done ✓"
-                                    : "Get Started 🚀"
-                                : "Continue"}
-                        </Typo>
-
-                        {!isLast && (
-                            <Animated.View
-                                style={arrowStyle}
-                            >
-                                <MaterialIcons
-                                    name="arrow-forward"
-                                    size={scale(20)}
-                                    color={colors.neutral900}
-                                />
-                            </Animated.View>
-                        )}
-                    </LinearGradient>
-
-                    {/* Button shine effect */}
-                    <View style={styles.nextBtnShine} />
-                </TouchableOpacity>
-            </Animated.View>
+    const handlePress = () => {
+        buttonScale.value = withSequence(
+            withSpring(0.95, { damping: 10 }),
+            withSpring(1, { damping: 10 })
         );
+        onPress();
     };
+
+    const animStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: buttonScale.value }],
+    }));
+
+    const arrowStyle = useAnimatedStyle(() => {
+        const progress = interpolate(
+            scrollX.value,
+            [0, SCREEN_WIDTH * (total - 1)],
+            [0, 1],
+            Extrapolation.CLAMP
+        );
+        const translateX = interpolate(
+            progress,
+            [0.85, 1],
+            [0, ARROW_SHIFT],
+            Extrapolation.CLAMP
+        );
+        return { transform: [{ translateX }] };
+    });
+
+    return (
+        <Animated.View style={[styles.nextBtnWrapper, animStyle]}>
+            <TouchableOpacity
+                onPress={handlePress}
+                activeOpacity={0.9}
+                style={styles.nextBtnTouchable}
+            >
+                <LinearGradient
+                    colors={[
+                        colors.primaryLight,
+                        colors.primary,
+                        colors.primaryDark,
+                    ]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.nextBtnGradient}
+                >
+                    <Typo
+                        size={16}
+                        fontWeight="800"
+                        color={colors.neutral900}
+                        style={styles.nextBtnText}
+                    >
+                        {isLast
+                            ? isReplay
+                                ? "Done ✓"
+                                : "Get Started 🚀"
+                            : "Continue"}
+                    </Typo>
+
+                    {!isLast && (
+                        <Animated.View style={arrowStyle}>
+                            <MaterialIcons
+                                name="arrow-forward"
+                                size={scale(20)}
+                                color={colors.neutral900}
+                            />
+                        </Animated.View>
+                    )}
+                </LinearGradient>
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Header
@@ -950,93 +701,65 @@ const Header: React.FC<{
     isReplay: boolean;
     onSkip: () => void;
     scrollX: SharedValue<number>;
-    total: number;
-}> = ({
-    isReplay,
-    onSkip,
-    scrollX,
-}) => {
-        const logoStyle = useAnimatedStyle(() => {
-            const opacity = interpolate(
-                scrollX.value,
-                [0, SCREEN_WIDTH],
-                [1, 0.7],
-                Extrapolation.CLAMP
-            );
-
-            return {
-                opacity,
-            };
-        });
-
-        return (
-            <View style={styles.header}>
-                <Animated.View
-                    style={[
-                        styles.logoContainer,
-                        logoStyle,
-                    ]}
-                >
-                    <LinearGradient
-                        colors={[
-                            colors.primary,
-                            colors.primaryDark,
-                        ]}
-                        style={styles.logoGradient}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                    >
-                        <MaterialIcons
-                            name="chat-bubble"
-                            size={scale(18)}
-                            color={colors.neutral900}
-                        />
-                    </LinearGradient>
-
-                    <Typo
-                        size={16}
-                        fontWeight="800"
-                        color={colors.neutral900}
-                        style={{
-                            letterSpacing: 0.5,
-                        }}
-                    >
-                        Bubbly
-                    </Typo>
-                </Animated.View>
-
-                {!isReplay && (
-                    <TouchableOpacity
-                        style={styles.skipBtn}
-                        onPress={onSkip}
-                        activeOpacity={0.65}
-                        hitSlop={{
-                            top: 12,
-                            bottom: 12,
-                            left: 12,
-                            right: 12,
-                        }}
-                    >
-                        <View style={styles.skipBtnInner}>
-                            <Typo
-                                size={13}
-                                fontWeight="600"
-                                color={colors.neutral500}
-                            >
-                                Skip
-                            </Typo>
-
-                            <MaterialIcons
-                                name="chevron-right"
-                                size={scale(16)}
-                                color={colors.neutral400}
-                            />
-                        </View>
-                    </TouchableOpacity>
-                )}
-            </View>
+}> = ({ isReplay, onSkip, scrollX }) => {
+    const logoStyle = useAnimatedStyle(() => {
+        const opacity = interpolate(
+            scrollX.value,
+            [0, SCREEN_WIDTH],
+            [1, 0.7],
+            Extrapolation.CLAMP
         );
-    };
+        return { opacity };
+    });
+
+    return (
+        <View style={styles.header}>
+            <Animated.View style={[styles.logoContainer, logoStyle]}>
+                <LinearGradient
+                    colors={[colors.primary, colors.primaryDark]}
+                    style={styles.logoGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                >
+                    <MaterialIcons
+                        name="chat-bubble"
+                        size={scale(18)}
+                        color={colors.neutral900}
+                    />
+                </LinearGradient>
+
+                <Typo
+                    size={16}
+                    fontWeight="800"
+                    color={colors.neutral900}
+                    style={{ letterSpacing: 0.5 }}
+                >
+                    Bubbly
+                </Typo>
+            </Animated.View>
+
+            {!isReplay && (
+                <TouchableOpacity
+                    style={styles.skipBtn}
+                    onPress={onSkip}
+                    activeOpacity={0.65}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                    <View style={styles.skipBtnInner}>
+                        <Typo size={13} fontWeight="600" color={colors.neutral500}>
+                            Skip
+                        </Typo>
+                        <MaterialIcons
+                            name="chevron-right"
+                            size={scale(16)}
+                            color={colors.neutral400}
+                        />
+                    </View>
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
@@ -1045,161 +768,143 @@ const Header: React.FC<{
 export default function OnboardingScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-
-    const params =
-        useLocalSearchParams<{
-            replay?: string;
-        }>();
-
+    const params = useLocalSearchParams<{ replay?: string }>();
     const isReplay = params.replay === "true";
 
-    const [activeIndex, setActiveIndex] =
-        useState(0);
-
-    const [notifGranted, setNotifGranted] =
-        useState(false);
-
-    const flatListRef =
-        useRef<FlatList<Slide>>(null);
-
+    const [activeIndex, setActiveIndex] = useState(0);
+    const flatListRef = useRef<FlatList<Slide>>(null);
     const scrollX = useSharedValue(0);
 
-    const isLast =
-        activeIndex === SLIDES.length - 1;
+    const isLast = activeIndex === SLIDES.length - 1;
 
-    const scrollHandler =
-        useAnimatedScrollHandler({
-            onScroll: (e) => {
-                scrollX.value =
-                    e.contentOffset.x;
-            },
-        });
+    // Live permissions status
+    const [permissions, setPermissions] = useState<AllPermissionsStatus>({
+        camera: { granted: false, canAskAgain: true, status: "undetermined" },
+        microphone: { granted: false, canAskAgain: true, status: "undetermined" },
+        mediaLibrary: { granted: false, canAskAgain: true, status: "undetermined" },
+        notifications: { granted: false, canAskAgain: true, status: "undetermined" },
+    });
 
-    const handleMomentumEnd =
-        useCallback((e: any) => {
-            const index = Math.round(
-                e.nativeEvent.contentOffset.x /
-                SCREEN_WIDTH
-            );
+    const refreshPermissions = useCallback(async () => {
+        try {
+            const status = await checkAllPermissions();
+            setPermissions(status);
+        } catch (_) { }
+    }, []);
 
-            setActiveIndex(index);
-        }, []);
-
-    const requestNotificationPermission =
-        useCallback(async () => {
-            try {
-                const {
-                    status: existing,
-                } =
-                    await Notifications.getPermissionsAsync();
-
-                let finalStatus = existing;
-
-                if (existing !== "granted") {
-                    const {
-                        status,
-                    } =
-                        await Notifications.requestPermissionsAsync();
-
-                    finalStatus = status;
-                }
-
-                setNotifGranted(
-                    finalStatus === "granted"
-                );
-            } catch (_) {
-                // Ignore permission errors.
+    useEffect(() => {
+        refreshPermissions();
+        const sub = AppState.addEventListener(
+            "change",
+            (nextState: AppStateStatus) => {
+                if (nextState === "active") refreshPermissions();
             }
-        }, []);
+        );
+        return () => sub.remove();
+    }, [refreshPermissions]);
 
-    const handleFinish =
-        useCallback(() => {
-            if (isReplay) {
-                router.back();
-            } else {
-                router.replace(
-                    "/(auth)/welcome"
+    const handleRequestPermission = useCallback(
+        async (key: PermissionKey) => {
+            const current = permissions[key];
+            if (!current.canAskAgain && !current.granted) {
+                Alert.alert(
+                    `${PERMISSION_METADATA[key].title} Permission`,
+                    `Permission was previously denied. Please open Settings to grant access.`,
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                            text: "Open Settings",
+                            onPress: () => openDeviceSettings(),
+                        },
+                    ]
                 );
-            }
-        }, [
-            isReplay,
-            router,
-        ]);
-
-    const handleNext =
-        useCallback(() => {
-            if (isLast) {
-                handleFinish();
                 return;
             }
 
-            flatListRef.current?.scrollToIndex(
-                {
-                    index:
-                        activeIndex + 1,
-                    animated: true,
-                }
-            );
-        }, [
-            isLast,
-            activeIndex,
-            handleFinish,
-        ]);
+            const updated = await requestPermissionByKey(key);
+            setPermissions((prev) => ({ ...prev, [key]: updated }));
+        },
+        [permissions]
+    );
 
-    const handleSkip =
-        useCallback(() => {
-            router.replace(
-                "/(auth)/welcome"
-            );
-        }, [router]);
+    const handleEnableAllPermissions = useCallback(async () => {
+        const keys: PermissionKey[] = [
+            "camera",
+            "microphone",
+            "mediaLibrary",
+            "notifications",
+        ];
+        for (const k of keys) {
+            if (!permissions[k].granted && permissions[k].canAskAgain) {
+                const res = await requestPermissionByKey(k);
+                setPermissions((prev) => ({ ...prev, [k]: res }));
+            }
+        }
+    }, [permissions]);
+
+    const scrollHandler = useAnimatedScrollHandler({
+        onScroll: (e) => {
+            scrollX.value = e.contentOffset.x;
+        },
+    });
+
+    const handleMomentumEnd = useCallback((e: any) => {
+        const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+        setActiveIndex(index);
+    }, []);
+
+    const handleFinish = useCallback(async () => {
+        await markOnboardingCompleted();
+        if (isReplay) {
+            router.back();
+        } else {
+            router.replace("/(auth)/welcome");
+        }
+    }, [isReplay, router]);
+
+    const handleNext = useCallback(() => {
+        if (isLast) {
+            handleFinish();
+            return;
+        }
+        flatListRef.current?.scrollToIndex({
+            index: activeIndex + 1,
+            animated: true,
+        });
+    }, [isLast, activeIndex, handleFinish]);
+
+    const handleSkip = useCallback(async () => {
+        await markOnboardingCompleted();
+        if (isReplay) {
+            router.back();
+        } else {
+            router.replace("/(auth)/welcome");
+        }
+    }, [isReplay, router]);
 
     const particles = [
-        {
-            size: scale(8),
-            left: scale(20),
-            top: verticalScale(120),
-            delay: 0,
-        },
-        {
-            size: scale(5),
-            left: scale(60),
-            top: verticalScale(200),
-            delay: 1,
-        },
+        { size: scale(8), left: scale(20), top: verticalScale(120), delay: 0 },
+        { size: scale(5), left: scale(60), top: verticalScale(200), delay: 1 },
         {
             size: scale(10),
-            left:
-                SCREEN_WIDTH -
-                scale(40),
+            left: SCREEN_WIDTH - scale(40),
             top: verticalScale(150),
             delay: 2,
         },
         {
             size: scale(6),
-            left:
-                SCREEN_WIDTH -
-                scale(80),
+            left: SCREEN_WIDTH - scale(80),
             top: verticalScale(250),
             delay: 0.5,
         },
-        {
-            size: scale(7),
-            left: scale(40),
-            top: verticalScale(320),
-            delay: 1.5,
-        },
+        { size: scale(7), left: scale(40), top: verticalScale(320), delay: 1.5 },
     ];
 
     return (
         <View
             style={[
                 styles.container,
-                {
-                    paddingTop:
-                        insets.top,
-                    paddingBottom:
-                        insets.bottom,
-                },
+                { paddingTop: insets.top, paddingBottom: insets.bottom },
             ]}
         >
             <StatusBar
@@ -1208,180 +913,86 @@ export default function OnboardingScreen() {
                 translucent
             />
 
-            {/* Background */}
-            <BackgroundGradient
-                scrollX={scrollX}
-            />
+            <BackgroundGradient scrollX={scrollX} />
 
-            {/* Decorative top wave */}
-            <View
-                style={
-                    styles.topDecoration
-                }
-            >
-                <LinearGradient
-                    colors={[
-                        colors.primary +
-                        "30",
-                        colors.primaryLight +
-                        "15",
-                        "transparent",
-                    ]}
-                    style={
-                        styles.topWave
-                    }
-                    start={{
-                        x: 0,
-                        y: 0,
-                    }}
-                    end={{
-                        x: 1,
-                        y: 1,
-                    }}
+            {/* Subtle floating particles */}
+            {particles.map((p, i) => (
+                <FloatingParticle
+                    key={i}
+                    size={p.size}
+                    left={p.left}
+                    top={p.top}
+                    delay={p.delay}
+                    scrollX={scrollX}
+                    index={i}
                 />
-            </View>
+            ))}
 
-            {/* Floating particles */}
-            {particles.map(
-                (p, i) => (
-                    <FloatingParticle
-                        key={i}
-                        size={p.size}
-                        left={p.left}
-                        top={p.top}
-                        delay={p.delay}
-                        scrollX={
-                            scrollX
-                        }
-                        index={i}
-                    />
-                )
-            )}
-
-            {/* Subtle bg image */}
             <Image
                 source={require("@/assets/images/bgPattern.png")}
-                style={
-                    styles.bgPattern
-                }
+                style={styles.bgPattern}
                 resizeMode="cover"
             />
 
-            {/* Header */}
             <Header
                 isReplay={isReplay}
                 onSkip={handleSkip}
                 scrollX={scrollX}
-                total={
-                    SLIDES.length
-                }
             />
 
-            {/* Slides */}
             <AnimatedFlatList
                 ref={flatListRef}
                 data={SLIDES}
-                keyExtractor={(item) =>
-                    item.id
-                }
-                renderItem={({
-                    item,
-                    index,
-                }: ListRenderItemInfo<Slide>) => (
+                keyExtractor={(item) => item.id}
+                renderItem={({ item, index }: ListRenderItemInfo<Slide>) => (
                     <SlideItem
                         item={item}
                         index={index}
-                        scrollX={
-                            scrollX
-                        }
-                        notifGranted={
-                            notifGranted
-                        }
-                        onRequestNotifications={
-                            requestNotificationPermission
-                        }
+                        scrollX={scrollX}
+                        permissions={permissions}
+                        onRequestPermission={handleRequestPermission}
+                        onEnableAll={handleEnableAllPermissions}
                     />
                 )}
                 horizontal
                 pagingEnabled
-                showsHorizontalScrollIndicator={
-                    false
-                }
-                onScroll={
-                    scrollHandler
-                }
-                onMomentumScrollEnd={
-                    handleMomentumEnd
-                }
-                scrollEventThrottle={
-                    16
-                }
+                showsHorizontalScrollIndicator={false}
+                onScroll={scrollHandler}
+                onMomentumScrollEnd={handleMomentumEnd}
+                scrollEventThrottle={16}
                 bounces={false}
-                style={
-                    styles.flatList
-                }
+                style={styles.flatList}
             />
 
-            {/* Bottom Bar */}
-            <View
-                style={
-                    styles.bottomBar
-                }
-            >
-                {/* Glass card effect */}
-                <View
-                    style={
-                        styles.bottomCard
-                    }
-                >
+            {/* Bottom Navigation Dock */}
+            <View style={styles.bottomBar}>
+                <View style={styles.bottomCard}>
                     <LinearGradient
                         colors={[
-                            "rgba(255,255,255,0.95)",
+                            "rgba(255,255,255,0.96)",
                             "rgba(255,251,235,0.98)",
                         ]}
-                        style={
-                            StyleSheet.absoluteFill
-                        }
+                        style={StyleSheet.absoluteFill}
                     />
 
                     <ProgressBar
-                        scrollX={
-                            scrollX
-                        }
-                        total={
-                            SLIDES.length
-                        }
-                        activeIndex={
-                            activeIndex
-                        }
+                        scrollX={scrollX}
+                        total={SLIDES.length}
+                        activeIndex={activeIndex}
                     />
 
                     <Dots
-                        total={
-                            SLIDES.length
-                        }
-                        activeIndex={
-                            activeIndex
-                        }
-                        scrollX={
-                            scrollX
-                        }
+                        total={SLIDES.length}
+                        activeIndex={activeIndex}
+                        scrollX={scrollX}
                     />
 
                     <NextButton
                         isLast={isLast}
-                        isReplay={
-                            isReplay
-                        }
-                        onPress={
-                            handleNext
-                        }
-                        scrollX={
-                            scrollX
-                        }
-                        total={
-                            SLIDES.length
-                        }
+                        isReplay={isReplay}
+                        onPress={handleNext}
+                        scrollX={scrollX}
+                        total={SLIDES.length}
                     />
                 </View>
             </View>
@@ -1393,15 +1004,12 @@ export default function OnboardingScreen() {
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ICON_BOX = scale(120);
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#fffbeb",
     },
 
-    // Background
     bgPattern: {
         position: "absolute",
         top: 0,
@@ -1411,37 +1019,17 @@ const styles = StyleSheet.create({
         opacity: 0.04,
     },
 
-    topDecoration: {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: verticalScale(220),
-        zIndex: 0,
-    },
-
-    topWave: {
-        flex: 1,
-        borderBottomLeftRadius:
-            radius._60,
-        borderBottomRightRadius:
-            radius._60,
-    },
-
     particle: {
         position: "absolute",
         zIndex: 1,
     },
 
-    // Header
     header: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal:
-            spacingX._20,
-        paddingVertical:
-            spacingY._12,
+        paddingHorizontal: spacingX._20,
+        paddingVertical: spacingY._12,
         zIndex: 10,
     },
 
@@ -1457,22 +1045,14 @@ const styles = StyleSheet.create({
         borderRadius: radius._10,
         alignItems: "center",
         justifyContent: "center",
-
         ...Platform.select({
             ios: {
-                shadowColor:
-                    colors.primaryDark,
-                shadowOffset: {
-                    width: 0,
-                    height: 3,
-                },
+                shadowColor: colors.primaryDark,
+                shadowOffset: { width: 0, height: 3 },
                 shadowOpacity: 0.3,
                 shadowRadius: 6,
             },
-
-            android: {
-                elevation: 4,
-            },
+            android: { elevation: 4 },
         }),
     },
 
@@ -1483,19 +1063,14 @@ const styles = StyleSheet.create({
     skipBtnInner: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical:
-            verticalScale(6),
-        paddingHorizontal:
-            spacingX._8,
-        backgroundColor:
-            colors.neutral100,
+        paddingVertical: verticalScale(6),
+        paddingHorizontal: spacingX._10,
+        backgroundColor: colors.neutral100,
         borderRadius: radius.full,
         borderWidth: 1,
-        borderColor:
-            colors.neutral200,
+        borderColor: colors.neutral200,
     },
 
-    // Slide
     flatList: {
         flex: 1,
     },
@@ -1504,9 +1079,8 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        paddingHorizontal:
-            spacingX._30,
-        gap: spacingY._20,
+        paddingHorizontal: spacingX._25,
+        gap: spacingY._15,
     },
 
     iconWrapper: {
@@ -1520,24 +1094,15 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         overflow: "hidden",
         borderWidth: 1.5,
-        borderColor:
-            colors.primary + "40",
-
+        borderColor: colors.primary + "40",
         ...Platform.select({
             ios: {
-                shadowColor:
-                    colors.primaryDark,
-                shadowOffset: {
-                    width: 0,
-                    height: 12,
-                },
+                shadowColor: colors.primaryDark,
+                shadowOffset: { width: 0, height: 12 },
                 shadowOpacity: 0.2,
                 shadowRadius: 20,
             },
-
-            android: {
-                elevation: 8,
-            },
+            android: { elevation: 8 },
         }),
     },
 
@@ -1545,149 +1110,139 @@ const styles = StyleSheet.create({
         position: "absolute",
         width: "70%",
         height: "70%",
-        borderRadius:
-            radius._20,
+        borderRadius: radius._20,
     },
 
-    ring: {
-        position: "absolute",
-        borderWidth: 1.5,
-        borderStyle: "dashed",
-    },
-
-    sparkle: {
-        position: "absolute",
-        top: scale(10),
-        right: scale(10),
-    },
-
-    // Badge
     badge: {
         alignSelf: "center",
-        marginTop:
-            -spacingY._10,
     },
 
     badgeGradient: {
-        paddingHorizontal:
-            spacingX._12,
-        paddingVertical:
-            verticalScale(5),
-        borderRadius:
-            radius.full,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: verticalScale(4),
+        borderRadius: radius.full,
         borderWidth: 1,
-        borderColor:
-            colors.primary + "40",
+        borderColor: colors.primary + "40",
     },
 
-    // Text
     textContainer: {
         alignItems: "center",
-        gap: spacingY._10,
+        gap: spacingY._7,
     },
 
     slideTitle: {
         textAlign: "center",
         letterSpacing: 0.3,
-        lineHeight:
-            verticalScale(33),
+        lineHeight: verticalScale(30),
     },
 
     slideSubtitle: {
         textAlign: "center",
-        lineHeight:
-            verticalScale(23),
-        maxWidth: scale(290),
-        marginTop:
-            verticalScale(4),
+        lineHeight: verticalScale(21),
+        maxWidth: scale(300),
     },
 
-    // Permission Button
-    permissionBtn: {
+    // ── Permission Setup Card ──
+    permCardWrapper: {
+        width: "100%",
+        gap: spacingY._10,
+        marginTop: spacingY._5,
+    },
+
+    permCard: {
+        backgroundColor: colors.white,
+        borderRadius: radius._20,
+        borderWidth: 1,
+        borderColor: colors.neutral200,
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._8,
+        ...Platform.select({
+            ios: {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+            },
+            android: { elevation: 2 },
+        }),
+    },
+
+    permItemRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: verticalScale(10),
+        gap: scale(10),
+    },
+
+    permItemBorder: {
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.neutral200,
+    },
+
+    permIconBadge: {
+        width: scale(32),
+        height: scale(32),
+        borderRadius: radius._10,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
+    permGrantedBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 3,
+        paddingVertical: verticalScale(3),
+        paddingHorizontal: scale(8),
+        borderRadius: radius.full,
+        backgroundColor: "#dcfce7",
+    },
+
+    permAllowBtn: {
+        paddingVertical: verticalScale(5),
+        paddingHorizontal: scale(12),
+        borderRadius: radius.full,
+        backgroundColor: colors.primary,
+    },
+
+    enableAllBtn: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: scale(8),
-        marginTop:
-            spacingY._20,
-        paddingVertical:
-            verticalScale(14),
-        paddingHorizontal:
-            scale(28),
-        borderRadius:
-            radius.full,
-        alignSelf: "center",
-        overflow: "hidden",
-        borderWidth: 1.5,
-        borderColor:
-            colors.primary + "60",
-
-        ...Platform.select({
-            ios: {
-                shadowColor:
-                    colors.primaryDark,
-                shadowOffset: {
-                    width: 0,
-                    height: 4,
-                },
-                shadowOpacity: 0.25,
-                shadowRadius: 8,
-            },
-
-            android: {
-                elevation: 4,
-            },
-        }),
+        gap: scale(6),
+        paddingVertical: verticalScale(10),
+        backgroundColor: colors.white,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: colors.primary,
     },
 
-    permissionBtnGranted: {
-        borderColor:
-            "#16a34a40",
-    },
-
-    // Bottom Bar
+    // ── Bottom Dock ──
     bottomBar: {
-        paddingHorizontal:
-            spacingX._20,
-        paddingBottom:
-            verticalScale(12),
-        paddingTop:
-            verticalScale(8),
+        paddingHorizontal: spacingX._20,
+        paddingBottom: verticalScale(12),
+        paddingTop: verticalScale(8),
     },
 
     bottomCard: {
-        borderRadius:
-            radius._20,
+        borderRadius: radius._20,
         overflow: "hidden",
-        paddingHorizontal:
-            spacingX._20,
-        paddingVertical:
-            spacingY._15,
+        paddingHorizontal: spacingX._20,
+        paddingVertical: spacingY._15,
         gap: spacingY._12,
         alignItems: "center",
         borderWidth: 1,
-        borderColor:
-            colors.primary + "25",
-
+        borderColor: colors.primary + "25",
         ...Platform.select({
             ios: {
-                shadowColor:
-                    colors.primaryDark,
-                shadowOffset: {
-                    width: 0,
-                    height: -4,
-                },
+                shadowColor: colors.primaryDark,
+                shadowOffset: { width: 0, height: -4 },
                 shadowOpacity: 0.08,
                 shadowRadius: 16,
             },
-
-            android: {
-                elevation: 8,
-            },
+            android: { elevation: 8 },
         }),
     },
 
-    // Progress Bar
     progressContainer: {
         flexDirection: "row",
         alignItems: "center",
@@ -1698,8 +1253,7 @@ const styles = StyleSheet.create({
     progressTrack: {
         height: scale(4),
         borderRadius: radius.full,
-        backgroundColor:
-            colors.neutral200,
+        backgroundColor: colors.neutral200,
         overflow: "visible",
         flex: 1,
     },
@@ -1715,8 +1269,7 @@ const styles = StyleSheet.create({
         top: -scale(2),
         height: scale(8),
         borderRadius: radius.full,
-        backgroundColor:
-            colors.primary + "30",
+        backgroundColor: colors.primary + "30",
         zIndex: 0,
     },
 
@@ -1725,7 +1278,6 @@ const styles = StyleSheet.create({
         textAlign: "right",
     },
 
-    // Dots
     dotsRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -1737,7 +1289,6 @@ const styles = StyleSheet.create({
         borderRadius: radius.full,
     },
 
-    // Next Button
     nextBtnWrapper: {
         width: "100%",
     },
@@ -1745,27 +1296,19 @@ const styles = StyleSheet.create({
     nextBtnTouchable: {
         borderRadius: radius.full,
         overflow: "hidden",
-
         ...Platform.select({
             ios: {
-                shadowColor:
-                    colors.primaryDark,
-                shadowOffset: {
-                    width: 0,
-                    height: 6,
-                },
+                shadowColor: colors.primaryDark,
+                shadowOffset: { width: 0, height: 6 },
                 shadowOpacity: 0.35,
                 shadowRadius: 12,
             },
-
-            android: {
-                elevation: 6,
-            },
+            android: { elevation: 6 },
         }),
     },
 
     nextBtnGradient: {
-        height: verticalScale(56),
+        height: verticalScale(54),
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
@@ -1775,19 +1318,5 @@ const styles = StyleSheet.create({
 
     nextBtnText: {
         letterSpacing: 0.5,
-    },
-
-    nextBtnShine: {
-        position: "absolute",
-        top: 0,
-        left: "10%",
-        width: "35%",
-        height: "50%",
-        backgroundColor:
-            "rgba(255,255,255,0.2)",
-        borderBottomLeftRadius:
-            radius.full,
-        borderBottomRightRadius:
-            radius.full,
     },
 });

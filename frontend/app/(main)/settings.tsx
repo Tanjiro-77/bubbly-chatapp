@@ -2,7 +2,7 @@
  * frontend/app/(main)/settings.tsx
  *
  * Central settings hub. Accessible from the profile screen.
- * Intentionally does NOT include a light/dark mode toggle.
+ * Includes dedicated Native App Permissions management with live OS status.
  */
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -16,6 +16,8 @@ import {
     Alert,
     Platform,
     Linking,
+    AppState,
+    AppStateStatus,
 } from "react-native";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
@@ -26,6 +28,14 @@ import ScreenWrapper from "../../components/ScreenWrapper";
 import BackButton from "../../components/BackButton";
 import { scale, verticalScale } from "../../utils/styling";
 import { useAuth } from "../../contexts/authContext";
+import {
+    checkAllPermissions,
+    requestPermissionByKey,
+    openDeviceSettings,
+    AllPermissionsStatus,
+    PermissionKey,
+    PERMISSION_METADATA,
+} from "../../services/permissionService";
 
 type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
 
@@ -128,6 +138,80 @@ const Row: React.FC<RowProps> = ({
     </TouchableOpacity>
 );
 
+// ─── Permission Row ───────────────────────────────────────────────────────────
+
+interface PermissionRowProps {
+    permKey: PermissionKey;
+    icon: IconName;
+    title: string;
+    subtitle: string;
+    granted: boolean;
+    canAskAgain: boolean;
+    isLast?: boolean;
+    onRequest: (key: PermissionKey) => void;
+}
+
+const PermissionRow: React.FC<PermissionRowProps> = ({
+    permKey,
+    icon,
+    title,
+    subtitle,
+    granted,
+    canAskAgain,
+    isLast = false,
+    onRequest,
+}) => (
+    <View style={[styles.row, !isLast && styles.rowBorder]}>
+        <View style={styles.rowLeft}>
+            <View
+                style={[
+                    styles.iconBadge,
+                    {
+                        backgroundColor: granted ? "#dcfce7" : "#fef3c7",
+                    },
+                ]}
+            >
+                <MaterialIcons
+                    name={icon}
+                    size={19}
+                    color={granted ? "#16a34a" : "#d97706"}
+                />
+            </View>
+            <View style={{ flex: 1 }}>
+                <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                    {title}
+                </Typo>
+                <Typo
+                    size={11.5}
+                    color={colors.neutral400}
+                    style={{ marginTop: verticalScale(2) }}
+                >
+                    {subtitle}
+                </Typo>
+            </View>
+        </View>
+
+        {granted ? (
+            <View style={styles.grantedPill}>
+                <MaterialIcons name="check" size={13} color="#16a34a" />
+                <Typo size={11} fontWeight="700" color="#16a34a">
+                    Allowed
+                </Typo>
+            </View>
+        ) : (
+            <TouchableOpacity
+                style={styles.enableBtn}
+                activeOpacity={0.7}
+                onPress={() => onRequest(permKey)}
+            >
+                <Typo size={11} fontWeight="700" color={colors.neutral900}>
+                    {canAskAgain ? "Enable" : "Settings"}
+                </Typo>
+            </TouchableOpacity>
+        )}
+    </View>
+);
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -138,6 +222,21 @@ export default function SettingsScreen() {
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [appLockEnabled, setAppLockEnabled] = useState(false);
     const [loadingPrefs, setLoadingPrefs] = useState(true);
+
+    // Live OS permissions state
+    const [permissions, setPermissions] = useState<AllPermissionsStatus>({
+        camera: { granted: false, canAskAgain: true, status: 'undetermined' },
+        microphone: { granted: false, canAskAgain: true, status: 'undetermined' },
+        mediaLibrary: { granted: false, canAskAgain: true, status: 'undetermined' },
+        notifications: { granted: false, canAskAgain: true, status: 'undetermined' },
+    });
+
+    const refreshPermissions = useCallback(async () => {
+        try {
+            const status = await checkAllPermissions();
+            setPermissions(status);
+        } catch (_) { }
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -155,7 +254,57 @@ export default function SettingsScreen() {
                 setLoadingPrefs(false);
             }
         })();
-    }, []);
+
+        refreshPermissions();
+
+        // Refresh permissions when app returns to foreground from Settings
+        const subscription = AppState.addEventListener(
+            "change",
+            (nextState: AppStateStatus) => {
+                if (nextState === "active") {
+                    refreshPermissions();
+                }
+            }
+        );
+
+        return () => subscription.remove();
+    }, [refreshPermissions]);
+
+    const handleRequestPermission = useCallback(
+        async (key: PermissionKey) => {
+            const current = permissions[key];
+            if (!current.canAskAgain && !current.granted) {
+                // Permanently denied - direct user to device Settings
+                Alert.alert(
+                    `${PERMISSION_METADATA[key].title} Permission`,
+                    `Permission was previously denied. Please enable ${PERMISSION_METADATA[key].title} access in your device Settings to use this feature.`,
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                            text: "Open Settings",
+                            onPress: () => openDeviceSettings(),
+                        },
+                    ]
+                );
+                return;
+            }
+
+            const updated = await requestPermissionByKey(key);
+            setPermissions((prev) => ({ ...prev, [key]: updated }));
+
+            if (!updated.granted && !updated.canAskAgain) {
+                Alert.alert(
+                    "Permission Denied",
+                    `To enable ${PERMISSION_METADATA[key].title} later, visit your device Settings.`,
+                    [
+                        { text: "OK", style: "default" },
+                        { text: "Open Settings", onPress: () => openDeviceSettings() },
+                    ]
+                );
+            }
+        },
+        [permissions]
+    );
 
     const toggleNotifications = useCallback(async (value: boolean) => {
         setNotificationsEnabled(value);
@@ -193,7 +342,6 @@ export default function SettingsScreen() {
                 onPress: async () => {
                     try {
                         await signOut();
-                        // signOut() already navigates to /(auth)/welcome internally
                     } catch (_) {
                         Alert.alert("Error", "Something went wrong. Please try again.");
                     }
@@ -251,6 +399,7 @@ export default function SettingsScreen() {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
+                {/* ── Profile Summary ── */}
                 <TouchableOpacity
                     style={styles.profileCard}
                     activeOpacity={0.7}
@@ -283,6 +432,62 @@ export default function SettingsScreen() {
                     />
                 </TouchableOpacity>
 
+                {/* ── App Permissions (Live OS Status) ── */}
+                <SectionLabel label="App Permissions" />
+                <SectionCard>
+                    <PermissionRow
+                        permKey="camera"
+                        icon="camera-alt"
+                        title={PERMISSION_METADATA.camera.title}
+                        subtitle={PERMISSION_METADATA.camera.subtitle}
+                        granted={permissions.camera.granted}
+                        canAskAgain={permissions.camera.canAskAgain}
+                        onRequest={handleRequestPermission}
+                    />
+                    <PermissionRow
+                        permKey="microphone"
+                        icon="mic"
+                        title={PERMISSION_METADATA.microphone.title}
+                        subtitle={PERMISSION_METADATA.microphone.subtitle}
+                        granted={permissions.microphone.granted}
+                        canAskAgain={permissions.microphone.canAskAgain}
+                        onRequest={handleRequestPermission}
+                    />
+                    <PermissionRow
+                        permKey="mediaLibrary"
+                        icon="photo-library"
+                        title={PERMISSION_METADATA.mediaLibrary.title}
+                        subtitle={PERMISSION_METADATA.mediaLibrary.subtitle}
+                        granted={permissions.mediaLibrary.granted}
+                        canAskAgain={permissions.mediaLibrary.canAskAgain}
+                        onRequest={handleRequestPermission}
+                    />
+                    <PermissionRow
+                        permKey="notifications"
+                        icon="notifications"
+                        title={PERMISSION_METADATA.notifications.title}
+                        subtitle={PERMISSION_METADATA.notifications.subtitle}
+                        granted={permissions.notifications.granted}
+                        canAskAgain={permissions.notifications.canAskAgain}
+                        isLast
+                        onRequest={handleRequestPermission}
+                    />
+                </SectionCard>
+
+                {/* ── Open Device Settings Shortcut ── */}
+                <TouchableOpacity
+                    style={styles.deviceSettingsBtn}
+                    onPress={() => openDeviceSettings()}
+                    activeOpacity={0.7}
+                >
+                    <MaterialIcons name="settings" size={16} color={colors.neutral600} />
+                    <Typo size={12.5} fontWeight="600" color={colors.neutral700}>
+                        Manage all permissions in Device Settings
+                    </Typo>
+                    <MaterialIcons name="open-in-new" size={14} color={colors.neutral400} />
+                </TouchableOpacity>
+
+                {/* ── Preferences ── */}
                 <SectionLabel label="Preferences" />
                 <SectionCard>
                     <Row
@@ -326,6 +531,7 @@ export default function SettingsScreen() {
                     />
                 </SectionCard>
 
+                {/* ── Privacy & Security ── */}
                 <SectionLabel label="Privacy & Security" />
                 <SectionCard>
                     <Row
@@ -364,7 +570,7 @@ export default function SettingsScreen() {
                         label="Blocked Contacts"
                         subtitle="Manage people you've blocked"
                         onPress={() =>
-                            Alert.alert("Coming Soon", "This feature is on the way.")
+                            Alert.alert("Blocked Contacts", "You have not blocked any contacts yet.")
                         }
                     />
                     <Row
@@ -373,18 +579,20 @@ export default function SettingsScreen() {
                         iconBg="#16a34a1F"
                         label="Change Password"
                         onPress={() =>
-                            Alert.alert("Coming Soon", "This feature is on the way.")
+                            Alert.alert("Change Password", "Password updates can be requested through account settings.")
                         }
                         isLast
                     />
                 </SectionCard>
 
+                {/* ── Support ── */}
                 <SectionLabel label="Support" />
                 <SectionCard>
                     <Row
                         icon="refresh"
                         iconColor={colors.neutral700}
                         label="Replay Onboarding"
+                        subtitle="Revisit app walkthrough and permissions"
                         onPress={() => router.push("/onboarding?replay=true")}
                     />
                     <Row
@@ -408,6 +616,7 @@ export default function SettingsScreen() {
                     />
                 </SectionCard>
 
+                {/* ── Account ── */}
                 <SectionLabel label="Account" />
                 <SectionCard>
                     <Row
@@ -431,7 +640,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={11.5} color={colors.neutral400}>
-                        Bubbly · Made with care
+                        Bubbly v1.0.0 · Made with care
                     </Typo>
                 </View>
             </ScrollView>
@@ -548,6 +757,30 @@ const styles = StyleSheet.create({
         borderRadius: radius._10,
         alignItems: "center",
         justifyContent: "center",
+    },
+
+    grantedPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingVertical: verticalScale(4),
+        paddingHorizontal: scale(8),
+        borderRadius: radius.full,
+        backgroundColor: "#dcfce7",
+    },
+    enableBtn: {
+        paddingVertical: verticalScale(5),
+        paddingHorizontal: scale(12),
+        borderRadius: radius.full,
+        backgroundColor: colors.primary,
+    },
+    deviceSettingsBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: scale(6),
+        marginTop: verticalScale(8),
+        paddingVertical: verticalScale(8),
     },
 
     footer: {

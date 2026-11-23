@@ -203,7 +203,18 @@ const ConversationItem = ({
     );
 };
 
-export default ConversationItem;
+export default React.memo(ConversationItem, (prev, next) => {
+    return (
+        prev.item._id === next.item._id &&
+        prev.item.unreadCount === next.item.unreadCount &&
+        prev.item.isMuted === next.item.isMuted &&
+        prev.item.lastMessage?.content === next.item.lastMessage?.content &&
+        prev.item.lastMessage?.createdAt === next.item.lastMessage?.createdAt &&
+        prev.showDivider === next.showDivider &&
+        prev.searchQuery === next.searchQuery &&
+        prev.isOnline === next.isOnline
+    );
+});
 
 const styles = StyleSheet.create({
     avatarWrap: {

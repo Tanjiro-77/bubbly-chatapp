@@ -23,6 +23,7 @@ import ImageViewing from "react-native-image-viewing"
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pinMessage, unpinMessage, openViewOnce } from "../socket/socketEvents"
 import { getFileIcon, formatFileSize } from "../services/imageService"
+import { translateMessage } from "../services/chatService"
 import FormattedText from "./FormattedText"
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -1774,6 +1775,9 @@ const MessageItem = ({
     const [showToast, setShowToast] = useState(false);
     const [showImageViewer, setShowImageViewer] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [translatedText, setTranslatedText] = useState<string | null>(null);
+    const [isTranslating, setIsTranslating] = useState(false);
+    const [showOriginal, setShowOriginal] = useState(false);
 
     const reactions = item.reactions || [];
     const currentUserReaction = reactions.find(r => r.userId === currentUser?.id)?.emoji;
@@ -1891,6 +1895,20 @@ const MessageItem = ({
         setShowActions(false);
         setShowToast(true);
         setTimeout(() => setShowToast(false), 1800);
+    };
+
+    const handleTranslate = async () => {
+        if (!item.content) return;
+        setShowActions(false);
+        setIsTranslating(true);
+        const res = await translateMessage(item.content, "es");
+        if (res.success && res.data?.translatedText) {
+            setTranslatedText(res.data.translatedText);
+            setShowOriginal(false);
+        } else {
+            Alert.alert("Translation", res.msg || "Could not translate message");
+        }
+        setIsTranslating(false);
     };
 
     const handleReply = () => { setShowActions(false); onReply(item); };
@@ -2159,6 +2177,26 @@ const MessageItem = ({
                                 />
                             ) : null}
 
+                            {/* ── Translation Box (Feature 19) ── */}
+                            {translatedText ? (
+                                <View style={styles.translationBox}>
+                                    <View style={styles.translationHeader}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <Icons.Translate size={verticalScale(12)} color={colors.primaryDark} weight="bold" />
+                                            <Typo size={11} fontWeight="700" color={colors.neutral800}>Spanish Translation</Typo>
+                                        </View>
+                                        <TouchableOpacity onPress={() => setShowOriginal(prev => !prev)} activeOpacity={0.7}>
+                                            <Typo size={10} color={colors.primaryDark} fontWeight="600">
+                                                {showOriginal ? "Show translation" : "Show original"}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    </View>
+                                    <Typo size={13} color={colors.neutral800} style={{ fontStyle: showOriginal ? 'italic' : 'normal' }}>
+                                        {showOriginal ? item.content : translatedText}
+                                    </Typo>
+                                </View>
+                            ) : null}
+
                             {/* ── Link Preview Card ── */}
                             {detectedUrl && (
                                 <LinkPreviewCard url={detectedUrl} />
@@ -2323,6 +2361,14 @@ const MessageItem = ({
                                         </TouchableOpacity>
                                     ) : null}
 
+                                    {/* ── Translate (Feature 19) ── */}
+                                    {item.content && !isVoiceMessage && !isCallMessage ? (
+                                        <TouchableOpacity style={styles.actionRow} onPress={handleTranslate} activeOpacity={0.7}>
+                                            <View style={styles.actionIconWrap}><Icons.Translate size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>
+                                            <Typo size={15} fontWeight="500" color={colors.neutral800}>{translatedText ? "Re-translate" : "Translate Message"}</Typo>
+                                        </TouchableOpacity>
+                                    ) : null}
+
                                     {/* ── View Image ── */}
                                     {isImageMessage ? (
                                         <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={() => { handleDismiss(); setTimeout(() => setShowImageViewer(true), 200); }}>
@@ -2381,9 +2427,45 @@ const MessageItem = ({
     );
 };
 
-export default MessageItem;
+export default React.memo(MessageItem, (prev, next) => {
+    return (
+        prev.item.id === next.item.id &&
+        prev.item.content === next.item.content &&
+        prev.item.isDeleted === next.item.isDeleted &&
+        prev.item.isEdited === next.item.isEdited &&
+        prev.item.isSaved === next.item.isSaved &&
+        prev.item.isPinned === next.item.isPinned &&
+        prev.item.isForwarded === next.item.isForwarded &&
+        prev.item.reactions === next.item.reactions &&
+        prev.item.poll === next.item.poll &&
+        prev.item.viewOnceOpenedBy?.length === next.item.viewOnceOpenedBy?.length &&
+        prev.deliveryStatus === next.deliveryStatus &&
+        prev.searchHighlight === next.searchHighlight &&
+        prev.customBubbleMine === next.customBubbleMine &&
+        prev.customBubbleOther === next.customBubbleOther &&
+        prev.isDirect === next.isDirect
+    );
+});
 
 const styles = StyleSheet.create({
+    translationBox: {
+        backgroundColor: "rgba(255,255,255,0.75)",
+        borderRadius: radius._10,
+        padding: spacingX._7,
+        marginTop: spacingY._5,
+        gap: 3,
+        borderWidth: 1,
+        borderColor: "rgba(0,0,0,0.06)",
+    },
+    translationHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(0,0,0,0.05)",
+        paddingBottom: 3,
+        marginBottom: 2,
+    },
     swipeContainer: {
         width: "100%",
         position: "relative",

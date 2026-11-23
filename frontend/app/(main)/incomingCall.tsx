@@ -91,11 +91,12 @@ const IncomingCall = () => {
             withTiming(1.15, { duration: 800 }), -1, true
         );
 
+        let timerId: any = null;
         // ── Vibrate on incoming call ──
         const vibrate = () => {
             if (vibrationRef.current) {
                 Vibration.vibrate([0, 500, 500]);
-                setTimeout(vibrate, 2000);
+                timerId = setTimeout(vibrate, 2000);
             }
         };
         vibrate();
@@ -105,6 +106,7 @@ const IncomingCall = () => {
 
         return () => {
             vibrationRef.current = false;
+            if (timerId) clearTimeout(timerId);
             Vibration.cancel();
             onCallEnded(handleCallEndedByOther, true);
         };
