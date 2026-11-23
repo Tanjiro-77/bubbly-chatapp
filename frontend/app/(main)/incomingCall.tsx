@@ -15,12 +15,14 @@ import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
 import { callAccept, callReject, onCallEnded } from '../../socket/socketEvents';
 
-// ── Pulsing Ring Component ──
-const PulsingRing = ({ size, color }: { size: number; color: string }) => {
+// ── Multi-Layer Pulsing Rings ──
+const IncomingPulsingRings = ({ size, color }: { size: number; color: string }) => {
     const scale1 = useSharedValue(1);
-    const opacity1 = useSharedValue(0.5);
+    const opacity1 = useSharedValue(0.55);
     const scale2 = useSharedValue(1);
-    const opacity2 = useSharedValue(0.3);
+    const opacity2 = useSharedValue(0.35);
+    const scale3 = useSharedValue(1);
+    const opacity3 = useSharedValue(0.18);
 
     useEffect(() => {
         scale1.value = withRepeat(
@@ -36,6 +38,14 @@ const PulsingRing = ({ size, color }: { size: number; color: string }) => {
             -1, false
         );
         opacity2.value = withRepeat(
+            withTiming(0, { duration: 1600, easing: Easing.out(Easing.ease) }),
+            -1, false
+        );
+        scale3.value = withRepeat(
+            withTiming(1.95, { duration: 1600, easing: Easing.out(Easing.ease) }),
+            -1, false
+        );
+        opacity3.value = withRepeat(
             withTiming(0, { duration: 1600, easing: Easing.out(Easing.ease) }),
             -1, false
         );
@@ -61,8 +71,19 @@ const PulsingRing = ({ size, color }: { size: number; color: string }) => {
         opacity: opacity2.value,
     }));
 
+    const ring3Style = useAnimatedStyle(() => ({
+        position: 'absolute',
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+        transform: [{ scale: scale3.value }],
+        opacity: opacity3.value,
+    }));
+
     return (
         <>
+            <Animated.View style={ring3Style} />
             <Animated.View style={ring2Style} />
             <Animated.View style={ring1Style} />
         </>
@@ -78,21 +99,19 @@ const IncomingCall = () => {
     // ── Pulse animation for accept button ──
     const pulse = useSharedValue(1);
 
-    // ── Slide up animation ──
+    // ── Entry animation ──
     const slideY = useSharedValue(30);
     const fadeIn = useSharedValue(0);
 
     useEffect(() => {
-        // Entry animation
         slideY.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.exp) });
         fadeIn.value = withTiming(1, { duration: 400 });
 
         pulse.value = withRepeat(
-            withTiming(1.15, { duration: 800 }), -1, true
+            withTiming(1.14, { duration: 800 }), -1, true
         );
 
         let timerId: any = null;
-        // ── Vibrate on incoming call ──
         const vibrate = () => {
             if (vibrationRef.current) {
                 Vibration.vibrate([0, 500, 500]);
@@ -101,7 +120,6 @@ const IncomingCall = () => {
         };
         vibrate();
 
-        // ── Listen for call ended (caller cancelled) ──
         onCallEnded(handleCallEndedByOther);
 
         return () => {
@@ -128,7 +146,6 @@ const IncomingCall = () => {
         opacity: fadeIn.value,
     }));
 
-    // ── All original functions untouched ──
     const handleAccept = () => {
         vibrationRef.current = false;
         Vibration.cancel();
@@ -153,9 +170,22 @@ const IncomingCall = () => {
         router.back();
     };
 
+    const handleDeclineWithMessage = () => {
+        vibrationRef.current = false;
+        Vibration.cancel();
+        callReject(callId as string);
+        router.back();
+        if (conversationId) {
+            router.push({
+                pathname: '/(main)/conversation',
+                params: { id: conversationId as string, name: callerName as string },
+            });
+        }
+    };
+
     return (
         <LinearGradient
-            colors={['#0f0f0f', '#1a1a1a', '#111111']}
+            colors={['#09090b', '#18181b', '#09090b']}
             style={styles.container}
         >
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -164,76 +194,79 @@ const IncomingCall = () => {
 
                 {/* ── Top Section ── */}
                 <View style={styles.topSection}>
-                    {/* Call type badge */}
                     <View style={styles.callTypeBadge}>
-                        <Icons.PhoneIncoming size={13} color={colors.primary} weight="fill" />
-                        <Typo size={12} color={colors.primary} fontWeight="600" style={{ letterSpacing: 0.4 }}>
-                            Incoming {isVideo ? 'Video' : 'Voice'} Call
+                        {isVideo ? (
+                            <Icons.VideoCamera size={14} color={colors.primary} weight="fill" />
+                        ) : (
+                            <Icons.PhoneIncoming size={14} color={colors.primary} weight="fill" />
+                        )}
+                        <Typo size={12} color={colors.primary} fontWeight="700" style={{ letterSpacing: 0.5 }}>
+                            INCOMING {isVideo ? 'VIDEO' : 'AUDIO'} CALL
                         </Typo>
                     </View>
 
-                    {/* App name / encrypted label */}
                     <View style={styles.encryptedRow}>
-                        <Icons.LockSimple size={11} color={'rgba(255,255,255,0.35)'} weight="fill" />
-                        <Typo size={11} color={'rgba(255,255,255,0.35)'} style={{ marginLeft: 4 }}>
-                            End-to-end encrypted
+                        <Icons.ShieldCheck size={13} color={'rgba(255,255,255,0.45)'} weight="fill" />
+                        <Typo size={11} color={'rgba(255,255,255,0.45)'} fontWeight="500" style={{ marginLeft: 5 }}>
+                            End-to-End Encrypted HD Call
                         </Typo>
                     </View>
                 </View>
 
-                {/* ── Avatar Section ── */}
+                {/* ── Center Avatar with Multi-Layer Acoustic Waves ── */}
                 <View style={styles.avatarSection}>
-                    {/* Pulsing rings behind avatar */}
                     <View style={styles.avatarPulseContainer}>
-                        <PulsingRing size={scale(130)} color={colors.primary} />
+                        <IncomingPulsingRings size={scale(136)} color={colors.primary} />
 
-                        {/* Avatar border ring */}
                         <View style={styles.avatarOuterRing}>
                             <View style={styles.avatarInnerRing}>
                                 <Avatar
-                                    size={scale(116)}
+                                    size={scale(120)}
                                     uri={callerAvatar as string}
                                 />
                             </View>
                         </View>
                     </View>
 
-                    {/* Caller info */}
+                    {/* Caller name & status */}
                     <View style={styles.callerInfo}>
-                        <Typo size={28} fontWeight="700" color={colors.white}>
+                        <Typo size={30} fontWeight="800" color={colors.white}>
                             {callerName}
                         </Typo>
                         <View style={styles.callerSubRow}>
                             <View style={styles.callingDot} />
-                            <Typo size={14} color={'rgba(255,255,255,0.55)'} fontWeight="400">
-                                {isVideo ? 'wants to video call...' : 'is calling you...'}
+                            <Typo size={15} color={'rgba(255,255,255,0.65)'} fontWeight="500">
+                                {isVideo ? 'Incoming video invitation...' : 'Bubbly audio ringing...'}
                             </Typo>
                         </View>
                     </View>
                 </View>
 
-                {/* ── Swipe Hint (decorative) ── */}
-                <View style={styles.hintRow}>
-                    <View style={styles.hintLine} />
-                    <Typo size={11} color={'rgba(255,255,255,0.25)'} style={{ marginHorizontal: spacingX._10 }}>
-                        tap to respond
+                {/* ── Decline with message shortcut ── */}
+                <TouchableOpacity
+                    style={styles.messageDeclineBtn}
+                    onPress={handleDeclineWithMessage}
+                    activeOpacity={0.75}
+                >
+                    <Icons.ChatText size={16} color={'rgba(255,255,255,0.65)'} weight="bold" />
+                    <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="600">
+                        Decline & Reply with Message
                     </Typo>
-                    <View style={styles.hintLine} />
-                </View>
+                </TouchableOpacity>
 
-                {/* ── Action Buttons ── */}
+                {/* ── Primary Action Buttons (Decline / Accept) ── */}
                 <View style={styles.actionsContainer}>
 
-                    {/* Reject */}
+                    {/* Decline */}
                     <View style={styles.actionWrap}>
                         <TouchableOpacity
                             style={[styles.actionBtn, styles.rejectBtn]}
                             onPress={handleReject}
                             activeOpacity={0.8}
                         >
-                            <Icons.PhoneSlash size={verticalScale(28)} color={colors.white} weight="fill" />
+                            <Icons.PhoneSlash size={verticalScale(30)} color={colors.white} weight="fill" />
                         </TouchableOpacity>
-                        <Typo size={13} color={'rgba(255,255,255,0.65)'} fontWeight="500">
+                        <Typo size={13} color={'rgba(255,255,255,0.7)'} fontWeight="600">
                             Decline
                         </Typo>
                     </View>
@@ -247,13 +280,13 @@ const IncomingCall = () => {
                                 activeOpacity={0.8}
                             >
                                 {isVideo ? (
-                                    <Icons.VideoCamera size={verticalScale(28)} color={colors.white} weight="fill" />
+                                    <Icons.VideoCamera size={verticalScale(30)} color={colors.white} weight="fill" />
                                 ) : (
-                                    <Icons.Phone size={verticalScale(28)} color={colors.white} weight="fill" />
+                                    <Icons.Phone size={verticalScale(30)} color={colors.white} weight="fill" />
                                 )}
                             </TouchableOpacity>
                         </Animated.View>
-                        <Typo size={13} color={'rgba(255,255,255,0.65)'} fontWeight="500">
+                        <Typo size={13} color={'rgba(255,255,255,0.7)'} fontWeight="600">
                             Accept
                         </Typo>
                     </View>
@@ -288,13 +321,13 @@ const styles = StyleSheet.create({
     callTypeBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacingX._6,
-        backgroundColor: 'rgba(250,204,21,0.12)',
+        gap: spacingX._7,
+        backgroundColor: 'rgba(245,158,11,0.15)',
         paddingHorizontal: spacingX._15,
         paddingVertical: spacingY._7,
         borderRadius: radius.full,
         borderWidth: 1,
-        borderColor: 'rgba(250,204,21,0.2)',
+        borderColor: 'rgba(245,158,11,0.3)',
     },
     encryptedRow: {
         flexDirection: 'row',
@@ -307,8 +340,8 @@ const styles = StyleSheet.create({
         gap: spacingY._25,
     },
     avatarPulseContainer: {
-        width: scale(130),
-        height: scale(130),
+        width: scale(136),
+        height: scale(136),
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -316,18 +349,18 @@ const styles = StyleSheet.create({
         borderRadius: radius.full,
         borderWidth: 3,
         borderColor: colors.primary,
-        padding: 3,
+        padding: 4,
         shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.7,
-        shadowRadius: 18,
-        elevation: 12,
+        shadowOpacity: 0.75,
+        shadowRadius: 20,
+        elevation: 14,
     },
     avatarInnerRing: {
         borderRadius: radius.full,
         overflow: 'hidden',
         borderWidth: 2,
-        borderColor: 'rgba(250,204,21,0.15)',
+        borderColor: 'rgba(245,158,11,0.2)',
     },
     callerInfo: {
         alignItems: 'center',
@@ -336,26 +369,26 @@ const styles = StyleSheet.create({
     callerSubRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacingX._6,
+        gap: spacingX._7,
     },
     callingDot: {
-        width: scale(7),
-        height: scale(7),
+        width: scale(8),
+        height: scale(8),
         borderRadius: radius.full,
         backgroundColor: colors.primary,
-        opacity: 0.8,
     },
 
-    // ── Hint ──
-    hintRow: {
+    // ── Decline & message shortcut ──
+    messageDeclineBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        width: '100%',
-    },
-    hintLine: {
-        flex: 1,
-        height: 1,
+        gap: spacingX._7,
         backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._8,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
     },
 
     // ── Actions ──
@@ -368,25 +401,25 @@ const styles = StyleSheet.create({
     },
     actionWrap: {
         alignItems: 'center',
-        gap: spacingY._12,
+        gap: spacingY._10,
     },
     actionBtn: {
-        width: verticalScale(72),
-        height: verticalScale(72),
+        width: verticalScale(74),
+        height: verticalScale(74),
         borderRadius: radius.full,
         alignItems: 'center',
         justifyContent: 'center',
         shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.5,
-        shadowRadius: 14,
-        elevation: 8,
+        shadowOpacity: 0.55,
+        shadowRadius: 16,
+        elevation: 10,
     },
     rejectBtn: {
-        backgroundColor: colors.rose,
-        shadowColor: colors.rose,
+        backgroundColor: '#ef4444',
+        shadowColor: '#ef4444',
     },
     acceptBtn: {
-        backgroundColor: colors.green,
-        shadowColor: colors.green,
+        backgroundColor: '#22c55e',
+        shadowColor: '#22c55e',
     },
 });

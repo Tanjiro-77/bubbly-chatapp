@@ -1,28 +1,26 @@
 import {
     Platform, ScrollView, StyleSheet,
-    TouchableOpacity, View, Pressable
-} from 'react-native'
-import React, { useEffect, useState } from 'react'
-import { colors, radius, spacingX, spacingY } from "../../constants/theme"
-import { scale, verticalScale } from "../../utils/styling"
-import ScreenWrapper from "../../components/ScreenWrapper"
-import BackButton from "../../components/BackButton"
-import Avatar from "../../components/Avatar"
-import * as Icons from "phosphor-react-native"
-import Typo from "../../components/Typo"
-import Input from "../../components/Input"
-import { useAuth } from "../../contexts/authContext"
-import { UserDataProps } from "../../types"
-import Button from "../../components/Button"
-import { Alert } from "react-native"
-import { useRouter } from "expo-router"
-import { updateProfile } from "../../socket/socketEvents"
-import * as ImagePicker from 'expo-image-picker'
-import { uploadFileToCloudinary } from "../../services/imageService"
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
+    TouchableOpacity, View, Pressable, Alert,
+} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { colors, radius, spacingX, spacingY } from "../../constants/theme";
+import { scale, verticalScale } from "../../utils/styling";
+import ScreenWrapper from "../../components/ScreenWrapper";
+import BackButton from "../../components/BackButton";
+import Avatar from "../../components/Avatar";
+import * as Icons from "phosphor-react-native";
+import Typo from "../../components/Typo";
+import Input from "../../components/Input";
+import { useAuth } from "../../contexts/authContext";
+import { UserDataProps } from "../../types";
+import Button from "../../components/Button";
+import { useRouter } from "expo-router";
+import { updateProfile } from "../../socket/socketEvents";
+import * as ImagePicker from 'expo-image-picker';
+import { uploadFileToCloudinary } from "../../services/imageService";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 const ProfileModal = () => {
-
     const { user, signOut, updateToken } = useAuth();
     const [loading, setLoading] = useState(false);
     const router = useRouter();
@@ -44,7 +42,7 @@ const ProfileModal = () => {
             updateToken(res.data.token);
             router.back();
         } else {
-            Alert.alert('User', res.msg);
+            Alert.alert('Profile Update', res.msg || 'Failed to update profile');
         }
     };
 
@@ -59,8 +57,8 @@ const ProfileModal = () => {
     const onPickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
-            aspect: [4, 3],
-            quality: 0.5,
+            aspect: [1, 1],
+            quality: 0.6,
         });
         if (!result.canceled) {
             setUserData({ ...userData, avatar: result.assets[0] });
@@ -73,7 +71,7 @@ const ProfileModal = () => {
     };
 
     const showLogoutAlert = () => {
-        Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+        Alert.alert("Sign Out", "Are you sure you want to sign out of Bubbly?", [
             { text: "Cancel", style: 'cancel' },
             { text: "Sign Out", onPress: handleLogout, style: 'destructive' }
         ]);
@@ -85,14 +83,14 @@ const ProfileModal = () => {
             Alert.alert('Profile', "Please enter your name");
             return;
         }
-        let data = { name, avatar };
+        let data: any = { name: name.trim(), avatar };
         if (avatar && avatar?.uri) {
             setLoading(true);
             const res = await uploadFileToCloudinary(avatar, "profiles");
             if (res.success) {
                 data.avatar = res.data;
             } else {
-                Alert.alert("Upload Failed", res.msg);
+                Alert.alert("Upload Failed", res.msg || "Could not upload profile picture");
                 setLoading(false);
                 return;
             }
@@ -109,14 +107,15 @@ const ProfileModal = () => {
                     entering={FadeInDown.duration(400).springify()}
                     style={styles.header}
                 >
-                    {Platform.OS === 'android' ? (
-                        <BackButton color={colors.neutral800} iconSize={22} />
-                    ) : (
-                        <View style={{ width: 22 }} />
-                    )}
-                    <Typo size={17} fontWeight="700" color={colors.neutral900}>
-                        Edit Profile
-                    </Typo>
+                    <BackButton color={colors.neutral800} iconSize={22} />
+                    <View style={styles.headerTitleWrap}>
+                        <Typo size={17} fontWeight="800" color={colors.neutral900}>
+                            Account & Profile
+                        </Typo>
+                        <Typo size={11} color={colors.neutral400} fontWeight="500">
+                            Bubbly v3.0 Profile
+                        </Typo>
+                    </View>
                     <View style={{ width: 22 }} />
                 </Animated.View>
 
@@ -126,91 +125,64 @@ const ProfileModal = () => {
                     keyboardShouldPersistTaps="handled"
                 >
 
-                    {/* ── Avatar ── */}
+                    {/* ── Avatar Section with Halo ── */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).delay(100).springify()}
+                        entering={FadeInDown.duration(500).delay(80).springify()}
                         style={styles.avatarSection}
                     >
-                        <View style={styles.avatarContainer}>
-                            <Avatar uri={userData.avatar} size={130} />
-                            <TouchableOpacity
-                                style={styles.editIcon}
-                                onPress={onPickImage}
-                                activeOpacity={0.75}
-                            >
-                                <Icons.Camera
-                                    size={verticalScale(18)}
-                                    color={colors.neutral700}
-                                    weight="bold"
-                                />
-                            </TouchableOpacity>
+                        <View style={styles.avatarHaloRing}>
+                            <View style={styles.avatarContainer}>
+                                <Avatar uri={userData.avatar} size={124} />
+                                <TouchableOpacity
+                                    style={styles.editIcon}
+                                    onPress={onPickImage}
+                                    activeOpacity={0.8}
+                                >
+                                    <Icons.Camera
+                                        size={verticalScale(16)}
+                                        color={colors.black}
+                                        weight="bold"
+                                    />
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                         <View style={styles.userInfo}>
-                            <Typo size={20} fontWeight="700" color={colors.neutral900}>
-                                {userData.name || "Your Name"}
+                            <Typo size={22} fontWeight="800" color={colors.neutral900}>
+                                {userData.name || "Bubbly User"}
                             </Typo>
-                            <Typo size={13} color={colors.neutral400} fontWeight="400">
-                                {userData.email}
-                            </Typo>
+                            <View style={styles.statusPill}>
+                                <View style={styles.onlineDot} />
+                                <Typo size={12} color={colors.neutral600} fontWeight="600">
+                                    Active on Bubbly · {userData.email}
+                                </Typo>
+                            </View>
                         </View>
                     </Animated.View>
 
-                    {/* ── Divider ── */}
+                    {/* ── Section: Account Information ── */}
                     <Animated.View
                         entering={FadeInDown.duration(500).delay(150).springify()}
-                        style={styles.divider}
-                    />
-
-                    {/* ── Fields ── */}
-                    <Animated.View
-                        entering={FadeInDown.duration(500).delay(200).springify()}
                         style={styles.fields}
                     >
-
                         <Typo
                             size={11}
-                            fontWeight="700"
+                            fontWeight="800"
                             color={colors.neutral400}
                             style={styles.sectionLabel}
                         >
                             ACCOUNT DETAILS
                         </Typo>
 
-                        {/* Email */}
-                        <View style={styles.fieldGroup}>
-                            <View style={styles.labelRow}>
-                                <Icons.Envelope
-                                    size={verticalScale(14)}
-                                    color={colors.neutral500}
-                                    weight="bold"
-                                />
-                                <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                    EMAIL ADDRESS
-                                </Typo>
-                            </View>
-                            <Input
-                                value={userData.email}
-                                editable={false}
-                                containerStyle={styles.disabledInput}
-                                onChangeText={value =>
-                                    setUserData({ ...userData, email: value })
-                                }
-                            />
-                            <Typo size={11} color={colors.neutral400} style={{ marginLeft: 4 }}>
-                                Email cannot be changed
-                            </Typo>
-                        </View>
-
-                        {/* Name */}
+                        {/* Name Input */}
                         <View style={styles.fieldGroup}>
                             <View style={styles.labelRow}>
                                 <Icons.User
                                     size={verticalScale(14)}
-                                    color={colors.neutral500}
+                                    color={colors.primaryDark}
                                     weight="bold"
                                 />
-                                <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                <Typo size={12} fontWeight="700" color={colors.neutral600} style={styles.label}>
                                     DISPLAY NAME
                                 </Typo>
                             </View>
@@ -219,120 +191,83 @@ const ProfileModal = () => {
                                 onChangeText={value =>
                                     setUserData({ ...userData, name: value })
                                 }
-                                placeholder="Enter your name"
+                                placeholder="Your full name"
                                 icon={
                                     <Icons.PencilSimple
                                         size={verticalScale(18)}
                                         color={colors.neutral400}
-                                        weight="regular"
+                                        weight="bold"
                                     />
                                 }
                             />
                         </View>
 
+                        {/* Email (Read Only) */}
+                        <View style={styles.fieldGroup}>
+                            <View style={styles.labelRow}>
+                                <Icons.Envelope
+                                    size={verticalScale(14)}
+                                    color={colors.neutral400}
+                                    weight="bold"
+                                />
+                                <Typo size={12} fontWeight="700" color={colors.neutral500} style={styles.label}>
+                                    EMAIL ADDRESS
+                                </Typo>
+                            </View>
+                            <Input
+                                value={userData.email}
+                                editable={false}
+                                containerStyle={styles.disabledInput}
+                                icon={
+                                    <Icons.Lock
+                                        size={verticalScale(16)}
+                                        color={colors.neutral400}
+                                        weight="fill"
+                                    />
+                                }
+                            />
+                            <Typo size={11} color={colors.neutral400} style={{ marginLeft: 6 }}>
+                                Linked Google / Email Account (Permanent)
+                            </Typo>
+                        </View>
                     </Animated.View>
 
-                    {/* ── Account Actions ── */}
+                    {/* ── Section: Quick Actions & Settings ── */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).delay(250).springify()}
-                        style={styles.dangerZone}
+                        entering={FadeInDown.duration(500).delay(220).springify()}
+                        style={styles.actionsSection}
                     >
                         <Typo
                             size={11}
-                            fontWeight="700"
+                            fontWeight="800"
                             color={colors.neutral400}
                             style={styles.sectionLabel}
                         >
-                            ACCOUNT ACTIONS
+                            PREFERENCES & APP
                         </Typo>
 
-
-                        {/* ── About Bubbly ── */}
-                        <Pressable
-                            onPress={() => router.push("/(main)/about")}
-                            style={({ pressed }) => [
-                                styles.actionRow,
-                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
-                            ]}
-                        >
-                            <View style={styles.actionLeft}>
-                                <View style={styles.actionIconWrap}>
-                                    <Icons.Info
-                                        size={verticalScale(18)}
-                                        color={colors.primary}
-                                        weight="bold"
-                                    />
-                                </View>
-                                <View>
-                                    <Typo size={15} fontWeight="600" color={colors.neutral800}>
-                                        About Bubbly
-                                    </Typo>
-                                    <Typo size={12} color={colors.neutral400}>
-                                        App info & developer
-                                    </Typo>
-                                </View>
-                            </View>
-                            <Icons.CaretRight
-                                size={verticalScale(16)}
-                                color={colors.neutral300}
-                                weight="bold"
-                            />
-                        </Pressable>
-
-                        {/* ── How to Use Bubbly (replay) ── */}
-                        <Pressable
-                            onPress={() => router.push("/onboarding?replay=true")}
-                            style={({ pressed }) => [
-                                styles.actionRow,
-                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
-                            ]}
-                        >
-                            <View style={styles.actionLeft}>
-                                <View style={styles.tutorialIconWrap}>
-                                    <Icons.BookOpen
-                                        size={verticalScale(18)}
-                                        color={colors.neutral600}
-                                        weight="bold"
-                                    />
-                                </View>
-                                <View>
-                                    <Typo size={15} fontWeight="600" color={colors.neutral800}>
-                                        How to Use Bubbly
-                                    </Typo>
-                                    <Typo size={12} color={colors.neutral400}>
-                                        Replay the app walkthrough
-                                    </Typo>
-                                </View>
-                            </View>
-                            <Icons.CaretRight
-                                size={verticalScale(16)}
-                                color={colors.neutral300}
-                                weight="bold"
-                            />
-                        </Pressable>
-
-                        {/* ── Settings ── */}
+                        {/* Settings */}
                         <Pressable
                             onPress={() => router.push("/(main)/settings")}
                             style={({ pressed }) => [
-                                styles.actionRow,
-                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
+                                styles.actionCard,
+                                pressed && { opacity: 0.7, backgroundColor: colors.neutral100 }
                             ]}
                         >
                             <View style={styles.actionLeft}>
-                                <View style={styles.tutorialIconWrap}>
+                                <View style={[styles.actionIconWrap, { backgroundColor: colors.primaryLight }]}>
                                     <Icons.GearSix
                                         size={verticalScale(18)}
-                                        color={colors.neutral600}
+                                        color={colors.primaryDark}
                                         weight="bold"
                                     />
                                 </View>
                                 <View>
-                                    <Typo size={15} fontWeight="600" color={colors.neutral800}>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800}>
                                         Settings
                                     </Typo>
                                     <Typo size={12} color={colors.neutral400}>
-                                        Notifications, privacy & more
+                                        Notifications, chat privacy & themes
                                     </Typo>
                                 </View>
                             </View>
@@ -343,16 +278,80 @@ const ProfileModal = () => {
                             />
                         </Pressable>
 
-                        {/* ── Sign Out ── */}
+                        {/* Walkthrough */}
                         <Pressable
-                            onPress={showLogoutAlert}
+                            onPress={() => router.push("/onboarding?replay=true")}
                             style={({ pressed }) => [
-                                styles.actionRow,
-                                pressed && { opacity: 0.6, backgroundColor: colors.neutral100 }
+                                styles.actionCard,
+                                pressed && { opacity: 0.7, backgroundColor: colors.neutral100 }
                             ]}
                         >
                             <View style={styles.actionLeft}>
-                                <View style={styles.signOutIconWrap}>
+                                <View style={[styles.actionIconWrap, { backgroundColor: '#eff6ff' }]}>
+                                    <Icons.BookOpen
+                                        size={verticalScale(18)}
+                                        color={'#2563eb'}
+                                        weight="bold"
+                                    />
+                                </View>
+                                <View>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800}>
+                                        How to Use Bubbly
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400}>
+                                        Replay interactive onboarding guide
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.CaretRight
+                                size={verticalScale(16)}
+                                color={colors.neutral300}
+                                weight="bold"
+                            />
+                        </Pressable>
+
+                        {/* About Bubbly */}
+                        <Pressable
+                            onPress={() => router.push("/(main)/about")}
+                            style={({ pressed }) => [
+                                styles.actionCard,
+                                pressed && { opacity: 0.7, backgroundColor: colors.neutral100 }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
+                                <View style={[styles.actionIconWrap, { backgroundColor: '#fef3c7' }]}>
+                                    <Icons.Info
+                                        size={verticalScale(18)}
+                                        color={colors.primaryDark}
+                                        weight="bold"
+                                    />
+                                </View>
+                                <View>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800}>
+                                        About Bubbly Release v3.0
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400}>
+                                        Build info, credits & terms
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.CaretRight
+                                size={verticalScale(16)}
+                                color={colors.neutral300}
+                                weight="bold"
+                            />
+                        </Pressable>
+
+                        {/* Sign Out */}
+                        <Pressable
+                            onPress={showLogoutAlert}
+                            style={({ pressed }) => [
+                                styles.actionCard,
+                                pressed && { opacity: 0.7, backgroundColor: '#fef2f2' }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
+                                <View style={[styles.actionIconWrap, { backgroundColor: '#fee2e2' }]}>
                                     <Icons.SignOut
                                         size={verticalScale(18)}
                                         color={colors.rose}
@@ -360,11 +359,11 @@ const ProfileModal = () => {
                                     />
                                 </View>
                                 <View>
-                                    <Typo size={15} fontWeight="600" color={colors.rose}>
+                                    <Typo size={15} fontWeight="700" color={colors.rose}>
                                         Sign Out
                                     </Typo>
                                     <Typo size={12} color={colors.neutral400}>
-                                        You'll need to sign in again
+                                        Safely log out of this device
                                     </Typo>
                                 </View>
                             </View>
@@ -374,13 +373,12 @@ const ProfileModal = () => {
                                 weight="bold"
                             />
                         </Pressable>
-
                     </Animated.View>
 
                 </ScrollView>
             </View>
 
-            {/* ── Footer ── */}
+            {/* ── Footer Button ── */}
             <Animated.View
                 entering={FadeInUp.duration(500).delay(250).springify()}
                 style={styles.footer}
@@ -390,8 +388,8 @@ const ProfileModal = () => {
                     onPress={onSubmit}
                     loading={loading}
                 >
-                    <Typo color={colors.black} fontWeight="700" size={16}>
-                        Save Changes
+                    <Typo color={colors.black} fontWeight="800" size={16}>
+                        Save Profile Changes
                     </Typo>
                 </Button>
             </Animated.View>
@@ -406,14 +404,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-
-    tutorialIconWrap: {
-        backgroundColor: colors.neutral100,
-        padding: spacingY._10,
-        borderRadius: radius._12,
-    },
-
-    // Header
     header: {
         flexDirection: "row",
         alignItems: "center",
@@ -424,86 +414,94 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: colors.neutral100,
     },
-
-    // Scroll
-    scrollContent: {
-        paddingBottom: spacingY._30,
-        gap: spacingY._30,
+    headerTitleWrap: {
+        alignItems: 'center',
     },
-
-    // Avatar section
+    scrollContent: {
+        paddingBottom: spacingY._35,
+        gap: spacingY._25,
+    },
     avatarSection: {
         alignItems: "center",
         gap: spacingY._15,
-        paddingTop: spacingY._30,
+        paddingTop: spacingY._25,
         paddingHorizontal: spacingX._20,
+    },
+    avatarHaloRing: {
+        borderRadius: radius.full,
+        padding: 5,
+        backgroundColor: colors.primaryLight,
+        borderWidth: 2,
+        borderColor: 'rgba(245,158,11,0.25)',
     },
     avatarContainer: {
         position: "relative",
     },
     editIcon: {
         position: "absolute",
-        bottom: 4,
-        right: 4,
+        bottom: 2,
+        right: 2,
         borderRadius: radius.full,
-        backgroundColor: colors.white,
-        padding: spacingY._7,
+        backgroundColor: colors.primary,
+        padding: spacingY._8,
         shadowColor: colors.black,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
         elevation: 4,
-        borderWidth: 1,
-        borderColor: colors.neutral200,
+        borderWidth: 2,
+        borderColor: colors.white,
     },
     userInfo: {
         alignItems: "center",
         gap: spacingY._5,
     },
-
-    // Divider
-    divider: {
-        height: 1,
+    statusPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         backgroundColor: colors.neutral100,
-        marginHorizontal: spacingX._20,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: spacingY._5,
+        borderRadius: radius.full,
     },
-
-    // Fields
+    onlineDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: '#22c55e',
+    },
     fields: {
         paddingHorizontal: spacingX._20,
-        gap: spacingY._20,
+        gap: spacingY._15,
     },
     sectionLabel: {
-        letterSpacing: 1.4,
+        letterSpacing: 1.2,
         marginLeft: 4,
-        marginBottom: spacingY._5,
+        marginBottom: 2,
     },
     fieldGroup: {
-        gap: spacingY._7,
+        gap: spacingY._6,
     },
     labelRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 5,
+        gap: 6,
         marginLeft: 4,
     },
     label: {
-        letterSpacing: 1.2,
+        letterSpacing: 1.1,
     },
     disabledInput: {
         backgroundColor: colors.neutral100,
         borderColor: colors.neutral200,
-        opacity: 0.65,
+        opacity: 0.7,
     },
-
-    // Account Actions section
-    dangerZone: {
+    actionsSection: {
         paddingHorizontal: spacingX._20,
         gap: spacingY._10,
     },
-
-    // Shared action row — used by both About and Sign Out
-    actionRow: {
+    actionCard: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
@@ -512,38 +510,36 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.neutral200,
         paddingHorizontal: spacingX._15,
-        paddingVertical: spacingY._15,
+        paddingVertical: spacingY._12,
     },
     actionLeft: {
         flexDirection: "row",
         alignItems: "center",
         gap: spacingX._12,
     },
-
-    // About icon wrap — primary-tinted background
     actionIconWrap: {
-        backgroundColor: "#fefce8",   // very light yellow, matches primary #facc15
-        padding: spacingY._10,
+        width: 40,
+        height: 40,
         borderRadius: radius._12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-
-    // Sign out icon wrap — rose-tinted background (unchanged)
-    signOutIconWrap: {
-        backgroundColor: "#fef2f2",
-        padding: spacingY._10,
-        borderRadius: radius._12,
-    },
-
-    // Footer
     footer: {
         paddingHorizontal: spacingX._20,
-        paddingVertical: spacingY._15,
+        paddingTop: spacingY._12,
+        paddingBottom: verticalScale(Platform.OS === 'ios' ? 35 : 20),
         borderTopWidth: 1,
         borderTopColor: colors.neutral100,
-        marginBottom: spacingY._10,
+        backgroundColor: colors.white,
     },
     updateBtn: {
-        height: verticalScale(56),
+        height: verticalScale(54),
         borderRadius: radius.full,
+        backgroundColor: colors.primary,
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+        elevation: 3,
     },
 });

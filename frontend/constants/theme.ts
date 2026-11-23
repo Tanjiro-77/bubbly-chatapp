@@ -1,20 +1,27 @@
 import { scale, verticalScale } from "../utils/styling";
 
 export const colors = {
-    primary: "#facc15",
-    primaryLight: "#fef08a",
-    primaryDark: "#eab308",
+    // ── V3 Honey Amber Identity ──
+    primary: "#f59e0b",
+    primaryLight: "#fef3c7",
+    primaryDark: "#d97706",
+    accent: "#facc15",
+    accentLight: "#fef9c3",
 
     text: "#292524",
+    textMuted: "#78716c",
 
     white: "#fff",
     black: "#000",
     rose: "#ef4444",
-    green: "#16a34a",
+    green: "#22c55e",
+    sky: "#0284c7",
 
-    otherBubble: "#FFF1BF",
-    myBubble: "#FFE1CC",
+    // ── V3 Chat Bubbles ──
+    otherBubble: "#FFFFFF",
+    myBubble: "#FFF2C6",
 
+    // ── V3 Neutrals ──
     neutral50: "#fafaf9",
     neutral100: "#f5f5f4",
     neutral200: "#e7e5e4",
@@ -26,6 +33,10 @@ export const colors = {
     neutral700: "#44403c",
     neutral800: "#292524",
     neutral900: "#1c1917",
+
+    // ── V3 Surface & Borders ──
+    cardBorder: "rgba(0, 0, 0, 0.06)",
+    cardBg: "#FFFFFF",
 };
 
 export const spacingX = {
@@ -75,11 +86,13 @@ export const radius = {
     _3: verticalScale(3),
     _5: verticalScale(5),
     _6: verticalScale(6),
+    _8: verticalScale(8),
     _10: verticalScale(10),
     _12: verticalScale(12),
     _15: verticalScale(15),
     _17: verticalScale(17),
     _20: verticalScale(20),
+    _24: verticalScale(24),
     _30: verticalScale(30),
     _40: verticalScale(40),
     _50: verticalScale(50),

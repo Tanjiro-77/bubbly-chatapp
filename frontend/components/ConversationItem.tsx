@@ -1,20 +1,20 @@
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
-import React from 'react'
-import { colors, radius, spacingX, spacingY } from "../constants/theme"
-import Avatar from "./Avatar"
-import Typo from "./Typo"
-import moment from "moment"
-import { ConversationListItemProps } from "../types"
-import { useAuth } from "../contexts/authContext"
-import { scale, verticalScale } from "../utils/styling"
-import { TextStyle } from 'react-native'
-import * as Icons from "phosphor-react-native"
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { colors, radius, spacingX, spacingY } from "../constants/theme";
+import Avatar from "./Avatar";
+import Typo from "./Typo";
+import moment from "moment";
+import { ConversationListItemProps } from "../types";
+import { useAuth } from "../contexts/authContext";
+import { scale, verticalScale } from "../utils/styling";
+import { TextStyle } from 'react-native';
+import * as Icons from "phosphor-react-native";
 
 // ── Highlight matched text ──
 const HighlightText = ({
     text,
     query,
-    size = 15,
+    size = 14,
     color = colors.neutral800,
     fontWeight = "400",
     numberOfLines,
@@ -45,7 +45,7 @@ const HighlightText = ({
                         size={size}
                         fontWeight="700"
                         color={colors.neutral900}
-                        style={{ backgroundColor: colors.primaryLight }}
+                        style={{ backgroundColor: colors.primaryLight, borderRadius: 2 }}
                     >
                         {part}
                     </Typo>
@@ -77,13 +77,18 @@ const ConversationItem = ({
 
     const displayName = isDirect ? otherParticipant?.name ?? "" : item?.name ?? "";
 
-    // ── NEW: unread count ──
     const unreadCount = item.unreadCount || 0;
     const hasUnread = unreadCount > 0;
+    const isMyLastMessage = lastMessage?.sender?._id === currentUser?.id || lastMessage?.sender?.id === currentUser?.id;
+
+    const isVoice = !!lastMessage?.voiceUrl;
+    const isImage = !!lastMessage?.attachement && !lastMessage?.isViewOnce;
 
     const getLastMessageContent = () => {
-        if (!lastMessage) return "Say hi 👋";
-        return lastMessage?.attachement ? "📷 Image" : lastMessage.content;
+        if (!lastMessage) return "Tap to start chatting 👋";
+        if (isVoice) return "Voice note";
+        if (isImage) return "Photo";
+        return lastMessage.content || "Attachment";
     };
 
     const getLastMessageDate = () => {
@@ -114,35 +119,37 @@ const ConversationItem = ({
     return (
         <View>
             <TouchableOpacity
-                style={styles.conversationItem}
+                style={[
+                    styles.conversationItem,
+                    hasUnread && styles.conversationItemUnread,
+                ]}
                 onPress={openConversation}
                 activeOpacity={0.7}
             >
-                {/* Avatar */}
+                {/* ── Avatar with Live Online Indicator ── */}
                 <View style={styles.avatarWrap}>
-                    <Avatar uri={avatar} size={50} isGroup={item.type === 'group'} />
+                    <Avatar uri={avatar} size={52} isGroup={item.type === 'group'} />
                     {isDirect && isOnline && (
                         <View style={styles.onlineDot} />
                     )}
                 </View>
 
-                {/* Content */}
+                {/* ── Content Body ── */}
                 <View style={styles.textContent}>
-                    {/* Top row: name + time */}
+                    {/* Top row: Name + Pinned + Time */}
                     <View style={styles.topRow}>
-                        <View style={{ flex: 1, marginRight: spacingX._10 }}>
+                        <View style={styles.nameContainer}>
                             <HighlightText
                                 text={displayName}
                                 query={searchQuery}
-                                size={15}
-                                // ── bold name if unread ──
+                                size={15.5}
                                 fontWeight={hasUnread ? "700" : "600"}
                                 color={colors.neutral900}
                                 numberOfLines={1}
                             />
                         </View>
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <View style={styles.timeBadgeRow}>
                             {item.isMuted && (
                                 <Icons.BellSlash
                                     size={verticalScale(13)}
@@ -151,18 +158,19 @@ const ConversationItem = ({
                                 />
                             )}
                             {item.pinnedMessages && item.pinnedMessages.length > 0 && (
-                                <Icons.PushPin
-                                    size={verticalScale(12)}
-                                    color={colors.primaryDark}
-                                    weight="fill"
-                                />
+                                <View style={styles.pinnedPill}>
+                                    <Icons.PushPin
+                                        size={verticalScale(11)}
+                                        color={colors.primaryDark}
+                                        weight="fill"
+                                    />
+                                </View>
                             )}
                             {lastMessageDate && (
                                 <Typo
-                                    size={12}
-                                    // ── highlight time if unread ──
-                                    color={hasUnread ? colors.primary : colors.neutral400}
-                                    fontWeight={hasUnread ? "700" : "400"}
+                                    size={11.5}
+                                    color={hasUnread ? colors.primaryDark : colors.neutral400}
+                                    fontWeight={hasUnread ? "700" : "500"}
                                 >
                                     {lastMessageDate}
                                 </Typo>
@@ -170,24 +178,52 @@ const ConversationItem = ({
                         </View>
                     </View>
 
-                    {/* Bottom row: last message + badge */}
+                    {/* Bottom row: Delivery tick + media icon + preview + unread pill */}
                     <View style={styles.bottomRow}>
-                        <View style={{ flex: 1 }}>
+                        <View style={styles.previewWrap}>
+                            {/* Delivery checkmarks if sent by me */}
+                            {isMyLastMessage && (
+                                <View style={styles.deliveryTickWrap}>
+                                    <Icons.Checks
+                                        size={verticalScale(13)}
+                                        color={hasUnread ? colors.neutral400 : colors.sky}
+                                        weight="bold"
+                                    />
+                                </View>
+                            )}
+
+                            {/* Media Type Icon */}
+                            {isVoice && (
+                                <Icons.Microphone
+                                    size={verticalScale(13)}
+                                    color={colors.primaryDark}
+                                    weight="fill"
+                                    style={{ marginRight: 3 }}
+                                />
+                            )}
+                            {isImage && (
+                                <Icons.Image
+                                    size={verticalScale(13)}
+                                    color={colors.primaryDark}
+                                    weight="fill"
+                                    style={{ marginRight: 3 }}
+                                />
+                            )}
+
                             <HighlightText
                                 text={lastMessageContent}
                                 query={searchQuery}
-                                size={13}
-                                // ── bold preview if unread ──
-                                color={hasUnread ? colors.neutral700 : colors.neutral500}
+                                size={13.5}
+                                color={hasUnread ? colors.neutral900 : colors.neutral500}
                                 fontWeight={hasUnread ? "600" : "400"}
                                 numberOfLines={1}
                             />
                         </View>
 
-                        {/* ── NEW: Unread count badge ── */}
+                        {/* Unread count badge */}
                         {hasUnread && (
                             <View style={styles.unreadBadge}>
-                                <Typo size={10} fontWeight="800" color={colors.white}>
+                                <Typo size={10.5} fontWeight="800" color={colors.white}>
                                     {unreadCount > 99 ? "99+" : unreadCount}
                                 </Typo>
                             </View>
@@ -217,6 +253,17 @@ export default React.memo(ConversationItem, (prev, next) => {
 });
 
 const styles = StyleSheet.create({
+    conversationItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacingX._12,
+        paddingVertical: verticalScale(12),
+        paddingHorizontal: spacingX._6,
+        borderRadius: radius._15,
+    },
+    conversationItemUnread: {
+        backgroundColor: "rgba(254, 243, 199, 0.25)",
+    },
     avatarWrap: {
         position: 'relative',
     },
@@ -224,28 +271,36 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 1,
         right: 1,
-        width: verticalScale(12),
-        height: verticalScale(12),
+        width: verticalScale(13),
+        height: verticalScale(13),
         borderRadius: radius.full,
-        backgroundColor: '#22c55e',
+        backgroundColor: colors.green,
         borderWidth: 2,
         borderColor: colors.white,
     },
-    conversationItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacingX._12,
-        paddingVertical: spacingY._10,
-        borderRadius: radius._12,
-    },
     textContent: {
         flex: 1,
-        gap: spacingY._5,
+        gap: spacingY._4,
     },
     topRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+    },
+    nameContainer: {
+        flex: 1,
+        marginRight: spacingX._8,
+    },
+    timeBadgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: scale(4),
+    },
+    pinnedPill: {
+        backgroundColor: colors.primaryLight,
+        borderRadius: radius.full,
+        paddingHorizontal: scale(4),
+        paddingVertical: verticalScale(2),
     },
     bottomRow: {
         flexDirection: "row",
@@ -253,13 +308,19 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         gap: spacingX._10,
     },
+    previewWrap: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    deliveryTickWrap: {
+        marginRight: scale(4),
+    },
     divider: {
         height: 1,
         backgroundColor: colors.neutral100,
-        marginLeft: verticalScale(62),
+        marginLeft: scale(64),
     },
-
-    // ── NEW: unread badge ──
     unreadBadge: {
         backgroundColor: colors.primary,
         borderRadius: radius.full,
@@ -269,5 +330,10 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         paddingHorizontal: scale(5),
         flexShrink: 0,
+        shadowColor: colors.primaryDark,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+        elevation: 2,
     },
 });

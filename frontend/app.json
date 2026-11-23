@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bubbly",
     "slug": "frontend",
-    "version": "1.0.0",
+    "version": "3.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bubbly",
@@ -14,7 +14,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 1,
+      "versionCode": 3,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -34,7 +34,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.arnav5569.chat",
-      "buildNumber": "1",
+      "buildNumber": "3",
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Bubbly needs access to your camera to take photos and record video for chats and stories.",

@@ -20,11 +20,21 @@ import { ConversationProps, ResponseProps } from "../../types";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Avatar from '../../components/Avatar';
 
+type FilterCategory = "all" | "unread" | "pinned";
+
+const getGreeting = (): string => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning ☀️";
+    if (hour < 17) return "Good afternoon 🌤️";
+    return "Good evening 🌙";
+};
+
 const Home = () => {
     const { user: currentUser } = useAuth();
     const router = useRouter();
     const [loading, setLoading] = useState(false);
-    const [selectedTab, setSelectedTab] = useState(0);
+    const [selectedTab, setSelectedTab] = useState(0); // 0 = direct, 1 = group
+    const [filterCategory, setFilterCategory] = useState<FilterCategory>("all");
     const [conversations, setConversations] = useState<ConversationProps[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearchActive, setIsSearchActive] = useState(false);
@@ -77,7 +87,6 @@ const Home = () => {
         }
     };
 
-    // ── NEW: update unread count for a specific conversation ──
     const unreadCountHandler = (data: {
         conversationId: string;
         unreadCount: number;
@@ -107,10 +116,22 @@ const Home = () => {
 
     const activeList = selectedTab === 0 ? directConversations : groupConversations;
 
+    // ── V3 Filter Chips (All, Unread, Pinned) ──
+    const categorizedList = useMemo(() => {
+        if (filterCategory === "unread") {
+            return activeList.filter(c => (c.unreadCount || 0) > 0);
+        }
+        if (filterCategory === "pinned") {
+            return activeList.filter(c => c.pinnedMessages && c.pinnedMessages.length > 0);
+        }
+        return activeList;
+    }, [activeList, filterCategory]);
+
+    // ── Search Filtering ──
     const filteredList = useMemo(() => {
-        if (!searchQuery.trim()) return activeList;
+        if (!searchQuery.trim()) return categorizedList;
         const q = searchQuery.toLowerCase().trim();
-        return activeList.filter((item: ConversationProps) => {
+        return categorizedList.filter((item: ConversationProps) => {
             const nameMatch = item.name?.toLowerCase().includes(q);
             const messageMatch = item.lastMessage?.content?.toLowerCase().includes(q);
             const participantMatch = item.participants?.some(
@@ -118,15 +139,16 @@ const Home = () => {
             );
             return nameMatch || messageMatch || participantMatch;
         });
-    }, [searchQuery, activeList]);
+    }, [searchQuery, categorizedList]);
 
-    // ── NEW: total unread across all conversations ──
     const totalUnreadDirect = directConversations.reduce(
         (sum, c) => sum + (c.unreadCount || 0), 0
     );
     const totalUnreadGroup = groupConversations.reduce(
         (sum, c) => sum + (c.unreadCount || 0), 0
     );
+    const totalUnreadCurrent = selectedTab === 0 ? totalUnreadDirect : totalUnreadGroup;
+    const totalPinnedCurrent = activeList.filter(c => c.pinnedMessages && c.pinnedMessages.length > 0).length;
 
     const handleSearchClose = () => {
         setSearchQuery("");
@@ -136,53 +158,70 @@ const Home = () => {
     const handleTabChange = (tab: number) => {
         setSelectedTab(tab);
         setSearchQuery("");
+        setFilterCategory("all");
     };
 
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.4}>
             <View style={styles.container}>
 
-                {/* ── Header ── */}
+                {/* ── V3 Flagship Header ── */}
                 <Animated.View
                     entering={FadeInDown.duration(500).springify()}
                     style={styles.header}
                 >
                     <View style={styles.headerLeft}>
-                        <Typo size={13} color={'rgba(255,255,255,0.55)'} fontWeight="500">
-                            Welcome back 👋
-                        </Typo>
+                        <View style={styles.brandRow}>
+                            <View style={styles.brandBadge}>
+                                <Typo size={10} fontWeight="800" color={colors.neutral900}>
+                                    V3.0
+                                </Typo>
+                            </View>
+                            <Typo size={12.5} color={'rgba(255,255,255,0.6)'} fontWeight="500">
+                                {getGreeting()}
+                            </Typo>
+                        </View>
                         <Typo
-                            size={22}
+                            size={23}
                             color={colors.white}
                             fontWeight="800"
                             textProps={{ numberOfLines: 1 }}
                         >
-                            {currentUser?.name}
+                            {currentUser?.name || "Bubbly Chat"}
                         </Typo>
                     </View>
 
-                    <TouchableOpacity
-                        onPress={() => router.push("/(main)/profileModel")}
-                        activeOpacity={0.8}
-                        style={styles.avatarBtn}
-                    >
-                        <Avatar uri={currentUser?.avatar || null} size={40} />
-                        <View style={styles.avatarBadge} />
-                    </TouchableOpacity>
+                    {/* Header Quick Actions */}
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/settings")}
+                            style={styles.headerIconBtn}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.GearSix size={verticalScale(20)} color={colors.white} weight="regular" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/profileModel")}
+                            activeOpacity={0.8}
+                            style={styles.avatarBtn}
+                        >
+                            <Avatar uri={currentUser?.avatar || null} size={42} />
+                            <View style={styles.avatarBadge} />
+                        </TouchableOpacity>
+                    </View>
                 </Animated.View>
 
-                {/* ── White Sheet ── */}
+                {/* ── Main Sheet ── */}
                 <Animated.View
                     entering={FadeInUp.duration(600).delay(100).springify()}
                     style={styles.content}
                 >
-
                     {/* ── Story Bar ── */}
                     <StoryBar />
 
-                    {/* ── Tabs ── */}
+                    {/* ── V3 Segmented Tabs (Messages vs Groups) ── */}
                     <View style={styles.tabsRow}>
-
                         {/* Messages Tab */}
                         <TouchableOpacity
                             onPress={() => handleTabChange(0)}
@@ -190,18 +229,17 @@ const Home = () => {
                             activeOpacity={0.75}
                         >
                             <Icons.ChatCircle
-                                size={verticalScale(15)}
+                                size={verticalScale(16)}
                                 color={selectedTab === 0 ? colors.neutral900 : colors.neutral400}
                                 weight={selectedTab === 0 ? "fill" : "regular"}
                             />
                             <Typo
-                                size={13}
+                                size={13.5}
                                 fontWeight={selectedTab === 0 ? "700" : "500"}
                                 color={selectedTab === 0 ? colors.neutral900 : colors.neutral400}
                             >
-                                Messages
+                                Direct Messages
                             </Typo>
-                            {/* ── NEW: unread badge on tab ── */}
                             {totalUnreadDirect > 0 && (
                                 <View style={styles.tabBadge}>
                                     <Typo size={9} fontWeight="800" color={colors.white}>
@@ -218,18 +256,17 @@ const Home = () => {
                             activeOpacity={0.75}
                         >
                             <Icons.Users
-                                size={verticalScale(15)}
+                                size={verticalScale(16)}
                                 color={selectedTab === 1 ? colors.neutral900 : colors.neutral400}
                                 weight={selectedTab === 1 ? "fill" : "regular"}
                             />
                             <Typo
-                                size={13}
+                                size={13.5}
                                 fontWeight={selectedTab === 1 ? "700" : "500"}
                                 color={selectedTab === 1 ? colors.neutral900 : colors.neutral400}
                             >
                                 Groups
                             </Typo>
-                            {/* ── NEW: unread badge on tab ── */}
                             {totalUnreadGroup > 0 && (
                                 <View style={styles.tabBadge}>
                                     <Typo size={9} fontWeight="800" color={colors.white}>
@@ -237,6 +274,65 @@ const Home = () => {
                                     </Typo>
                                 </View>
                             )}
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* ── V3 Interactive Filter Chips (All, Unread, Pinned) ── */}
+                    <View style={styles.filterChipsRow}>
+                        <TouchableOpacity
+                            style={[
+                                styles.filterChip,
+                                filterCategory === "all" && styles.filterChipActive,
+                            ]}
+                            onPress={() => setFilterCategory("all")}
+                            activeOpacity={0.7}
+                        >
+                            <Typo
+                                size={12}
+                                fontWeight={filterCategory === "all" ? "700" : "500"}
+                                color={filterCategory === "all" ? colors.neutral900 : colors.neutral500}
+                            >
+                                All ({activeList.length})
+                            </Typo>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.filterChip,
+                                filterCategory === "unread" && styles.filterChipActive,
+                            ]}
+                            onPress={() => setFilterCategory("unread")}
+                            activeOpacity={0.7}
+                        >
+                            <Typo
+                                size={12}
+                                fontWeight={filterCategory === "unread" ? "700" : "500"}
+                                color={filterCategory === "unread" ? colors.neutral900 : colors.neutral500}
+                            >
+                                Unread {totalUnreadCurrent > 0 ? `(${totalUnreadCurrent})` : ""}
+                            </Typo>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.filterChip,
+                                filterCategory === "pinned" && styles.filterChipActive,
+                            ]}
+                            onPress={() => setFilterCategory("pinned")}
+                            activeOpacity={0.7}
+                        >
+                            <Icons.PushPin
+                                size={verticalScale(11)}
+                                color={filterCategory === "pinned" ? colors.primaryDark : colors.neutral400}
+                                weight="fill"
+                            />
+                            <Typo
+                                size={12}
+                                fontWeight={filterCategory === "pinned" ? "700" : "500"}
+                                color={filterCategory === "pinned" ? colors.neutral900 : colors.neutral500}
+                            >
+                                Pinned {totalPinnedCurrent > 0 ? `(${totalPinnedCurrent})` : ""}
+                            </Typo>
                         </TouchableOpacity>
                     </View>
 
@@ -255,8 +351,8 @@ const Home = () => {
                                 style={styles.searchInput}
                                 placeholder={
                                     selectedTab === 0
-                                        ? "Search messages..."
-                                        : "Search groups..."
+                                        ? "Search messages or friends..."
+                                        : "Search groups or topics..."
                                 }
                                 placeholderTextColor={colors.neutral400}
                                 value={searchQuery}
@@ -283,7 +379,7 @@ const Home = () => {
                         </View>
                     </View>
 
-                    {/* ── Count row ── */}
+                    {/* ── Results Count ── */}
                     <View style={styles.countRow}>
                         {searchQuery.trim() ? (
                             <Typo size={12} color={colors.neutral400} fontWeight="500">
@@ -292,18 +388,18 @@ const Home = () => {
                                     : `${filteredList.length} result${filteredList.length === 1 ? "" : "s"} for "${searchQuery}"`}
                             </Typo>
                         ) : (
-                            activeList.length > 0 && (
+                            filteredList.length > 0 && (
                                 <Typo size={12} color={colors.neutral400} fontWeight="500">
-                                    {activeList.length}{" "}
+                                    {filteredList.length}{" "}
                                     {selectedTab === 0
-                                        ? activeList.length === 1 ? "conversation" : "conversations"
-                                        : activeList.length === 1 ? "group" : "groups"}
+                                        ? filteredList.length === 1 ? "conversation" : "conversations"
+                                        : filteredList.length === 1 ? "group" : "groups"}
                                 </Typo>
                             )
                         )}
                     </View>
 
-                    {/* ── List ── */}
+                    {/* ── Conversations List ── */}
                     <ScrollView
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.listContent}
@@ -333,48 +429,49 @@ const Home = () => {
                                     color={colors.neutral400}
                                     style={{ textAlign: 'center' }}
                                 >
-                                    No {selectedTab === 0 ? "conversations" : "groups"} match{" "}
-                                    <Typo size={13} fontWeight="600" color={colors.neutral600}>
-                                        "{searchQuery}"
-                                    </Typo>
+                                    No {selectedTab === 0 ? "conversations" : "groups"} match "{searchQuery}"
                                 </Typo>
                             </View>
                         )}
 
                         {/* Normal empty state */}
-                        {!loading && !searchQuery.trim() && activeList.length === 0 && (
+                        {!loading && !searchQuery.trim() && filteredList.length === 0 && (
                             <View style={styles.emptyState}>
                                 <View style={styles.emptyIconWrap}>
                                     {selectedTab === 0 ? (
                                         <Icons.ChatCircleDots
-                                            size={verticalScale(32)}
-                                            color={colors.neutral300}
+                                            size={verticalScale(34)}
+                                            color={colors.primaryDark}
                                             weight="regular"
                                         />
                                     ) : (
                                         <Icons.Users
-                                            size={verticalScale(32)}
-                                            color={colors.neutral300}
+                                            size={verticalScale(34)}
+                                            color={colors.primaryDark}
                                             weight="regular"
                                         />
                                     )}
                                 </View>
-                                <Typo size={15} fontWeight="600" color={colors.neutral600}>
-                                    {selectedTab === 0 ? "No messages yet" : "No groups yet"}
+                                <Typo size={16} fontWeight="700" color={colors.neutral800}>
+                                    {filterCategory !== "all"
+                                        ? `No ${filterCategory} ${selectedTab === 0 ? "chats" : "groups"}`
+                                        : selectedTab === 0
+                                            ? "Your inbox is clear"
+                                            : "No groups yet"}
                                 </Typo>
                                 <Typo
                                     size={13}
                                     color={colors.neutral400}
-                                    style={{ textAlign: 'center' }}
+                                    style={{ textAlign: 'center', maxWidth: scale(260) }}
                                 >
                                     {selectedTab === 0
-                                        ? "Start a conversation by tapping the button below"
-                                        : "Create a group to chat with multiple people"}
+                                        ? "Connect with your friends by tapping the start chat button below"
+                                        : "Create a group conversation to share stories and plans together"}
                                 </Typo>
                             </View>
                         )}
 
-                        {/* ── Results ── */}
+                        {/* Results list */}
                         {!loading && filteredList.map((item: ConversationProps, index) => {
                             const other = item.type === 'direct'
                                 ? item.participants?.find((p: any) => p._id !== currentUser?.id)
@@ -395,7 +492,7 @@ const Home = () => {
                 </Animated.View>
             </View>
 
-            {/* ── FAB ── */}
+            {/* ── Floating Action Button (FAB) ── */}
             <Animated.View
                 entering={FadeInUp.duration(500).delay(300).springify()}
                 style={styles.fabWrap}
@@ -430,12 +527,37 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
         paddingHorizontal: spacingX._20,
-        paddingTop: spacingY._15,
-        paddingBottom: spacingY._25,
+        paddingTop: spacingY._12,
+        paddingBottom: spacingY._20,
     },
     headerLeft: {
         flex: 1,
-        gap: spacingY._5,
+        gap: verticalScale(2),
+    },
+    brandRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(6),
+        marginBottom: verticalScale(2),
+    },
+    brandBadge: {
+        backgroundColor: colors.primary,
+        paddingHorizontal: scale(5),
+        paddingVertical: verticalScale(2),
+        borderRadius: radius._6,
+    },
+    headerActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(10),
+    },
+    headerIconBtn: {
+        width: verticalScale(40),
+        height: verticalScale(40),
+        borderRadius: radius.full,
+        backgroundColor: "rgba(255, 255, 255, 0.15)",
+        alignItems: "center",
+        justifyContent: "center",
     },
     avatarBtn: {
         position: "relative",
@@ -444,26 +566,26 @@ const styles = StyleSheet.create({
         position: "absolute",
         bottom: 1,
         right: 1,
-        width: verticalScale(11),
-        height: verticalScale(11),
+        width: verticalScale(12),
+        height: verticalScale(12),
         borderRadius: radius.full,
         backgroundColor: colors.green,
         borderWidth: 2,
         borderColor: colors.white,
     },
 
-    // White sheet
+    // Sheet
     content: {
         flex: 1,
         backgroundColor: colors.white,
-        borderTopLeftRadius: radius._50,
-        borderTopRightRadius: radius._50,
+        borderTopLeftRadius: radius._40,
+        borderTopRightRadius: radius._40,
         borderCurve: "continuous",
         overflow: "hidden",
-        paddingTop: spacingY._25,
+        paddingTop: spacingY._20,
     },
 
-    // Tabs
+    // Segmented Tabs
     tabsRow: {
         flexDirection: "row",
         marginHorizontal: spacingX._20,
@@ -478,7 +600,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         gap: 6,
-        paddingVertical: spacingY._10,
+        paddingVertical: verticalScale(10),
         borderRadius: radius.full,
     },
     tabActive: {
@@ -489,7 +611,6 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 2,
     },
-    // ── NEW: badge on tab ──
     tabBadge: {
         backgroundColor: colors.rose,
         borderRadius: radius.full,
@@ -500,10 +621,34 @@ const styles = StyleSheet.create({
         paddingHorizontal: scale(4),
     },
 
+    // Filter Chips
+    filterChipsRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: spacingX._20,
+        paddingTop: spacingY._12,
+        gap: scale(8),
+    },
+    filterChip: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(4),
+        paddingHorizontal: scale(12),
+        paddingVertical: verticalScale(6),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral100,
+        borderWidth: 1,
+        borderColor: "transparent",
+    },
+    filterChipActive: {
+        backgroundColor: colors.primaryLight,
+        borderColor: colors.primary,
+    },
+
     // Search
     searchRow: {
         paddingHorizontal: spacingX._20,
-        paddingTop: spacingY._15,
+        paddingTop: spacingY._12,
     },
     searchBar: {
         flexDirection: "row",
@@ -511,7 +656,7 @@ const styles = StyleSheet.create({
         backgroundColor: colors.neutral100,
         borderRadius: radius.full,
         paddingHorizontal: spacingX._15,
-        paddingVertical: verticalScale(10),
+        paddingVertical: verticalScale(9),
         gap: spacingX._10,
         borderWidth: 1,
         borderColor: colors.neutral100,
@@ -538,27 +683,27 @@ const styles = StyleSheet.create({
     // Count
     countRow: {
         paddingHorizontal: spacingX._20,
-        paddingTop: spacingY._12,
-        paddingBottom: spacingY._5,
-        minHeight: verticalScale(28),
+        paddingTop: spacingY._10,
+        paddingBottom: verticalScale(2),
+        minHeight: verticalScale(24),
     },
 
     // List
     listContent: {
         paddingHorizontal: spacingX._20,
-        paddingTop: spacingY._10,
-        paddingBottom: verticalScale(100),
+        paddingTop: spacingY._5,
+        paddingBottom: verticalScale(110),
     },
 
-    // Empty
+    // Empty state
     emptyState: {
         alignItems: "center",
-        gap: spacingY._12,
-        paddingTop: verticalScale(60),
+        gap: spacingY._10,
+        paddingTop: verticalScale(50),
         paddingHorizontal: spacingX._30,
     },
     emptyIconWrap: {
-        backgroundColor: colors.neutral100,
+        backgroundColor: colors.primaryLight,
         padding: spacingY._20,
         borderRadius: radius._30,
         marginBottom: spacingY._5,
@@ -571,14 +716,15 @@ const styles = StyleSheet.create({
     // FAB
     fabWrap: {
         position: "absolute",
-        bottom: verticalScale(30),
-        right: verticalScale(25),
+        bottom: verticalScale(28),
+        right: scale(24),
     },
     fab: {
-        height: verticalScale(54),
-        width: verticalScale(54),
+        height: verticalScale(56),
+        width: verticalScale(56),
         borderRadius: radius.full,
-        shadowColor: colors.primary,
+        backgroundColor: colors.primary,
+        shadowColor: colors.primaryDark,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.35,
         shadowRadius: 10,

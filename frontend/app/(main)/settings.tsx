@@ -639,8 +639,11 @@ export default function SettingsScreen() {
                 </SectionCard>
 
                 <View style={styles.footer}>
-                    <Typo size={11.5} color={colors.neutral400}>
-                        Bubbly v1.0.0 · Made with care
+                    <Typo size={12} color={colors.neutral400} fontWeight="600">
+                        Bubbly v3.0.0 · Release Edition
+                    </Typo>
+                    <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
+                        Made with care for seamless connection
                     </Typo>
                 </View>
             </ScrollView>

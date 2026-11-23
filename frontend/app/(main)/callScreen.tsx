@@ -30,28 +30,38 @@ import {
 
 type CallState = 'connecting' | 'ringing' | 'connected' | 'ended';
 
-// ── Pulsing Ring Component ──
-const PulsingRing = ({ size }: { size: number }) => {
+// ── Multi-Layer Acoustic Pulsing Rings ──
+const AcousticRings = ({ size }: { size: number }) => {
     const scale1 = useSharedValue(1);
     const opacity1 = useSharedValue(0.6);
     const scale2 = useSharedValue(1);
     const opacity2 = useSharedValue(0.4);
+    const scale3 = useSharedValue(1);
+    const opacity3 = useSharedValue(0.2);
 
     useEffect(() => {
         scale1.value = withRepeat(
-            withTiming(1.35, { duration: 1500, easing: Easing.out(Easing.ease) }),
+            withTiming(1.35, { duration: 1600, easing: Easing.out(Easing.ease) }),
             -1, false
         );
         opacity1.value = withRepeat(
-            withTiming(0, { duration: 1500, easing: Easing.out(Easing.ease) }),
+            withTiming(0, { duration: 1600, easing: Easing.out(Easing.ease) }),
             -1, false
         );
         scale2.value = withRepeat(
-            withTiming(1.6, { duration: 1500, easing: Easing.out(Easing.ease) }),
+            withTiming(1.65, { duration: 1600, easing: Easing.out(Easing.ease) }),
             -1, false
         );
         opacity2.value = withRepeat(
-            withTiming(0, { duration: 1500, easing: Easing.out(Easing.ease) }),
+            withTiming(0, { duration: 1600, easing: Easing.out(Easing.ease) }),
+            -1, false
+        );
+        scale3.value = withRepeat(
+            withTiming(1.95, { duration: 1600, easing: Easing.out(Easing.ease) }),
+            -1, false
+        );
+        opacity3.value = withRepeat(
+            withTiming(0, { duration: 1600, easing: Easing.out(Easing.ease) }),
             -1, false
         );
     }, []);
@@ -76,8 +86,19 @@ const PulsingRing = ({ size }: { size: number }) => {
         opacity: opacity2.value,
     }));
 
+    const ring3Style = useAnimatedStyle(() => ({
+        position: 'absolute',
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: colors.primary,
+        transform: [{ scale: scale3.value }],
+        opacity: opacity3.value,
+    }));
+
     return (
         <>
+            <Animated.View style={ring3Style} />
             <Animated.View style={ring2Style} />
             <Animated.View style={ring1Style} />
         </>
@@ -115,7 +136,6 @@ const CallScreen = () => {
     const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // ─── All original functions unchanged ───
     useEffect(() => {
         initAgora();
         onCallEnded(handleRemoteCallEnded);
@@ -174,15 +194,15 @@ const CallScreen = () => {
                     });
                     setCallState(isOutgoingCall ? "ringing" : "connecting");
                 },
-                onUserJoined: (_connection, remoteUid) => {
-                    console.log("Agora remote user joined:", remoteUid);
-                    setRemoteUid(remoteUid);
+                onUserJoined: (_connection, rUid) => {
+                    console.log("Agora remote user joined:", rUid);
+                    setRemoteUid(rUid);
                     setCallState("connected");
                     callConnected(currentCallId);
                     startDurationTimer();
                 },
-                onUserOffline: (_connection, remoteUid) => {
-                    console.log("Agora remote user left:", remoteUid);
+                onUserOffline: (_connection, rUid) => {
+                    console.log("Agora remote user left:", rUid);
                     setRemoteUid(null);
                     if (!hasCleanedUp.current) handleCallEnd();
                 },
@@ -308,7 +328,7 @@ const CallScreen = () => {
         if (!isVideo) return;
         setShowControls(prev => !prev);
         if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
-        controlsTimerRef.current = setTimeout(() => setShowControls(false), 4000);
+        controlsTimerRef.current = setTimeout(() => setShowControls(false), 4500);
     };
 
     const formatDuration = (secs: number) => {
@@ -322,7 +342,7 @@ const CallScreen = () => {
     const getStatusText = () => {
         switch (callState) {
             case 'ringing': return isOutgoingCall ? 'Ringing...' : 'Incoming call...';
-            case 'connecting': return 'Connecting...';
+            case 'connecting': return 'Connecting secure channel...';
             case 'connected': return formatDuration(duration);
             case 'ended': return 'Call ended';
         }
@@ -351,25 +371,28 @@ const CallScreen = () => {
                     />
                 ) : (
                     <LinearGradient
-                        colors={['#1a1a1a', '#2d2d2d', '#1a1a1a']}
+                        colors={['#18181b', '#09090b', '#18181b']}
                         style={styles.waitingBg}
                     >
                         <View style={styles.waitingAvatarContainer}>
-                            <PulsingRing size={scale(130)} />
+                            <AcousticRings size={scale(136)} />
                             <View style={styles.waitingAvatarBorder}>
-                                <Avatar size={scale(110)} uri={remoteUserAvatar as string} />
+                                <Avatar size={scale(114)} uri={remoteUserAvatar as string} />
                             </View>
                         </View>
-                        <Typo size={22} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._20 }}>
+                        <Typo size={24} fontWeight="800" color={colors.white} style={{ marginTop: spacingY._20 }}>
                             {remoteUserName}
                         </Typo>
-                        <Typo size={14} color={'rgba(255,255,255,0.55)'} style={{ marginTop: spacingY._5 }}>
-                            {getStatusText()}
-                        </Typo>
+                        <View style={styles.connectingPill}>
+                            <View style={styles.pulsingDot} />
+                            <Typo size={13} color={colors.primary} fontWeight="600">
+                                {getStatusText()}
+                            </Typo>
+                        </View>
                     </LinearGradient>
                 )}
 
-                {/* Local video small preview */}
+                {/* Local video small PIP preview */}
                 {!isVideoOff && localVideoReady && (
                     <Animated.View entering={FadeIn.duration(300)} style={styles.localVideoWrap}>
                         <RtcSurfaceView
@@ -377,9 +400,9 @@ const CallScreen = () => {
                             canvas={{ uid: 0, sourceType: VideoSourceType.VideoSourceCamera }}
                             zOrderMediaOverlay={true}
                         />
-                        {/* Flip camera shortcut on preview */}
+                        {/* Flip camera shortcut on PIP preview */}
                         <TouchableOpacity style={styles.flipPreviewBtn} onPress={switchCamera} activeOpacity={0.8}>
-                            <Icons.CameraRotate size={14} color={colors.white} weight="fill" />
+                            <Icons.CameraRotate size={16} color={colors.white} weight="fill" />
                         </TouchableOpacity>
                     </Animated.View>
                 )}
@@ -392,34 +415,45 @@ const CallScreen = () => {
                         style={StyleSheet.absoluteFill}
                         pointerEvents="box-none"
                     >
-                        {/* Top gradient */}
+                        {/* Top glass header */}
                         <LinearGradient
-                            colors={['rgba(0,0,0,0.75)', 'transparent']}
+                            colors={['rgba(0,0,0,0.85)', 'rgba(0,0,0,0.4)', 'transparent']}
                             style={styles.videoTopGradient}
                         >
                             <View style={styles.videoTopBar}>
                                 <View style={styles.videoTopLeft}>
-                                    {remoteUid !== null && (
-                                        <View style={styles.connectedDot} />
-                                    )}
+                                    <View style={styles.videoHeaderAvatarWrap}>
+                                        <Avatar size={38} uri={remoteUserAvatar as string} />
+                                    </View>
                                     <View>
-                                        <Typo size={18} fontWeight="700" color={colors.white}>
+                                        <Typo size={18} fontWeight="800" color={colors.white}>
                                             {remoteUserName}
                                         </Typo>
-                                        <Typo size={13} color={callState === 'connected' ? colors.primary : 'rgba(255,255,255,0.6)'}>
-                                            {getStatusText()}
-                                        </Typo>
+                                        <View style={styles.videoStatusRow}>
+                                            {callState === 'connected' && (
+                                                <View style={styles.connectedDot} />
+                                            )}
+                                            <Typo size={12} color={callState === 'connected' ? colors.primary : 'rgba(255,255,255,0.7)'} fontWeight="600">
+                                                {getStatusText()}
+                                            </Typo>
+                                        </View>
                                     </View>
+                                </View>
+
+                                {/* Quality badge */}
+                                <View style={styles.hdBadge}>
+                                    <Icons.ShieldCheck size={14} color={colors.primary} weight="fill" />
+                                    <Typo size={11} color={colors.white} fontWeight="700">HD · E2EE</Typo>
                                 </View>
                             </View>
                         </LinearGradient>
 
-                        {/* Bottom gradient + controls */}
+                        {/* Bottom dock controls */}
                         <LinearGradient
-                            colors={['transparent', 'rgba(0,0,0,0.85)']}
+                            colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.92)']}
                             style={styles.videoBottomGradient}
                         >
-                            <View style={styles.videoBottomBar}>
+                            <View style={styles.videoGlassDock}>
                                 <VideoControlButton
                                     onPress={toggleMute}
                                     active={isMuted}
@@ -429,7 +463,7 @@ const CallScreen = () => {
                                             : <Icons.Microphone size={22} color={colors.white} weight="fill" />
                                     }
                                     label={isMuted ? 'Unmute' : 'Mute'}
-                                    activeColor="rgba(239,68,68,0.7)"
+                                    activeColor="rgba(239,68,68,0.85)"
                                 />
                                 <VideoControlButton
                                     onPress={toggleVideo}
@@ -440,12 +474,19 @@ const CallScreen = () => {
                                             : <Icons.VideoCamera size={22} color={colors.white} weight="fill" />
                                     }
                                     label={isVideoOff ? 'Show' : 'Hide'}
-                                    activeColor="rgba(239,68,68,0.7)"
+                                    activeColor="rgba(239,68,68,0.85)"
                                 />
                                 <VideoControlButton
                                     onPress={switchCamera}
                                     icon={<Icons.CameraRotate size={22} color={colors.white} weight="fill" />}
                                     label="Flip"
+                                />
+                                <VideoControlButton
+                                    onPress={toggleSpeaker}
+                                    active={isSpeakerOn}
+                                    icon={<Icons.SpeakerHigh size={22} color={isSpeakerOn ? colors.neutral900 : colors.white} weight="fill" />}
+                                    label="Speaker"
+                                    activeColor={colors.primary}
                                 />
 
                                 {/* End Call */}
@@ -455,9 +496,9 @@ const CallScreen = () => {
                                         onPress={handleCallEnd}
                                         activeOpacity={0.85}
                                     >
-                                        <Icons.PhoneSlash size={verticalScale(26)} color={colors.white} weight="fill" />
+                                        <Icons.PhoneSlash size={verticalScale(24)} color={colors.white} weight="fill" />
                                     </TouchableOpacity>
-                                    <Typo size={11} color={'rgba(255,255,255,0.7)'} fontWeight="500">End</Typo>
+                                    <Typo size={11} color={'rgba(255,255,255,0.75)'} fontWeight="600">End</Typo>
                                 </View>
                             </View>
                         </LinearGradient>
@@ -472,60 +513,70 @@ const CallScreen = () => {
     // ─────────────────────────────────────────────
     return (
         <LinearGradient
-            colors={['#1C1917', '#292524', '#1C1917']}
+            colors={['#18181b', '#09090b', '#18181b']}
             style={styles.voiceContainer}
         >
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
             <Animated.View entering={FadeIn.duration(500)} style={styles.voiceContent}>
 
-                {/* ── Top section: name + status ── */}
+                {/* ── Top section: Type badge, name, live status ── */}
                 <View style={styles.voiceTopSection}>
-                    <Typo size={13} color={colors.primary} fontWeight="600" style={styles.callTypeLabel}>
-                        {isVideo ? '📹 Video Call' : '🔊 Voice Call'}
-                    </Typo>
-                    <Typo size={26} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._5 }}>
+                    <View style={styles.callTypeHeaderBadge}>
+                        <Icons.PhoneCall size={14} color={colors.primary} weight="fill" />
+                        <Typo size={12} color={colors.primary} fontWeight="700" style={{ letterSpacing: 0.5 }}>
+                            BUBBLY HD AUDIO
+                        </Typo>
+                    </View>
+
+                    <Typo size={28} fontWeight="800" color={colors.white} style={{ marginTop: spacingY._12 }}>
                         {remoteUserName}
                     </Typo>
-                    <Typo size={14} color={'rgba(255,255,255,0.55)'} style={{ marginTop: spacingY._5 }}>
-                        {getStatusText()}
-                    </Typo>
+
+                    <View style={styles.liveDurationBadge}>
+                        {callState === 'connected' ? (
+                            <View style={styles.liveDot} />
+                        ) : (
+                            <View style={styles.pulsingDot} />
+                        )}
+                        <Typo size={14} color={callState === 'connected' ? colors.primary : 'rgba(255,255,255,0.65)'} fontWeight="600">
+                            {getStatusText()}
+                        </Typo>
+                    </View>
                 </View>
 
-                {/* ── Avatar with pulsing ring ── */}
+                {/* ── Center Avatar with Multi-Layer Acoustic Rings ── */}
                 <View style={styles.voiceAvatarSection}>
-                    {isConnecting && <PulsingRing size={scale(148)} />}
+                    {isConnecting && <AcousticRings size={scale(154)} />}
                     <View style={[
                         styles.voiceAvatarBorder,
                         callState === 'connected' && styles.voiceAvatarBorderConnected
                     ]}>
-                        <Avatar size={scale(130)} uri={remoteUserAvatar as string} />
+                        <Avatar size={scale(134)} uri={remoteUserAvatar as string} />
                     </View>
                 </View>
 
-                {/* ── Encrypted label like WhatsApp ── */}
-                <View style={styles.encryptedRow}>
-                    <Icons.LockSimple size={12} color={'rgba(255,255,255,0.4)'} weight="fill" />
-                    <Typo size={11} color={'rgba(255,255,255,0.4)'} style={{ marginLeft: 4 }}>
-                        End-to-end encrypted
+                {/* ── Security / Encryption Badge ── */}
+                <View style={styles.encryptedCard}>
+                    <Icons.LockKey size={13} color={colors.primary} weight="fill" />
+                    <Typo size={11} color={'rgba(255,255,255,0.65)'} fontWeight="600" style={{ marginLeft: 6 }}>
+                        End-to-End Encrypted HD Call
                     </Typo>
                 </View>
 
-                {/* ── Controls ── */}
-                <View style={styles.voiceControlsContainer}>
-                    {/* Row 1: secondary controls */}
+                {/* ── Floating Controls Dock ── */}
+                <View style={styles.voiceDockCard}>
                     <View style={styles.voiceControlsRow}>
                         <VoiceControlButton
                             onPress={toggleMute}
                             active={isMuted}
                             icon={
                                 isMuted
-                                    ? <Icons.MicrophoneSlash size={24} color={isMuted ? colors.neutral900 : colors.white} weight="fill" />
+                                    ? <Icons.MicrophoneSlash size={24} color={colors.white} weight="fill" />
                                     : <Icons.Microphone size={24} color={colors.white} weight="fill" />
                             }
                             label={isMuted ? 'Unmute' : 'Mute'}
-                            activeColor={colors.primary}
-                            activeIconColor={colors.neutral900}
+                            activeColor="rgba(239,68,68,0.85)"
                         />
                         <VoiceControlButton
                             onPress={toggleSpeaker}
@@ -539,24 +590,21 @@ const CallScreen = () => {
                             }
                             label="Speaker"
                             activeColor={colors.primary}
-                            activeIconColor={colors.neutral900}
                         />
                     </View>
 
-                    {/* End call button */}
+                    {/* Prominent End Call Button */}
                     <View style={styles.endCallRow}>
-                        <View style={{ alignItems: 'center', gap: spacingY._7 }}>
-                            <TouchableOpacity
-                                style={styles.endCallBtnLarge}
-                                onPress={handleCallEnd}
-                                activeOpacity={0.85}
-                            >
-                                <Icons.PhoneSlash size={verticalScale(30)} color={colors.white} weight="fill" />
-                            </TouchableOpacity>
-                            <Typo size={12} color={'rgba(255,255,255,0.6)'} fontWeight="500">
-                                End call
-                            </Typo>
-                        </View>
+                        <TouchableOpacity
+                            style={styles.endCallBtnLarge}
+                            onPress={handleCallEnd}
+                            activeOpacity={0.85}
+                        >
+                            <Icons.PhoneSlash size={verticalScale(28)} color={colors.white} weight="fill" />
+                        </TouchableOpacity>
+                        <Typo size={12} color={'rgba(255,255,255,0.7)'} fontWeight="600">
+                            End Call
+                        </Typo>
                     </View>
                 </View>
             </Animated.View>
@@ -566,7 +614,7 @@ const CallScreen = () => {
 
 // ── Video Control Button ──
 const VideoControlButton = ({
-    onPress, icon, label, active = false, activeColor = 'rgba(255,255,255,0.35)',
+    onPress, icon, label, active = false, activeColor = 'rgba(255,255,255,0.3)',
 }: {
     onPress: () => void;
     icon: React.ReactNode;
@@ -582,20 +630,19 @@ const VideoControlButton = ({
         >
             {icon}
         </TouchableOpacity>
-        <Typo size={11} color={'rgba(255,255,255,0.75)'} fontWeight="500">{label}</Typo>
+        <Typo size={11} color={'rgba(255,255,255,0.75)'} fontWeight="600">{label}</Typo>
     </View>
 );
 
 // ── Voice Control Button ──
 const VoiceControlButton = ({
-    onPress, icon, label, active = false, activeColor, activeIconColor,
+    onPress, icon, label, active = false, activeColor,
 }: {
     onPress: () => void;
     icon: React.ReactNode;
     label: string;
     active?: boolean;
     activeColor?: string;
-    activeIconColor?: string;
 }) => (
     <View style={controlStyles.wrap}>
         <TouchableOpacity
@@ -608,7 +655,7 @@ const VoiceControlButton = ({
         >
             {icon}
         </TouchableOpacity>
-        <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="500">{label}</Typo>
+        <Typo size={12} color={'rgba(255,255,255,0.7)'} fontWeight="600">{label}</Typo>
     </View>
 );
 
@@ -618,14 +665,14 @@ const controlStyles = StyleSheet.create({
         gap: spacingY._7,
     },
     videoBtn: {
-        width: verticalScale(56),
-        height: verticalScale(56),
+        width: verticalScale(54),
+        height: verticalScale(54),
         borderRadius: radius.full,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(255,255,255,0.12)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.15)',
     },
     voiceBtn: {
         width: verticalScale(64),
@@ -633,8 +680,8 @@ const controlStyles = StyleSheet.create({
         borderRadius: radius.full,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        borderWidth: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1.5,
         borderColor: 'rgba(255,255,255,0.15)',
     },
 });
@@ -654,8 +701,8 @@ const styles = StyleSheet.create({
         gap: spacingY._10,
     },
     waitingAvatarContainer: {
-        width: scale(130),
-        height: scale(130),
+        width: scale(136),
+        height: scale(136),
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -664,37 +711,58 @@ const styles = StyleSheet.create({
         borderWidth: 3,
         borderColor: colors.primary,
         overflow: 'hidden',
+        padding: 3,
+    },
+    connectingPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._7,
+        backgroundColor: 'rgba(245,158,11,0.15)',
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._7,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: 'rgba(245,158,11,0.3)',
+        marginTop: spacingY._7,
+    },
+    pulsingDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.primary,
     },
     localVideoWrap: {
         position: 'absolute',
         top: verticalScale(Platform.OS === 'ios' ? 110 : 80),
         right: spacingX._15,
-        width: scale(95),
-        height: verticalScale(140),
+        width: scale(100),
+        height: verticalScale(146),
         borderRadius: radius._15,
         overflow: 'hidden',
         borderWidth: 2,
         borderColor: colors.primary,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+        elevation: 10,
     },
     localVideo: { flex: 1 },
     flipPreviewBtn: {
         position: 'absolute',
         bottom: spacingY._7,
         right: spacingX._7,
-        width: scale(26),
-        height: scale(26),
+        width: scale(28),
+        height: scale(28),
         borderRadius: radius.full,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.65)',
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     videoTopGradient: {
-        paddingTop: verticalScale(Platform.OS === 'ios' ? 60 : 40),
+        paddingTop: verticalScale(Platform.OS === 'ios' ? 60 : 42),
         paddingHorizontal: spacingX._20,
         paddingBottom: spacingY._30,
     },
@@ -706,32 +774,60 @@ const styles = StyleSheet.create({
     videoTopLeft: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacingX._10,
+        gap: spacingX._12,
+    },
+    videoHeaderAvatarWrap: {
+        borderRadius: radius.full,
+        borderWidth: 1.5,
+        borderColor: colors.primary,
+        padding: 2,
+    },
+    videoStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 2,
     },
     connectedDot: {
-        width: scale(8),
-        height: scale(8),
+        width: scale(7),
+        height: scale(7),
         borderRadius: radius.full,
-        backgroundColor: '#4ade80',
+        backgroundColor: '#22c55e',
+    },
+    hdBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        paddingHorizontal: spacingX._10,
+        paddingVertical: spacingY._5,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     videoBottomGradient: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        paddingBottom: verticalScale(Platform.OS === 'ios' ? 50 : 35),
-        paddingTop: spacingY._40,
+        paddingBottom: verticalScale(Platform.OS === 'ios' ? 45 : 30),
+        paddingTop: spacingY._30,
+        paddingHorizontal: spacingX._15,
     },
-    videoBottomBar: {
+    videoGlassDock: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacingX._20,
-        paddingHorizontal: spacingX._20,
+        justifyContent: 'space-around',
+        backgroundColor: 'rgba(24,24,27,0.85)',
+        borderRadius: radius._24,
+        paddingVertical: spacingY._15,
+        paddingHorizontal: spacingX._15,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
     },
     endCallBtn: {
-        width: verticalScale(62),
-        height: verticalScale(62),
+        width: verticalScale(54),
+        height: verticalScale(54),
         borderRadius: radius.full,
         backgroundColor: '#ef4444',
         alignItems: 'center',
@@ -739,7 +835,7 @@ const styles = StyleSheet.create({
         shadowColor: '#ef4444',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.6,
-        shadowRadius: 12,
+        shadowRadius: 10,
         elevation: 8,
     },
 
@@ -750,61 +846,98 @@ const styles = StyleSheet.create({
     voiceContent: {
         flex: 1,
         alignItems: 'center',
+        justifyContent: 'space-between',
         paddingTop: verticalScale(Platform.OS === 'ios' ? 70 : 50),
-        paddingBottom: verticalScale(50),
-        paddingHorizontal: spacingX._30,
+        paddingBottom: verticalScale(45),
+        paddingHorizontal: spacingX._25,
     },
     voiceTopSection: {
         alignItems: 'center',
     },
-    callTypeLabel: {
-        letterSpacing: 0.5,
+    callTypeHeaderBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(245,158,11,0.12)',
+        paddingHorizontal: spacingX._12,
+        paddingVertical: spacingY._6,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: 'rgba(245,158,11,0.25)',
+    },
+    liveDurationBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._6,
+        borderRadius: radius.full,
+        marginTop: spacingY._10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    liveDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#22c55e',
     },
     voiceAvatarSection: {
-        marginTop: verticalScale(50),
-        marginBottom: verticalScale(30),
-        width: scale(148),
-        height: scale(148),
+        marginVertical: verticalScale(30),
+        width: scale(154),
+        height: scale(154),
         alignItems: 'center',
         justifyContent: 'center',
     },
     voiceAvatarBorder: {
         borderRadius: radius.full,
         borderWidth: 3,
-        borderColor: 'rgba(250,204,21,0.3)',
+        borderColor: 'rgba(245,158,11,0.3)',
         overflow: 'hidden',
-        padding: 3,
+        padding: 4,
     },
     voiceAvatarBorderConnected: {
         borderColor: colors.primary,
         shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 16,
-        elevation: 10,
+        shadowOpacity: 0.7,
+        shadowRadius: 20,
+        elevation: 12,
     },
-    encryptedRow: {
+    encryptedCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: verticalScale(55),
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._7,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        marginBottom: spacingY._15,
     },
-    voiceControlsContainer: {
+    voiceDockCard: {
         width: '100%',
-        alignItems: 'center',
-        gap: spacingY._30,
+        backgroundColor: 'rgba(39,39,42,0.65)',
+        borderRadius: radius._30,
+        paddingVertical: spacingY._20,
+        paddingHorizontal: spacingX._20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        gap: spacingY._20,
     },
     voiceControlsRow: {
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: spacingX._35,
+        gap: spacingX._40,
     },
     endCallRow: {
         alignItems: 'center',
-        marginTop: spacingY._10,
+        gap: spacingY._7,
     },
     endCallBtnLarge: {
-        width: verticalScale(72),
-        height: verticalScale(72),
+        width: verticalScale(68),
+        height: verticalScale(68),
         borderRadius: radius.full,
         backgroundColor: '#ef4444',
         alignItems: 'center',
