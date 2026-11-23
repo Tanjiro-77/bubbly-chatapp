@@ -44,8 +44,12 @@
         "UIBackgroundModes": [
           "audio",
           "voip",
+          "fetch",
+          "audio",
+          "voip",
           "fetch"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "web": {
