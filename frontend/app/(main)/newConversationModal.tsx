@@ -1,4 +1,4 @@
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform } from 'react-native';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
 import React, { useEffect, useState, useMemo } from 'react';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ScreenWrapper from "../../components/ScreenWrapper";
@@ -12,6 +12,7 @@ import Button from "../../components/Button";
 import { scale, verticalScale } from "../../utils/styling";
 import { getContacts, newConversation } from "../../socket/socketEvents";
 import { uploadFileToCloudinary } from "../../services/imageService";
+import { fetchDevicePhoneContacts, syncContactsWithBackend, PhoneContactItem, MatchedContactItem } from "../../services/contactService";
 import * as Icons from 'phosphor-react-native';
 import Animated, { FadeInDown, FadeInUp, FadeIn, FadeOut } from 'react-native-reanimated';
 
@@ -19,6 +20,7 @@ const NewConversationModal = () => {
     const { isGroup } = useLocalSearchParams();
     const isGroupMode = isGroup == '1';
     const router = useRouter();
+    const { user: currentUser, token } = useAuth();
     const [contacts, setContacts] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [groupAvatar, setGroupAvatar] = useState<{ uri: string } | null>(null);
@@ -26,7 +28,12 @@ const NewConversationModal = () => {
     const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    const { user: currentUser } = useAuth();
+    // ── Phone Contacts Sync State ──
+    const [phoneContacts, setPhoneContacts] = useState<PhoneContactItem[]>([]);
+    const [matchedPhoneContacts, setMatchedPhoneContacts] = useState<MatchedContactItem[]>([]);
+    const [isSyncingPhone, setIsSyncingPhone] = useState(false);
+    const [hasSyncedPhone, setHasSyncedPhone] = useState(false);
+    const [contactsTab, setContactsTab] = useState<'all' | 'phone'>('all');
 
     useEffect(() => {
         getContacts(processGetContacts);
@@ -125,6 +132,75 @@ const NewConversationModal = () => {
             (c.email && c.email.toLowerCase().includes(q))
         );
     }, [contacts, searchQuery]);
+
+    const handleSyncPhoneContacts = async () => {
+        if (!token) {
+            Alert.alert("Authentication", "Please log in to sync contacts.");
+            return;
+        }
+
+        setIsSyncingPhone(true);
+        try {
+            const { status, contacts: fetchedList } = await fetchDevicePhoneContacts();
+            if (status !== 'granted') {
+                Alert.alert(
+                    "Contact Access Needed",
+                    "Please allow contact access in your phone settings to discover which friends are on Bubbly."
+                );
+                setIsSyncingPhone(false);
+                return;
+            }
+
+            setPhoneContacts(fetchedList);
+
+            if (fetchedList.length === 0) {
+                Alert.alert("No Contacts Found", "No contacts with valid phone numbers were found on your device.");
+                setIsSyncingPhone(false);
+                return;
+            }
+
+            const numbers = fetchedList.map(c => c.phoneNumber);
+            const syncResult = await syncContactsWithBackend(numbers, token);
+            setMatchedPhoneContacts(syncResult.matchedContacts);
+            setHasSyncedPhone(true);
+            setContactsTab('phone');
+
+            if (syncResult.matchedContacts.length > 0) {
+                Alert.alert(
+                    "Contacts Synced 🎉",
+                    `Found ${syncResult.matchedContacts.length} ${syncResult.matchedContacts.length === 1 ? 'friend' : 'friends'} from your phone book on Bubbly!`
+                );
+            } else {
+                Alert.alert(
+                    "Contacts Synced",
+                    "None of your phone contacts have joined Bubbly yet. You can invite them using the Invite button below!"
+                );
+            }
+        } catch (err: any) {
+            console.error("handleSyncPhoneContacts error:", err);
+            Alert.alert("Sync Error", err.message || "Failed to sync device contacts");
+        } finally {
+            setIsSyncingPhone(false);
+        }
+    };
+
+    const handleInviteContact = async (c: PhoneContactItem) => {
+        try {
+            await Share.share({
+                title: "Invite to Bubbly",
+                message: `Hey ${c.name}! Join me on Bubbly Messenger to chat, make crystal-clear calls, and share stories: https://bubbly.chat`,
+            });
+        } catch (_) {}
+    };
+
+    // Filter phone contacts based on search query
+    const filteredPhoneContacts = useMemo(() => {
+        if (!searchQuery.trim()) return phoneContacts;
+        const q = searchQuery.toLowerCase().trim();
+        return phoneContacts.filter((c: PhoneContactItem) =>
+            c.name.toLowerCase().includes(q) || c.phoneNumber.includes(q)
+        );
+    }, [phoneContacts, searchQuery]);
 
     // Selected user objects for horizontal chips carousel
     const selectedUsers = useMemo(() => {
@@ -257,6 +333,61 @@ const NewConversationModal = () => {
                     </Animated.View>
                 )}
 
+                {/* ── Device Contacts Sync Banner ── */}
+                <TouchableOpacity
+                    style={styles.syncCard}
+                    onPress={handleSyncPhoneContacts}
+                    activeOpacity={0.8}
+                    disabled={isSyncingPhone}
+                >
+                    <View style={styles.syncIconWrap}>
+                        <Icons.AddressBook size={20} color={colors.primaryDark} weight="fill" />
+                    </View>
+                    <View style={{ flex: 1, gap: 2 }}>
+                        <Typo size={13.5} fontWeight="700" color={colors.neutral900}>
+                            {isSyncingPhone ? "Scanning Device Contacts..." : "Sync Phone Contacts"}
+                        </Typo>
+                        <Typo size={11} color={colors.neutral500}>
+                            {hasSyncedPhone
+                                ? `${matchedPhoneContacts.length} friends found on Bubbly`
+                                : "Discover which friends in your address book use Bubbly"}
+                        </Typo>
+                    </View>
+                    {isSyncingPhone ? (
+                        <ActivityIndicator size="small" color={colors.neutral900} />
+                    ) : (
+                        <View style={styles.syncActionBadge}>
+                            <Typo size={11.5} fontWeight="800" color={colors.neutral900}>
+                                {hasSyncedPhone ? "Re-sync" : "Sync Now"}
+                            </Typo>
+                        </View>
+                    )}
+                </TouchableOpacity>
+
+                {/* ── Segmented Tabs (All Users vs Phone Contacts) ── */}
+                {hasSyncedPhone && (
+                    <View style={styles.segmentedTabs}>
+                        <TouchableOpacity
+                            style={[styles.tabBtn, contactsTab === 'all' && styles.tabBtnActive]}
+                            onPress={() => setContactsTab('all')}
+                            activeOpacity={0.7}
+                        >
+                            <Typo size={12.5} fontWeight={contactsTab === 'all' ? "700" : "500"} color={contactsTab === 'all' ? colors.neutral900 : colors.neutral400}>
+                                All Users ({filteredContacts.length})
+                            </Typo>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.tabBtn, contactsTab === 'phone' && styles.tabBtnActive]}
+                            onPress={() => setContactsTab('phone')}
+                            activeOpacity={0.7}
+                        >
+                            <Typo size={12.5} fontWeight={contactsTab === 'phone' ? "700" : "500"} color={contactsTab === 'phone' ? colors.neutral900 : colors.neutral400}>
+                                Phone Book ({matchedPhoneContacts.length} on Bubbly)
+                            </Typo>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 {/* ── Contacts Section Header ── */}
                 <Animated.View
                     entering={FadeInDown.duration(500).delay(150).springify()}
@@ -268,10 +399,14 @@ const NewConversationModal = () => {
                         color={colors.neutral400}
                         style={styles.sectionLabel}
                     >
-                        {isGroupMode ? "SELECT MEMBERS" : "ALL CONTACTS"}
+                        {isGroupMode
+                            ? "SELECT MEMBERS"
+                            : contactsTab === 'phone'
+                            ? "PHONE ADDRESS BOOK"
+                            : "ALL CONTACTS"}
                     </Typo>
                     <Typo size={11} color={colors.neutral400} fontWeight="600">
-                        {filteredContacts.length} available
+                        {contactsTab === 'phone' ? `${phoneContacts.length} phone contacts` : `${filteredContacts.length} available`}
                     </Typo>
                 </Animated.View>
 
@@ -283,7 +418,90 @@ const NewConversationModal = () => {
                         isGroupMode && selectedParticipants.length >= 2 && { paddingBottom: verticalScale(120) }
                     ]}
                 >
-                    {filteredContacts.length === 0 ? (
+                    {contactsTab === 'phone' ? (
+                        <View style={{ gap: spacingY._12 }}>
+                            {/* Matched Bubbly Friends */}
+                            <View style={styles.phoneGroupHeader}>
+                                <Icons.Sparkle size={15} color={colors.primaryDark} weight="fill" />
+                                <Typo size={12} fontWeight="800" color={colors.neutral700}>
+                                    FRIENDS ON BUBBLY ({matchedPhoneContacts.length})
+                                </Typo>
+                            </View>
+
+                            {matchedPhoneContacts.length === 0 ? (
+                                <View style={styles.phoneEmptySub}>
+                                    <Typo size={13} color={colors.neutral500} style={{ textAlign: "center" }}>
+                                        No phone contacts matched with registered Bubbly accounts yet.
+                                    </Typo>
+                                </View>
+                            ) : (
+                                matchedPhoneContacts.map((user: MatchedContactItem, index: number) => {
+                                    const isSelected = selectedParticipants.includes(user.id);
+                                    return (
+                                        <View key={user.id || index}>
+                                            <TouchableOpacity
+                                                style={[styles.contactRow, isSelected && styles.contactRowSelected]}
+                                                onPress={() => onSelectUser(user)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Avatar size={48} uri={user.avatar} />
+                                                <View style={styles.contactInfo}>
+                                                    <Typo size={15} fontWeight="700" color={colors.neutral900}>
+                                                        {user.name}
+                                                    </Typo>
+                                                    <Typo size={12} color={colors.neutral400}>
+                                                        {user.phoneNumber || user.email}
+                                                    </Typo>
+                                                </View>
+                                                <View style={styles.directArrowWrap}>
+                                                    <Icons.ChatCircleDots size={18} color={colors.primaryDark} weight="fill" />
+                                                </View>
+                                            </TouchableOpacity>
+                                            {index < matchedPhoneContacts.length - 1 && <View style={styles.divider} />}
+                                        </View>
+                                    );
+                                })
+                            )}
+
+                            {/* Other Phone Contacts to Invite */}
+                            <View style={[styles.phoneGroupHeader, { marginTop: spacingY._15 }]}>
+                                <Icons.AddressBook size={15} color={colors.neutral500} weight="fill" />
+                                <Typo size={12} fontWeight="800" color={colors.neutral500}>
+                                    INVITE TO BUBBLY ({filteredPhoneContacts.length})
+                                </Typo>
+                            </View>
+
+                            {filteredPhoneContacts.slice(0, 100).map((c: PhoneContactItem, index: number) => (
+                                <View key={c.id || index}>
+                                    <View style={styles.inviteRow}>
+                                        <View style={styles.inviteAvatar}>
+                                            <Typo size={16} fontWeight="700" color={colors.neutral700}>
+                                                {c.name.charAt(0).toUpperCase()}
+                                            </Typo>
+                                        </View>
+                                        <View style={styles.contactInfo}>
+                                            <Typo size={14.5} fontWeight="600" color={colors.neutral900}>
+                                                {c.name}
+                                            </Typo>
+                                            <Typo size={12} color={colors.neutral400}>
+                                                {c.phoneNumber}
+                                            </Typo>
+                                        </View>
+                                        <TouchableOpacity
+                                            style={styles.inviteBtn}
+                                            onPress={() => handleInviteContact(c)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Typo size={12} fontWeight="700" color={colors.primaryDark}>
+                                                Invite
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    </View>
+                                    {index < Math.min(filteredPhoneContacts.length, 100) - 1 && <View style={styles.divider} />}
+                                </View>
+                            ))}
+                        </View>
+                    ) : filteredContacts.length === 0 ? (
                         <View style={styles.emptyState}>
                             <View style={styles.emptyIconWrap}>
                                 <Icons.Users
@@ -613,5 +831,99 @@ const styles = StyleSheet.create({
         height: verticalScale(52),
         borderRadius: radius.full,
         backgroundColor: colors.primary,
+    },
+    syncCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._12,
+        backgroundColor: colors.white,
+        borderRadius: radius._20,
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._12,
+        borderWidth: 1,
+        borderColor: colors.cardBorderSubtle,
+        marginTop: spacingY._12,
+        marginBottom: spacingY._5,
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+        elevation: 2,
+    },
+    syncIconWrap: {
+        width: verticalScale(40),
+        height: verticalScale(40),
+        borderRadius: radius.full,
+        backgroundColor: colors.primaryLight,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    syncActionBadge: {
+        backgroundColor: colors.primary,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: spacingY._6,
+        borderRadius: radius.full,
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    segmentedTabs: {
+        flexDirection: 'row',
+        backgroundColor: colors.neutral100,
+        borderRadius: radius._12,
+        padding: 3,
+        marginTop: spacingY._10,
+        marginBottom: spacingY._5,
+        gap: 4,
+    },
+    tabBtn: {
+        flex: 1,
+        paddingVertical: verticalScale(8),
+        alignItems: 'center',
+        borderRadius: radius._10,
+    },
+    tabBtnActive: {
+        backgroundColor: colors.white,
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
+        elevation: 2,
+    },
+    phoneGroupHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._7,
+        paddingTop: spacingY._10,
+        paddingBottom: spacingY._5,
+    },
+    phoneEmptySub: {
+        paddingVertical: spacingY._15,
+        alignItems: 'center',
+    },
+    inviteRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: spacingY._10,
+        paddingHorizontal: spacingX._8,
+        gap: spacingX._12,
+    },
+    inviteAvatar: {
+        width: scale(42),
+        height: scale(42),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral200,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inviteBtn: {
+        paddingHorizontal: spacingX._12,
+        paddingVertical: spacingY._6,
+        backgroundColor: colors.primaryLight,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: colors.primary,
     },
 });

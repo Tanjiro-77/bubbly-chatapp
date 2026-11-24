@@ -1,6 +1,7 @@
 import {
     StyleSheet, View, KeyboardAvoidingView,
-    Platform, ScrollView, Pressable, Alert
+    Platform, ScrollView, Pressable, Alert,
+    TouchableOpacity, ActivityIndicator
 } from 'react-native'
 import React, { useRef, useState } from 'react'
 import ScreenWrapper from "../../components/ScreenWrapper"
@@ -14,6 +15,8 @@ import { useRouter } from "expo-router"
 import Button from "../../components/Button"
 import { useAuth } from "../../contexts/authContext"
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
+import GoogleIcon from "../../components/GoogleIcon"
+import { useGoogleAuth } from "../../hooks/useGoogleAuth"
 
 const Register = () => {
 
@@ -23,6 +26,7 @@ const Register = () => {
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
     const { signUp } = useAuth();
+    const { triggerGoogleSignIn, isLoading: isGoogleLoading } = useGoogleAuth();
 
     const handleSubmit = async () => {
         const cleanName = nameRef.current.trim();
@@ -160,6 +164,25 @@ const Register = () => {
                                     <View style={styles.dividerLine} />
                                 </View>
 
+                                {/* Google Sign-In Button */}
+                                <TouchableOpacity
+                                    style={styles.googleBtn}
+                                    onPress={triggerGoogleSignIn}
+                                    activeOpacity={0.8}
+                                    disabled={isGoogleLoading || isLoading}
+                                >
+                                    {isGoogleLoading ? (
+                                        <ActivityIndicator size="small" color={colors.neutral800} />
+                                    ) : (
+                                        <>
+                                            <GoogleIcon size={20} />
+                                            <Typo size={15} fontWeight="700" color={colors.neutral800}>
+                                                Continue with Google
+                                            </Typo>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+
                                 {/* Login link */}
                                 <View style={styles.footer}>
                                     <Typo size={14} color={colors.neutral500}>
@@ -206,15 +229,15 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         backgroundColor: colors.white,
-        borderTopLeftRadius: radius._50,
-        borderTopRightRadius: radius._50,
+        borderTopLeftRadius: radius._40,
+        borderTopRightRadius: radius._40,
         borderCurve: "continuous",
         paddingHorizontal: spacingX._25,
         paddingTop: spacingY._30,
     },
 
     form: {
-        gap: spacingY._30,
+        gap: spacingY._25,
         paddingBottom: spacingY._30,
     },
 
@@ -225,7 +248,7 @@ const styles = StyleSheet.create({
 
     // Fields
     fields: {
-        gap: spacingY._20,
+        gap: spacingY._18,
     },
     fieldGroup: {
         gap: spacingY._5,
@@ -237,12 +260,33 @@ const styles = StyleSheet.create({
 
     // CTA
     ctaBlock: {
-        gap: spacingY._20,
-        marginTop: spacingY._10,
+        gap: spacingY._18,
+        marginTop: spacingY._5,
     },
     signUpBtn: {
-        borderRadius: radius._12,
+        borderRadius: radius._15,
         height: verticalScale(52),
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        elevation: 5,
+    },
+    googleBtn: {
+        height: verticalScale(52),
+        borderRadius: radius._15,
+        backgroundColor: colors.white,
+        borderWidth: 1.5,
+        borderColor: colors.neutral200,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: spacingX._10,
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        elevation: 2,
     },
 
     // Divider

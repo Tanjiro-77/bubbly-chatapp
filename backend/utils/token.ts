@@ -14,6 +14,7 @@ export const generateToken = (user: UserProps | any) => {
             name: user.name,
             email: user.email,
             avatar: user.avatar || "",
+            phoneNumber: user.phoneNumber || "",
         }
     };
 

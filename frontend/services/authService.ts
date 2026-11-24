@@ -38,3 +38,20 @@ export const register = async (email: string, password: string, name: string, av
         throw new Error(msg);
     }
 };
+
+export const googleLogin = async (payload: {
+    idToken?: string;
+    email?: string;
+    name?: string;
+    avatar?: string;
+    googleId?: string;
+}): Promise<{ token: string; user?: any }> => {
+    try {
+        const response = await axios.post(`${API_URL}/auth/google`, payload);
+        return response.data;
+    } catch (error: any) {
+        console.log("googleLogin error:", error?.response?.data || error.message);
+        const msg = error?.response?.data?.msg || "Google login failed";
+        throw new Error(msg);
+    }
+};

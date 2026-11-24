@@ -1,7 +1,8 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { AuthContextProps, DecodedTokenProps, UserProps } from "../types";
 import { useRouter } from "expo-router";
-import { login, register } from "../services/authService";
+import { login, register, googleLogin } from "../services/authService";
+import { updateUserPhoneNumber } from "../services/contactService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode } from 'jwt-decode';
 import { connectSocket, disconnectSocket } from "../socket/socket";
@@ -12,9 +13,11 @@ export const AuthContext = createContext<AuthContextProps>({
     token: null,
     user: null,
     signIn: async () => { },
+    signInWithGoogle: async () => { },
     signUp: async () => { },
     signOut: async () => { },
     updateToken: async () => { },
+    updateUserPhone: async () => { },
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -87,6 +90,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         router.replace("/(main)/home");
     };
 
+    const signInWithGoogle = async (payload: {
+        idToken?: string;
+        email?: string;
+        name?: string;
+        avatar?: string;
+        googleId?: string;
+    }) => {
+        const response = await googleLogin(payload);
+        await updateToken(response.token);
+        await connectSocket();
+        await markOnboardingCompleted();
+        router.replace("/(main)/home");
+    };
+
+    const updateUserPhone = async (phoneNumber: string) => {
+        if (!token) return;
+        const res = await updateUserPhoneNumber(phoneNumber, token);
+        if (res.success) {
+            if (res.token) {
+                await updateToken(res.token);
+            } else if (res.phoneNumber) {
+                setUser(prev => prev ? { ...prev, phoneNumber: res.phoneNumber } : prev);
+            }
+        }
+    };
+
     const signUp = async (email: string, password: string, name: string, avatar?: string | null) => {
         const response = await register(email, password, name, avatar);
         await updateToken(response.token);
@@ -104,7 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ token, user, signIn, signUp, signOut, updateToken }}>
+        <AuthContext.Provider value={{ token, user, signIn, signInWithGoogle, signUp, signOut, updateToken, updateUserPhone }}>
             {children}
         </AuthContext.Provider>
     );

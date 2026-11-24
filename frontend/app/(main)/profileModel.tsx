@@ -21,7 +21,7 @@ import { uploadFileToCloudinary } from "../../services/imageService";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 const ProfileModal = () => {
-    const { user, signOut, updateToken } = useAuth();
+    const { user, signOut, updateToken, updateUserPhone } = useAuth();
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
@@ -30,6 +30,7 @@ const ProfileModal = () => {
         email: "",
         avatar: null
     });
+    const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || "");
 
     useEffect(() => {
         updateProfile(processUpdateProfile);
@@ -52,6 +53,7 @@ const ProfileModal = () => {
             email: user?.email || "",
             avatar: user?.avatar,
         });
+        setPhoneNumber(user?.phoneNumber || "");
     }, [user]);
 
     const onPickImage = async () => {
@@ -95,6 +97,15 @@ const ProfileModal = () => {
                 return;
             }
         }
+
+        if (phoneNumber.trim() !== (user?.phoneNumber || "")) {
+            try {
+                await updateUserPhone(phoneNumber.trim());
+            } catch (err: any) {
+                console.log("Phone update warning:", err.message);
+            }
+        }
+
         updateProfile(data);
     };
 
@@ -228,6 +239,36 @@ const ProfileModal = () => {
                             />
                             <Typo size={11} color={colors.neutral400} style={{ marginLeft: 6 }}>
                                 Linked Google / Email Account (Permanent)
+                            </Typo>
+                        </View>
+
+                        {/* Phone Number Input */}
+                        <View style={styles.fieldGroup}>
+                            <View style={styles.labelRow}>
+                                <Icons.Phone
+                                    size={verticalScale(14)}
+                                    color={colors.primaryDark}
+                                    weight="bold"
+                                />
+                                <Typo size={12} fontWeight="700" color={colors.neutral600} style={styles.label}>
+                                    PHONE NUMBER
+                                </Typo>
+                            </View>
+                            <Input
+                                value={phoneNumber}
+                                onChangeText={setPhoneNumber}
+                                placeholder="+1 555 123 4567"
+                                keyboardType="phone-pad"
+                                icon={
+                                    <Icons.PhoneCall
+                                        size={verticalScale(18)}
+                                        color={colors.neutral400}
+                                        weight="bold"
+                                    />
+                                }
+                            />
+                            <Typo size={11} color={colors.neutral400} style={{ marginLeft: 6 }}>
+                                Allows your phone contacts to discover you on Bubbly
                             </Typo>
                         </View>
                     </Animated.View>
@@ -505,12 +546,17 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        backgroundColor: colors.neutral50,
-        borderRadius: radius._15,
+        backgroundColor: colors.white,
+        borderRadius: radius._20,
         borderWidth: 1,
-        borderColor: colors.neutral200,
+        borderColor: colors.cardBorderSubtle,
         paddingHorizontal: spacingX._15,
         paddingVertical: spacingY._12,
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 5,
+        elevation: 1,
     },
     actionLeft: {
         flexDirection: "row",

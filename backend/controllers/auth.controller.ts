@@ -98,6 +98,11 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         }
 
         // Compare passwords
+        if (!user.password) {
+            res.status(400).json({ success: false, msg: "Please sign in using Google" });
+            return;
+        }
+
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             res.status(400).json({ success: false, msg: "Invalid Credentials" });
@@ -115,5 +120,92 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     } catch (error) {
         console.error("loginUser error:", error instanceof Error ? error.message : "Unknown error");
         res.status(500).json({ success: false, msg: "Server error during login" });
+    }
+};
+
+export const googleAuth = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { idToken, email: bodyEmail, name: bodyName, avatar: bodyAvatar, googleId: bodyGoogleId } = req.body;
+
+        let email = bodyEmail;
+        let name = bodyName;
+        let avatar = bodyAvatar;
+        let googleId = bodyGoogleId;
+
+        // If an idToken was passed, verify it with Google OAuth tokeninfo endpoint
+        if (typeof idToken === "string" && idToken.trim()) {
+            try {
+                const gRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken.trim())}`);
+                if (gRes.ok) {
+                    const gData: any = await gRes.json();
+                    if (gData.email) email = gData.email;
+                    if (gData.name) name = gData.name;
+                    if (gData.picture) avatar = gData.picture;
+                    if (gData.sub) googleId = gData.sub;
+                }
+            } catch (err) {
+                console.warn("Google tokeninfo lookup failed, falling back to body payload:", err);
+            }
+        }
+
+        if (typeof email !== "string" || !EMAIL_REGEX.test(email.trim().toLowerCase())) {
+            res.status(400).json({ success: false, msg: "Valid email is required for Google authentication" });
+            return;
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+        const trimmedName = typeof name === "string" && name.trim() ? name.trim().slice(0, 70) : "Google User";
+        const safeAvatar = typeof avatar === "string" ? avatar.slice(0, 500) : "";
+        const cleanGoogleId = typeof googleId === "string" ? googleId.trim() : undefined;
+
+        // Check if user exists by googleId or email
+        let user = await User.findOne({
+            $or: [
+                ...(cleanGoogleId ? [{ googleId: { $eq: cleanGoogleId } }] : []),
+                { email: { $eq: normalizedEmail } }
+            ]
+        });
+
+        if (user) {
+            let updated = false;
+            if (cleanGoogleId && !user.googleId) {
+                user.googleId = cleanGoogleId;
+                updated = true;
+            }
+            if (!user.avatar && safeAvatar) {
+                user.avatar = safeAvatar;
+                updated = true;
+            }
+            if (updated) {
+                await user.save();
+            }
+        } else {
+            user = new User({
+                email: normalizedEmail,
+                name: trimmedName,
+                avatar: safeAvatar,
+                googleId: cleanGoogleId,
+                authProvider: "google",
+                password: "",
+            });
+            await user.save();
+        }
+
+        const token = generateToken(user);
+
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: user._id.toString(),
+                name: user.name,
+                email: user.email,
+                avatar: user.avatar,
+                phoneNumber: user.phoneNumber,
+            }
+        });
+    } catch (error) {
+        console.error("googleAuth error:", error instanceof Error ? error.message : "Unknown error");
+        res.status(500).json({ success: false, msg: "Google authentication failed" });
     }
 };

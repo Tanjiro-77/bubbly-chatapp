@@ -38,7 +38,7 @@ const Welcome = () => {
 
           <View style={styles.versionBadge}>
             <Typo size={10} fontWeight="800" color={colors.neutral900}>
-              RELEASE V3
+              V3.4.0 RELEASE
             </Typo>
           </View>
         </Animated.View>
@@ -68,7 +68,11 @@ const Welcome = () => {
             </View>
             <View style={styles.featureChip}>
               <Icons.Translate size={verticalScale(12)} color={colors.primary} weight="fill" />
-              <Typo size={11} fontWeight="700" color={colors.white}>Translate</Typo>
+              <Typo size={11} fontWeight="700" color={colors.white}>AI Translate</Typo>
+            </View>
+            <View style={styles.featureChip}>
+              <Icons.LockKey size={verticalScale(12)} color={colors.primary} weight="fill" />
+              <Typo size={11} fontWeight="700" color={colors.white}>Secret Vault</Typo>
             </View>
           </View>
 
@@ -160,10 +164,15 @@ const styles = StyleSheet.create({
     gap: scale(7),
   },
   logoDot: {
-    width: scale(8),
-    height: scale(8),
+    width: scale(9),
+    height: scale(9),
     borderRadius: radius.full,
     backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+    elevation: 4,
   },
   brandText: {
     letterSpacing: 4,
@@ -171,9 +180,14 @@ const styles = StyleSheet.create({
   },
   versionBadge: {
     backgroundColor: colors.primary,
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(3),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
     borderRadius: radius.full,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
   },
 
   // ─── Hero ─────────────────────────────────────────────────

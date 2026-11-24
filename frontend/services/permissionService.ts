@@ -2,6 +2,7 @@ import { Platform, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AudioModule } from 'expo-audio';
 import * as Notifications from 'expo-notifications';
+import * as Contacts from 'expo-contacts';
 
 export interface SinglePermissionStatus {
     granted: boolean;
@@ -14,9 +15,10 @@ export interface AllPermissionsStatus {
     microphone: SinglePermissionStatus;
     mediaLibrary: SinglePermissionStatus;
     notifications: SinglePermissionStatus;
+    contacts: SinglePermissionStatus;
 }
 
-export type PermissionKey = 'camera' | 'microphone' | 'mediaLibrary' | 'notifications';
+export type PermissionKey = 'camera' | 'microphone' | 'mediaLibrary' | 'notifications' | 'contacts';
 
 export interface PermissionMetadata {
     key: PermissionKey;
@@ -63,6 +65,15 @@ export const PERMISSION_METADATA: Record<PermissionKey, PermissionMetadata> = {
         description: 'Get notified in real time when you receive new chat messages, incoming calls, or story updates.',
         features: ['Instant message alerts', 'Incoming call rings', 'Story updates'],
         icon: 'notifications',
+        isOptional: true,
+    },
+    contacts: {
+        key: 'contacts',
+        title: 'Contacts',
+        subtitle: 'Sync phone contacts & find friends',
+        description: 'Discover friends in your phonebook who use Bubbly and start conversations in 1 tap.',
+        features: ['Find friends on Bubbly', '1-tap contact sync', 'Invite contacts'],
+        icon: 'contacts',
         isOptional: true,
     },
 };
@@ -196,16 +207,49 @@ export const requestNotificationPermission = async (): Promise<SinglePermissionS
 };
 
 /**
- * Check all 4 permissions in parallel
+ * Check Contacts permission status
+ */
+export const checkContactsPermission = async (): Promise<SinglePermissionStatus> => {
+    try {
+        const res = await Contacts.getPermissionsAsync();
+        return {
+            granted: res.granted,
+            canAskAgain: res.canAskAgain,
+            status: res.status,
+        };
+    } catch {
+        return { granted: false, canAskAgain: true, status: 'undetermined' };
+    }
+};
+
+/**
+ * Request Contacts permission
+ */
+export const requestContactsPermission = async (): Promise<SinglePermissionStatus> => {
+    try {
+        const res = await Contacts.requestPermissionsAsync();
+        return {
+            granted: res.granted,
+            canAskAgain: res.canAskAgain,
+            status: res.status,
+        };
+    } catch {
+        return { granted: false, canAskAgain: true, status: 'denied' };
+    }
+};
+
+/**
+ * Check all permissions in parallel
  */
 export const checkAllPermissions = async (): Promise<AllPermissionsStatus> => {
-    const [camera, microphone, mediaLibrary, notifications] = await Promise.all([
+    const [camera, microphone, mediaLibrary, notifications, contacts] = await Promise.all([
         checkCameraPermission(),
         checkMicrophonePermission(),
         checkMediaLibraryPermission(),
         checkNotificationPermission(),
+        checkContactsPermission(),
     ]);
-    return { camera, microphone, mediaLibrary, notifications };
+    return { camera, microphone, mediaLibrary, notifications, contacts };
 };
 
 /**
@@ -221,6 +265,8 @@ export const requestPermissionByKey = async (key: PermissionKey): Promise<Single
             return requestMediaLibraryPermission();
         case 'notifications':
             return requestNotificationPermission();
+        case 'contacts':
+            return requestContactsPermission();
         default:
             return { granted: false, canAskAgain: true, status: 'undetermined' };
     }

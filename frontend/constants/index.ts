@@ -10,3 +10,12 @@ export const CLOUDINARY_UPLOAD_PRESET =
 
 export const AGORA_APP_ID =
   process.env.EXPO_PUBLIC_AGORA_APP_ID || "ff4f2dea21944c55b1512724e18448aa";
+
+export const GOOGLE_WEB_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
+
+export const GOOGLE_ANDROID_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
+
+export const GOOGLE_IOS_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "";

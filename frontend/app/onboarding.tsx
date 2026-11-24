@@ -340,23 +340,25 @@ const PermissionSetupCard: React.FC<PermissionSetupCardProps> = ({
         "microphone",
         "mediaLibrary",
         "notifications",
+        "contacts",
     ];
 
-    const allGranted = permKeys.every((k) => permissions[k].granted);
+    const allGranted = permKeys.every((k) => permissions[k]?.granted);
 
     return (
         <View style={styles.permCardWrapper}>
             <View style={styles.permCard}>
                 {permKeys.map((key, i) => {
                     const meta = PERMISSION_METADATA[key];
-                    const isGranted = permissions[key].granted;
-                    const canAsk = permissions[key].canAskAgain;
+                    const isGranted = permissions[key]?.granted;
+                    const canAsk = permissions[key]?.canAskAgain;
 
                     let iconName: IconName = "security";
                     if (key === "camera") iconName = "camera-alt";
                     if (key === "microphone") iconName = "mic";
                     if (key === "mediaLibrary") iconName = "photo-library";
                     if (key === "notifications") iconName = "notifications";
+                    if (key === "contacts") iconName = "contacts";
 
                     return (
                         <View
@@ -783,6 +785,7 @@ export default function OnboardingScreen() {
         microphone: { granted: false, canAskAgain: true, status: "undetermined" },
         mediaLibrary: { granted: false, canAskAgain: true, status: "undetermined" },
         notifications: { granted: false, canAskAgain: true, status: "undetermined" },
+        contacts: { granted: false, canAskAgain: true, status: "undetermined" },
     });
 
     const refreshPermissions = useCallback(async () => {
@@ -833,6 +836,7 @@ export default function OnboardingScreen() {
             "microphone",
             "mediaLibrary",
             "notifications",
+            "contacts",
         ];
         for (const k of keys) {
             if (!permissions[k].granted && permissions[k].canAskAgain) {

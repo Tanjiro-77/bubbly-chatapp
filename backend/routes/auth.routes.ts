@@ -1,6 +1,6 @@
 
 import { Router } from "express";
-import { registerUser, loginUser } from "../controllers/auth.controller";
+import { registerUser, loginUser, googleAuth } from "../controllers/auth.controller";
 import {
   loginLimiter,
   registerLimiter,
@@ -10,5 +10,6 @@ const router = Router();
 
 router.post("/register", registerLimiter, registerUser);
 router.post("/login", loginLimiter, loginUser);
+router.post("/google", loginLimiter, googleAuth);
 
 export default router;

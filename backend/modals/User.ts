@@ -12,7 +12,24 @@ const userSchema = new Schema<UserProps>({
     },
     password: {
         type: String,
-        required: true,
+        required: false,
+        default: "",
+    },
+    googleId: {
+        type: String,
+        sparse: true,
+        unique: true,
+    },
+    phoneNumber: {
+        type: String,
+        sparse: true,
+        index: true,
+        trim: true,
+    },
+    authProvider: {
+        type: String,
+        enum: ["local", "google"],
+        default: "local",
     },
     name: {
         type: String,

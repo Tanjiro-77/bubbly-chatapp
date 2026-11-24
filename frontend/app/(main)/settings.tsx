@@ -229,6 +229,7 @@ export default function SettingsScreen() {
         microphone: { granted: false, canAskAgain: true, status: 'undetermined' },
         mediaLibrary: { granted: false, canAskAgain: true, status: 'undetermined' },
         notifications: { granted: false, canAskAgain: true, status: 'undetermined' },
+        contacts: { granted: false, canAskAgain: true, status: 'undetermined' },
     });
 
     const refreshPermissions = useCallback(async () => {
@@ -422,7 +423,7 @@ export default function SettingsScreen() {
                             color={colors.neutral500}
                             style={{ marginTop: verticalScale(2) }}
                         >
-                            {user?.email ?? "Tap to edit your profile"}
+                            {user?.phoneNumber ? `${user.phoneNumber} · ` : ""}{user?.email ?? "Tap to edit your profile"}
                         </Typo>
                     </View>
                     <MaterialIcons
@@ -469,6 +470,15 @@ export default function SettingsScreen() {
                         subtitle={PERMISSION_METADATA.notifications.subtitle}
                         granted={permissions.notifications.granted}
                         canAskAgain={permissions.notifications.canAskAgain}
+                        onRequest={handleRequestPermission}
+                    />
+                    <PermissionRow
+                        permKey="contacts"
+                        icon="contacts"
+                        title={PERMISSION_METADATA.contacts.title}
+                        subtitle={PERMISSION_METADATA.contacts.subtitle}
+                        granted={permissions.contacts.granted}
+                        canAskAgain={permissions.contacts.canAskAgain}
                         isLast
                         onRequest={handleRequestPermission}
                     />
@@ -710,19 +720,19 @@ const styles = StyleSheet.create({
         alignItems: "center",
         gap: scale(12),
         backgroundColor: colors.white,
-        borderRadius: radius._15,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.neutral200,
+        borderRadius: radius._20,
+        borderWidth: 1,
+        borderColor: colors.cardBorderSubtle,
         padding: spacingX._15,
         marginBottom: spacingY._10,
         ...Platform.select({
             ios: {
                 shadowColor: "#000",
                 shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.05,
+                shadowOpacity: 0.06,
                 shadowRadius: 8,
             },
-            android: { elevation: 1 },
+            android: { elevation: 2 },
         }),
     },
     profileAvatar: {
@@ -750,18 +760,18 @@ const styles = StyleSheet.create({
 
     card: {
         backgroundColor: colors.white,
-        borderRadius: radius._15,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.neutral200,
+        borderRadius: radius._20,
+        borderWidth: 1,
+        borderColor: colors.cardBorderSubtle,
         overflow: "hidden",
         ...Platform.select({
             ios: {
                 shadowColor: "#000",
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.04,
-                shadowRadius: 4,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05,
+                shadowRadius: 6,
             },
-            android: { elevation: 1 },
+            android: { elevation: 1.5 },
         }),
     },
 

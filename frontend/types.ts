@@ -31,6 +31,8 @@ export interface UserProps {
   name: string;
   avatar?: string | null;
   id?: string;
+  phoneNumber?: string;
+  googleId?: string;
   isOnline?: boolean;
   lastSeen?: string | null;
 }
@@ -66,6 +68,16 @@ export type AuthContextProps = {
     email: string,
     password: string
   ) => Promise<void>;
+
+  signInWithGoogle: (payload: {
+    idToken?: string;
+    email?: string;
+    name?: string;
+    avatar?: string;
+    googleId?: string;
+  }) => Promise<void>;
+
+  updateUserPhone: (phoneNumber: string) => Promise<void>;
 
   signUp: (
     email: string,

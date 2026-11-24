@@ -3,6 +3,7 @@ import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 import { searchAll, translateText } from "../controllers/search.controller";
 import { generateAgoraToken, getCallHistory } from "../controllers/call.controller";
+import { syncContacts, updatePhoneNumber } from "../controllers/contact.controller";
 
 const router = Router();
 
@@ -40,5 +41,9 @@ router.post("/translate", translateLimiter, authMiddleware, translateText);
 // ── Call routes ──
 router.post("/call/token", callTokenLimiter, authMiddleware, generateAgoraToken);
 router.get("/call/history", callHistoryLimiter, authMiddleware, getCallHistory);
+
+// ── Contact & Phone routes ──
+router.post("/contacts/sync", authMiddleware, syncContacts);
+router.put("/user/phone", authMiddleware, updatePhoneNumber);
 
 export default router;

@@ -26,9 +26,12 @@ export interface UserPrivacyProps {
 export interface UserProps extends Document {
     id: string;
     email: string;
-    password: string;
+    password?: string;
     name?: string;
     avatar?: string;
+    googleId?: string;
+    phoneNumber?: string;
+    authProvider?: "local" | "google";
     created?: Date;
     isOnline?: boolean;
     lastSeen?: Date | null;
