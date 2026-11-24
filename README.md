@@ -1,13 +1,10 @@
-
-<div align="center">
-
 # Bubbly 💛
 
 ### Connect Beyond Messages.
 
 A full-stack, real-time messaging application for conversations, groups, stories, media sharing, and audio/video communication.
 
-<p>
+<p align="center">
   <a href="https://github.com/Tanjiro-77/bubbly-chatapp">
     <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub repository" />
   </a>
@@ -19,14 +16,12 @@ A full-stack, real-time messaging application for conversations, groups, stories
   </a>
 </p>
 
-<p>
+<p align="center">
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS-16A34A?style=flat-square" alt="Android and iOS" />
   <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Mobile-Expo-4630EB?style=flat-square&logo=expo" alt="Expo" />
   <img src="https://img.shields.io/badge/Real--time-Socket.IO-010101?style=flat-square&logo=socketdotio" alt="Socket.IO" />
 </p>
-
-</div>
 
 ---
 
@@ -76,26 +71,59 @@ The repository contains four connected parts:
 
 Bubbly is developed with an emphasis on real-time interaction, maintainable application structure, mobile usability, and practical full-stack engineering.
 
+---
+
 ## Application screenshots
 
-The screenshots below are from the Bubbly mobile application. Each image is displayed at the same width, while its natural aspect ratio is preserved.
+Explore the Bubbly mobile experience through the following **10 promotional screenshots**.
 
-<div align="center">
-  <img src="screenshots/1.png" width="220" alt="Bubbly authentication screen" />&nbsp;&nbsp;
-  <img src="screenshots/2.png" width="220" alt="Bubbly home screen with conversations and stories" />&nbsp;&nbsp;
-  <img src="screenshots/3.png" width="220" alt="Bubbly real-time messaging screen" />
-  <br />
-  <sub><strong>Authentication</strong> · <strong>Home</strong> · <strong>Real-time messaging</strong></sub>
-</div>
+The gallery uses iOS/iPhone screenshot dimensions, with each image displayed at a consistent width while preserving its original aspect ratio. Screenshots are arranged in numerical order from `1.png` to `10.png`.
+
+<p align="center">
+  <img src="screenshots/1.png" width="180" alt="Bubbly introduction and welcome screen" />
+  &nbsp;
+  <img src="screenshots/2.png" width="180" alt="Bubbly account creation experience" />
+  &nbsp;
+  <img src="screenshots/3.png" width="180" alt="Bubbly conversations and inbox interface" />
+  &nbsp;
+  <img src="screenshots/4.png" width="180" alt="Bubbly settings and app controls" />
+  &nbsp;
+  <img src="screenshots/5.png" width="180" alt="Bubbly Story Studio and story creation interface" />
+</p>
+
+<p align="center">
+  <sub>
+    <strong>01 · Welcome</strong> &nbsp;·&nbsp;
+    <strong>02 · Get Started</strong> &nbsp;·&nbsp;
+    <strong>03 · Conversations</strong> &nbsp;·&nbsp;
+    <strong>04 · Settings</strong> &nbsp;·&nbsp;
+    <strong>05 · Story Studio</strong>
+  </sub>
+</p>
 
 <br />
 
-<div align="center">
-  <img src="screenshots/4.png" width="220" alt="Bubbly story creation screen" />&nbsp;&nbsp;
-  <img src="screenshots/5.png" width="220" alt="Bubbly profile management screen" />
-  <br />
-  <sub><strong>Story creation</strong> · <strong>Profile management</strong></sub>
-</div>
+<p align="center">
+  <img src="screenshots/6.png" width="180" alt="Bubbly story viewing experience" />
+  &nbsp;
+  <img src="screenshots/7.png" width="180" alt="Bubbly about and application information screen" />
+  &nbsp;
+  <img src="screenshots/8.png" width="180" alt="Bubbly group conversation interface" />
+  &nbsp;
+  <img src="screenshots/9.png" width="180" alt="Bubbly storage and data usage controls" />
+  &nbsp;
+  <img src="screenshots/10.png" width="180" alt="Bubbly active audio calling interface" />
+</p>
+
+<p align="center">
+  <sub>
+    <strong>06 · Stories</strong> &nbsp;·&nbsp;
+    <strong>07 · About Bubbly</strong> &nbsp;·&nbsp;
+    <strong>08 · Group Chat</strong> &nbsp;·&nbsp;
+    <strong>09 · Storage & Data</strong> &nbsp;·&nbsp;
+    <strong>10 · Audio Call</strong>
+  </sub>
+</p>
 
 ---
 
@@ -376,12 +404,20 @@ bubbly-chatapp/
 │   │   └── styles.css
 │   └── package.json
 │
+├── web/
+│   └── ...
+│
 ├── screenshots/
 │   ├── 1.png
 │   ├── 2.png
 │   ├── 3.png
 │   ├── 4.png
-│   └── 5.png
+│   ├── 5.png
+│   ├── 6.png
+│   ├── 7.png
+│   ├── 8.png
+│   ├── 9.png
+│   └── 10.png
 │
 ├── .gitignore
 ├── file-tree.txt

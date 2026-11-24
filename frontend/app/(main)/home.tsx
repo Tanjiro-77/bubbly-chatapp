@@ -361,7 +361,7 @@ const Home = () => {
                         <View style={styles.brandRow}>
                             <View style={styles.brandBadge}>
                                 <Typo size={10} fontWeight="800" color={colors.neutral900}>
-                                    V3.2.0
+                                    V3.4.0
                                 </Typo>
                             </View>
                             <Typo size={12.5} color={'rgba(255,255,255,0.6)'} fontWeight="500">

@@ -225,11 +225,13 @@ export type AttachmentMetaProps = {
   name: string;
   mimeType: string;
   size: number;
-  resourceType:
+  resourceType?:
   | "image"
   | "video"
   | "raw"
   | "audio";
+  isHd?: boolean;
+  isViewOnce?: boolean;
 };
 
 // Alias used by MessageProps

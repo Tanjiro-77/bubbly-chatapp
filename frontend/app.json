@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bubbly",
     "slug": "frontend",
-    "version": "3.2.0",
+    "version": "3.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bubbly",
@@ -14,7 +14,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 5,
+      "versionCode": 6,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",

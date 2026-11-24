@@ -2,8 +2,9 @@ import {
     FlatList, KeyboardAvoidingView, Platform,
     StyleSheet, TouchableOpacity, View, Alert,
     ActivityIndicator, Modal, TouchableWithoutFeedback,
-    TextInput, ScrollView, BackHandler,
+    TextInput, ScrollView, BackHandler, Share,
 } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import ScreenWrapper from "../../components/ScreenWrapper"
@@ -759,65 +760,176 @@ const searchBarStyles = StyleSheet.create({
     },
 });
 
-// ── Forward Modal (Feature 5) ──
+// ── Forward Modal (Feature 6: Multi-Select Broadcast Forwarding) ──
 const ForwardModal = ({
     visible,
     conversations,
     currentUserId,
-    onSelect,
+    onSelectMultiple,
     onClose,
 }: {
     visible: boolean;
     conversations: any[];
     currentUserId: string;
-    onSelect: (targetId: string) => void;
+    onSelectMultiple: (targetIds: string[]) => void;
     onClose: () => void;
-}) => (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <TouchableWithoutFeedback onPress={onClose}>
-            <View style={forwardStyles.overlay}>
-                <TouchableWithoutFeedback>
-                    <View style={forwardStyles.sheet}>
-                        <View style={forwardStyles.handle} />
-                        <View style={forwardStyles.header}>
-                            <Typo size={17} fontWeight="700" color={colors.neutral900}>Forward To...</Typo>
-                            <TouchableOpacity onPress={onClose} style={forwardStyles.closeBtn}>
-                                <Icons.X size={16} color={colors.neutral600} weight="bold" />
-                            </TouchableOpacity>
-                        </View>
-                        <FlatList
-                            data={conversations}
-                            keyExtractor={(item) => item._id}
-                            contentContainerStyle={forwardStyles.list}
-                            ListEmptyComponent={
-                                <View style={forwardStyles.empty}>
-                                    <Typo size={13} color={colors.neutral400}>No other conversations available</Typo>
-                                </View>
-                            }
-                            renderItem={({ item }) => {
-                                const displayName = item.type === 'group'
-                                    ? item.name
-                                    : (item.participants?.find((p: any) => p._id !== currentUserId)?.name || "Chat");
-                                return (
-                                    <TouchableOpacity onPress={() => onSelect(item._id)} activeOpacity={0.7} style={forwardStyles.itemRow}>
-                                        <Avatar size={42} uri={item.avatar} isGroup={item.type === 'group'} />
-                                        <View style={forwardStyles.itemInfo}>
-                                            <Typo size={15} fontWeight="600" color={colors.neutral900}>{displayName}</Typo>
-                                            <Typo size={12} color={colors.neutral400}>
-                                                {item.type === 'group' ? `${item.participants?.length || 0} members` : "Direct chat"}
-                                            </Typo>
-                                        </View>
-                                        <Icons.PaperPlaneTilt size={18} color={colors.primaryDark} weight="fill" />
+}) => {
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (!visible) setSelectedIds([]);
+    }, [visible]);
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={forwardStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <View style={forwardStyles.sheet}>
+                            <View style={forwardStyles.handle} />
+                            <View style={forwardStyles.header}>
+                                <Typo size={17} fontWeight="700" color={colors.neutral900}>
+                                    Forward to {selectedIds.length > 0 ? `(${selectedIds.length})` : "..."}
+                                </Typo>
+                                <TouchableOpacity onPress={onClose} style={forwardStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <FlatList
+                                data={conversations}
+                                keyExtractor={(item) => item._id}
+                                contentContainerStyle={forwardStyles.list}
+                                ListEmptyComponent={
+                                    <View style={forwardStyles.empty}>
+                                        <Typo size={13} color={colors.neutral400}>No other conversations available</Typo>
+                                    </View>
+                                }
+                                renderItem={({ item }) => {
+                                    const displayName = item.type === 'group'
+                                        ? item.name
+                                        : (item.participants?.find((p: any) => p._id !== currentUserId)?.name || "Chat");
+                                    const isSelected = selectedIds.includes(item._id);
+                                    return (
+                                        <TouchableOpacity
+                                            onPress={() => toggleSelect(item._id)}
+                                            activeOpacity={0.7}
+                                            style={[forwardStyles.itemRow, isSelected && forwardStyles.itemRowSelected]}
+                                        >
+                                            <Avatar size={42} uri={item.avatar} isGroup={item.type === 'group'} />
+                                            <View style={forwardStyles.itemInfo}>
+                                                <Typo size={15} fontWeight="600" color={colors.neutral900}>{displayName}</Typo>
+                                                <Typo size={12} color={colors.neutral400}>
+                                                    {item.type === 'group' ? `${item.participants?.length || 0} members` : "Direct chat"}
+                                                </Typo>
+                                            </View>
+                                            <View style={[forwardStyles.checkbox, isSelected && forwardStyles.checkboxSelected]}>
+                                                {isSelected && (
+                                                    <Icons.Check size={12} color={colors.white} weight="bold" />
+                                                )}
+                                            </View>
+                                        </TouchableOpacity>
+                                    );
+                                }}
+                            />
+                            {selectedIds.length > 0 && (
+                                <View style={forwardStyles.footer}>
+                                    <TouchableOpacity
+                                        style={forwardStyles.confirmBtn}
+                                        onPress={() => onSelectMultiple(selectedIds)}
+                                        activeOpacity={0.8}
+                                    >
+                                        <Icons.PaperPlaneTilt size={18} color={colors.black} weight="fill" />
+                                        <Typo size={15} fontWeight="700" color={colors.black}>
+                                            Forward to {selectedIds.length} {selectedIds.length === 1 ? "Chat" : "Chats"}
+                                        </Typo>
                                     </TouchableOpacity>
-                                );
-                            }}
-                        />
-                    </View>
-                </TouchableWithoutFeedback>
-            </View>
-        </TouchableWithoutFeedback>
-    </Modal>
-);
+                                </View>
+                            )}
+                        </View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── Schedule Message Modal (Feature 3) ──
+const ScheduleModal = ({
+    visible,
+    onSchedule,
+    onClose,
+}: {
+    visible: boolean;
+    onSchedule: (delayMs: number, label: string) => void;
+    onClose: () => void;
+}) => {
+    const SCHEDULE_PRESETS = [
+        { label: "In 15 minutes", delay: 15 * 60 * 1000, desc: "Quick follow-up" },
+        { label: "In 1 hour", delay: 60 * 60 * 1000, desc: "Later today" },
+        { label: "In 3 hours", delay: 3 * 3600 * 1000, desc: "This evening" },
+        {
+            label: "Tomorrow at 9:00 AM",
+            delay: (() => {
+                const now = new Date();
+                const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0);
+                return Math.max(tomorrow.getTime() - now.getTime(), 60000);
+            })(),
+            desc: "Next morning"
+        },
+    ];
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={scheduleStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <Animated.View entering={FadeInUp.duration(260).springify()} style={scheduleStyles.sheet}>
+                            <View style={scheduleStyles.handle} />
+                            <View style={scheduleStyles.header}>
+                                <Icons.ClockCountdown size={22} color={colors.primaryDark} weight="fill" />
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>
+                                    Schedule Message
+                                </Typo>
+                            </View>
+                            <Typo size={12.5} color={colors.neutral500} style={{ marginBottom: verticalScale(14) }}>
+                                Pick when to automatically dispatch this message:
+                            </Typo>
+
+                            {SCHEDULE_PRESETS.map((preset) => (
+                                <TouchableOpacity
+                                    key={preset.label}
+                                    style={scheduleStyles.presetRow}
+                                    onPress={() => onSchedule(preset.delay, preset.label)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={{ flex: 1 }}>
+                                        <Typo size={14.5} fontWeight="700" color={colors.neutral900}>{preset.label}</Typo>
+                                        <Typo size={11.5} color={colors.neutral400} style={{ marginTop: 2 }}>{preset.desc}</Typo>
+                                    </View>
+                                    <Icons.CaretRight size={16} color={colors.neutral400} />
+                                </TouchableOpacity>
+                            ))}
+                        </Animated.View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+const scheduleStyles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius._30, borderTopRightRadius: radius._30, paddingHorizontal: spacingX._20, paddingTop: verticalScale(14), paddingBottom: verticalScale(34) },
+    handle: { width: scale(36), height: verticalScale(4), borderRadius: radius.full, backgroundColor: colors.neutral300, alignSelf: 'center', marginBottom: verticalScale(12) },
+    header: { flexDirection: 'row', alignItems: 'center', gap: scale(8), marginBottom: verticalScale(4) },
+    presetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: verticalScale(12), borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.neutral100 },
+});
 
 const forwardStyles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
@@ -827,7 +939,12 @@ const forwardStyles = StyleSheet.create({
     closeBtn: { width: verticalScale(30), height: verticalScale(30), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center' },
     list: { padding: spacingX._15, gap: spacingY._10 },
     itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacingX._12, paddingVertical: spacingY._8 },
+    itemRowSelected: { backgroundColor: colors.primaryLight + "30", borderRadius: radius._12, paddingHorizontal: spacingX._8 },
     itemInfo: { flex: 1, gap: 2 },
+    checkbox: { width: scale(22), height: scale(22), borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.neutral300, alignItems: "center", justifyContent: "center" },
+    checkboxSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    footer: { paddingHorizontal: spacingX._20, paddingTop: spacingY._10, borderTopWidth: 1, borderTopColor: colors.neutral100 },
+    confirmBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: scale(8), backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: verticalScale(12) },
     empty: { padding: spacingY._30, alignItems: 'center' },
 });
 
@@ -1003,11 +1120,12 @@ const groupInfoStyles = StyleSheet.create({
 
 // ── Attachment Options ──
 const AttachmentOptions = ({
-    onPickImage, onPickFile, onCreatePoll, onClose,
+    onPickImage, onPickFile, onCreatePoll, onSchedule, onClose,
 }: {
     onPickImage: () => void;
     onPickFile: () => void;
     onCreatePoll: () => void;
+    onSchedule: () => void;
     onClose: () => void;
 }) => (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={attachStyles.container}>
@@ -1030,6 +1148,13 @@ const AttachmentOptions = ({
                 <Icons.ChartBar size={verticalScale(20)} color={colors.green} weight="fill" />
             </View>
             <Typo size={12} fontWeight="600" color={colors.neutral700}>Poll</Typo>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={attachStyles.option} onPress={onSchedule} activeOpacity={0.7}>
+            <View style={[attachStyles.iconWrap, { backgroundColor: '#fef3c7' }]}>
+                <Icons.ClockCountdown size={verticalScale(20)} color="#d97706" weight="fill" />
+            </View>
+            <Typo size={12} fontWeight="600" color={colors.neutral700}>Schedule</Typo>
         </TouchableOpacity>
 
         <TouchableOpacity style={attachStyles.closeOption} onPress={onClose} activeOpacity={0.7}>
@@ -1059,7 +1184,7 @@ const attachStyles = StyleSheet.create({
 const Conversation = () => {
     const { user: currentUser } = useAuth();
     const router = useRouter();
-    const { id: conversationId, name, participants: stringifiedParticipants, avatar, type } = useLocalSearchParams();
+    const { id: conversationId, name, participants: stringifiedParticipants, avatar, type, highlightMessageId } = useLocalSearchParams();
 
     const [message, setMessage] = useState('');
     const participants: any[] = (() => {
@@ -1159,6 +1284,78 @@ const Conversation = () => {
             }
         }).catch(() => {});
     }, [conversationId]);
+
+    // ── Scheduled Messages (Feature 3) ──
+    const [scheduledMessages, setScheduledMessages] = useState<{ id: string; conversationId: string; content: string; sendAt: number; label: string }[]>([]);
+    const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+    useEffect(() => {
+        if (!conversationId) return;
+        AsyncStorage.getItem(`@bubbly_scheduled_${conversationId}`).then((raw) => {
+            if (raw) {
+                try {
+                    const list = JSON.parse(raw);
+                    if (Array.isArray(list)) setScheduledMessages(list);
+                } catch (_) {}
+            }
+        }).catch(() => {});
+    }, [conversationId]);
+
+    const saveScheduled = useCallback(async (list: { id: string; conversationId: string; content: string; sendAt: number; label: string }[]) => {
+        setScheduledMessages(list);
+        if (conversationId) {
+            await AsyncStorage.setItem(`@bubbly_scheduled_${conversationId}`, JSON.stringify(list)).catch(() => {});
+        }
+    }, [conversationId]);
+
+    useEffect(() => {
+        if (!conversationId || scheduledMessages.length === 0) return;
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const due = scheduledMessages.filter(m => m.sendAt <= now);
+            if (due.length > 0) {
+                const remaining = scheduledMessages.filter(m => m.sendAt > now);
+                saveScheduled(remaining);
+                due.forEach((item) => {
+                    newMessage({
+                        conversationId,
+                        sender: { id: currentUser?.id, name: currentUser?.name, avatar: currentUser?.avatar },
+                        content: item.content,
+                        attachement: null,
+                        attachmentMeta: null,
+                        type: 'text',
+                        replyTo: null,
+                    });
+                });
+            }
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [scheduledMessages, conversationId, currentUser, saveScheduled]);
+
+    const handleConfirmSchedule = (delayMs: number, label: string) => {
+        if (!message.trim()) {
+            Alert.alert("Empty Message", "Please type a message before scheduling.");
+            setShowScheduleModal(false);
+            return;
+        }
+        const item = {
+            id: `sched_${Date.now()}`,
+            conversationId: conversationId as string,
+            content: message.trim(),
+            sendAt: Date.now() + delayMs,
+            label,
+        };
+        const updated = [...scheduledMessages, item];
+        saveScheduled(updated);
+        setMessage("");
+        setShowScheduleModal(false);
+        Alert.alert("Message Scheduled ⏱️", `Your message will be automatically sent in ${label.toLowerCase()}.`);
+    };
+
+    const handleCancelScheduled = (id: string) => {
+        const updated = scheduledMessages.filter(m => m.id !== id);
+        saveScheduled(updated);
+    };
 
     // ── Chat Wallpaper & Theme (Feature 14 & V3.2.0 Custom Wallpaper) ──
     const [selectedTheme, setSelectedTheme] = useState<ChatTheme>(CHAT_THEMES[0]);
@@ -1329,6 +1526,10 @@ const Conversation = () => {
             }
             if (forwardModalVisible) {
                 setForwardModalVisible(false);
+                return true;
+            }
+            if (showScheduleModal) {
+                setShowScheduleModal(false);
                 return true;
             }
             if (showAttachOptions) {
@@ -2041,12 +2242,82 @@ const Conversation = () => {
         setForwardModalVisible(true);
     };
 
-    const handleSendForward = (targetConvId: string) => {
-        if (!forwardingMessage) return;
-        forwardMessage({ messageId: forwardingMessage.id, targetConversationIds: [targetConvId] });
+    const handleSendForward = (targetConvIds: string[]) => {
+        if (!forwardingMessage || !targetConvIds || targetConvIds.length === 0) return;
+        forwardMessage({ messageId: forwardingMessage.id, targetConversationIds: targetConvIds });
         setForwardModalVisible(false);
         setForwardingMessage(null);
-        Alert.alert("Forwarded", "Message forwarded successfully!");
+        Alert.alert(
+            "Forwarded 🚀",
+            `Message forwarded to ${targetConvIds.length} ${targetConvIds.length === 1 ? 'chat' : 'chats'} successfully!`
+        );
+    };
+
+    // ── Export Chat History (Feature 1) ──
+    const handleExportChat = () => {
+        if (messages.length === 0) {
+            Alert.alert("Export Chat", "No messages to export yet.");
+            return;
+        }
+        Alert.alert(
+            "Export Chat History",
+            "Choose export format:",
+            [
+                {
+                    text: "Text File (.txt) 📄",
+                    onPress: async () => {
+                        const lines = [...messages].reverse().map(m => {
+                            const time = moment(m.createdAt).format('YYYY-MM-DD HH:mm');
+                            const sender = m.sender?.name || (m.sender?.id === currentUser?.id ? "You" : "User");
+                            const content = m.content || (m.type === 'image' ? '[Photo]' : m.type === 'voice' ? '[Voice Note]' : '[Attachment]');
+                            return `[${time}] ${sender}: ${content}`;
+                        });
+                        const chatText = `--- Bubbly Chat Export: ${conversationName} ---\nExported on: ${moment().format('LLL')}\nTotal Messages: ${messages.length}\n\n` + lines.join('\n');
+                        try {
+                            const res = await Share.share({
+                                title: `Chat History - ${conversationName}`,
+                                message: chatText,
+                            });
+                            if (res.action === Share.dismissedAction) {
+                                await Clipboard.setStringAsync(chatText);
+                            }
+                        } catch (e) {
+                            await Clipboard.setStringAsync(chatText);
+                            Alert.alert("Copied to Clipboard", "Chat export copied to clipboard.");
+                        }
+                    }
+                },
+                {
+                    text: "JSON (.json) 📦",
+                    onPress: async () => {
+                        const exportData = {
+                            conversationId,
+                            chatName: conversationName,
+                            exportedAt: new Date().toISOString(),
+                            totalMessages: messages.length,
+                            messages: [...messages].reverse().map(m => ({
+                                id: m.id,
+                                sender: m.sender?.name || m.sender?.id,
+                                content: m.content,
+                                type: m.type,
+                                createdAt: m.createdAt,
+                            })),
+                        };
+                        const jsonStr = JSON.stringify(exportData, null, 2);
+                        try {
+                            await Share.share({
+                                title: `Chat Export JSON - ${conversationName}`,
+                                message: jsonStr,
+                            });
+                        } catch (e) {
+                            await Clipboard.setStringAsync(jsonStr);
+                            Alert.alert("Copied to Clipboard", "JSON chat export copied to clipboard.");
+                        }
+                    }
+                },
+                { text: "Cancel", style: "cancel" }
+            ]
+        );
     };
 
     const handleMuteOptions = () => {
@@ -2113,6 +2384,10 @@ const Conversation = () => {
                 onPress: handleLockCurrentChat,
             },
             {
+                text: "Export Chat History 📤",
+                onPress: handleExportChat,
+            },
+            {
                 text: "Chat Wallpaper & Theme",
                 onPress: () => setShowThemeModal(true),
             },
@@ -2172,6 +2447,16 @@ const Conversation = () => {
 
     const canSend = message.trim().length > 0 || selectedFile !== null;
 
+    // ── Target / Starred Message Auto-Jump (Feature 9) ──
+    useEffect(() => {
+        if (highlightMessageId && messages.length > 0) {
+            const timer = setTimeout(() => {
+                handleJumpToMessage(highlightMessageId as string);
+            }, 600);
+            return () => clearTimeout(timer);
+        }
+    }, [highlightMessageId, messages.length]);
+
     // ── Memoized Message Item Renderer (High Performance) ──
     const renderMessageItem = useCallback(({ item }: { item: MessageListItem }) => {
         if (item.type === 'separator') {
@@ -2190,6 +2475,7 @@ const Conversation = () => {
                 onUnpin={handleUnpin}
                 deliveryStatus={messageStatuses[item.message.id]}
                 searchHighlight={isSearching && searchQuery.trim() ? searchQuery.trim() : undefined}
+                isTargetHighlight={highlightMessageId === item.message.id}
                 customBubbleMine={selectedTheme.bubbleMine}
                 customBubbleOther={selectedTheme.bubbleOther}
             />
@@ -2205,6 +2491,7 @@ const Conversation = () => {
         messageStatuses,
         isSearching,
         searchQuery,
+        highlightMessageId,
         selectedTheme.bubbleMine,
         selectedTheme.bubbleOther,
     ]);
@@ -2241,7 +2528,23 @@ const Conversation = () => {
                 <Animated.View entering={FadeInDown.duration(400).springify()} style={styles.header}>
                     <View style={styles.headerLeft}>
                         <BackButton iconSize={22} />
-                        <TouchableOpacity style={styles.headerInfo} activeOpacity={0.75}>
+                        <TouchableOpacity
+                            style={styles.headerInfo}
+                            activeOpacity={0.75}
+                            onPress={() => {
+                                if (isNotesToSelf) return;
+                                router.push({
+                                    pathname: '/(main)/contactProfile',
+                                    params: {
+                                        userId: otherParticipant?._id || '',
+                                        name: conversationName || '',
+                                        avatar: (conversationAvatar as string) || '',
+                                        isDirect: isDirect ? 'true' : 'false',
+                                        conversationId: (conversationId as string) || '',
+                                    }
+                                });
+                            }}
+                        >
                             <View style={styles.avatarWrap}>
                                 <Avatar size={38} uri={conversationAvatar as string} isGroup={type === 'group'} />
                                 {!isNotesToSelf && isDirect && contactIsOnline && <View style={styles.onlineDot} />}
@@ -2397,6 +2700,37 @@ const Conversation = () => {
                     {/* ── Group Mention Autocomplete Bar (Feature 7) ── */}
                     <GroupMentionBar candidates={mentionCandidates} onSelect={handleSelectMention} />
 
+                    {/* ── Scheduled Messages Floating Banner (Feature 3) ── */}
+                    {scheduledMessages.length > 0 && (
+                        <View style={styles.scheduledBanner}>
+                            <View style={styles.scheduledInfo}>
+                                <Icons.ClockCountdown size={16} color="#d97706" weight="fill" />
+                                <Typo size={12} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                    {scheduledMessages.length} Scheduled: "{scheduledMessages[0].content}"
+                                </Typo>
+                            </View>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    Alert.alert(
+                                        "Scheduled Messages",
+                                        `You have ${scheduledMessages.length} scheduled message(s) queued.`,
+                                        [
+                                            ...scheduledMessages.map(s => ({
+                                                text: `Cancel "${s.content.substring(0, 18)}..."`,
+                                                style: "destructive" as const,
+                                                onPress: () => handleCancelScheduled(s.id),
+                                            })),
+                                            { text: "Dismiss", style: "cancel" as const }
+                                        ]
+                                    );
+                                }}
+                                style={styles.manageSchedBtn}
+                            >
+                                <Typo size={11} fontWeight="700" color="#d97706">Manage</Typo>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
                     {/* ── Input Bar ── */}
                     <View style={styles.inputBar}>
                         {replyTo && <ReplyPreviewBar replyTo={replyTo} onCancel={handleCancelReply} />}
@@ -2415,6 +2749,7 @@ const Conversation = () => {
                                 onPickImage={onPickImage}
                                 onPickFile={onPickFile}
                                 onCreatePoll={() => { setShowAttachOptions(false); setShowPollModal(true); }}
+                                onSchedule={() => { setShowAttachOptions(false); setShowScheduleModal(true); }}
                                 onClose={() => setShowAttachOptions(false)}
                             />
                         )}
@@ -2619,12 +2954,19 @@ const Conversation = () => {
                 </TouchableWithoutFeedback>
             </Modal>
 
+            {/* ── Schedule Modal (Feature 3) ── */}
+            <ScheduleModal
+                visible={showScheduleModal}
+                onSchedule={handleConfirmSchedule}
+                onClose={() => setShowScheduleModal(false)}
+            />
+
             {/* ── Forward Modal ── */}
             <ForwardModal
                 visible={forwardModalVisible}
                 conversations={recentConversations}
                 currentUserId={currentUser?.id || ''}
-                onSelect={handleSendForward}
+                onSelectMultiple={handleSendForward}
                 onClose={() => { setForwardModalVisible(false); setForwardingMessage(null); }}
             />
 
@@ -2698,6 +3040,31 @@ const styles = StyleSheet.create({
         paddingVertical: spacingY._5,
         borderBottomWidth: 1,
         borderBottomColor: '#fecdd3',
+    },
+    scheduledBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#fffbeb',
+        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._8,
+        borderTopWidth: 1,
+        borderTopColor: '#fde68a',
+    },
+    scheduledInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._7,
+        flex: 1,
+        marginRight: spacingX._10,
+    },
+    manageSchedBtn: {
+        paddingHorizontal: spacingX._10,
+        paddingVertical: spacingY._5,
+        backgroundColor: '#fef3c7',
+        borderRadius: radius._8,
+        borderWidth: 1,
+        borderColor: '#fcd34d',
     },
     recordingRow: {
         flex: 1,

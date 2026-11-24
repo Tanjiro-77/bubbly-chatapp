@@ -463,6 +463,17 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
         }
     };
 
+    const handleSeekTo = async (index: number) => {
+        try {
+            const barProgress = index / BARS.length;
+            const targetTime = barProgress * totalDuration;
+            setCurrentTime(targetTime);
+            if (player && (player as any).seekTo) {
+                await (player as any).seekTo(targetTime);
+            }
+        } catch (_) {}
+    };
+
     useEffect(() => { return () => { clearProgressInterval(); }; }, []);
 
     const activeColor = isMe ? colors.neutral700 : colors.primary;
@@ -488,7 +499,16 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
                     {BARS.map((height, index) => {
                         const barProgress = index / BARS.length;
                         const isActive = barProgress <= progress;
-                        return <View key={index} style={[voiceStyles.bar, { height: verticalScale(height), backgroundColor: isActive ? activeColor : inactiveColor }]} />;
+                        return (
+                            <TouchableOpacity
+                                key={index}
+                                onPress={() => handleSeekTo(index)}
+                                activeOpacity={0.6}
+                                hitSlop={{ top: 10, bottom: 10, left: 1, right: 1 }}
+                            >
+                                <View style={[voiceStyles.bar, { height: verticalScale(height), backgroundColor: isActive ? activeColor : inactiveColor }]} />
+                            </TouchableOpacity>
+                        );
                     })}
                 </View>
                 <View style={voiceStyles.metaRow}>
@@ -867,6 +887,97 @@ const fileBubbleStyles = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────
+// POLL VOTER MODAL (Feature 8)
+// ─────────────────────────────────────────────
+const PollVoterModal = ({
+    visible,
+    poll,
+    onClose,
+}: {
+    visible: boolean;
+    poll: PollProps;
+    onClose: () => void;
+}) => {
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={pollVoterStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <Animated.View entering={FadeInUp.duration(260).springify()} style={pollVoterStyles.sheet}>
+                            <View style={pollVoterStyles.handle} />
+                            <View style={pollVoterStyles.header}>
+                                <View style={{ flex: 1, gap: 2 }}>
+                                    <Typo size={17} fontWeight="800" color={colors.neutral900}>Poll Breakdown</Typo>
+                                    <Typo size={12} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>{poll.question}</Typo>
+                                </View>
+                                <TouchableOpacity onPress={onClose} style={pollVoterStyles.closeBtn} activeOpacity={0.7}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+
+                            {poll.isAnonymous ? (
+                                <View style={pollVoterStyles.anonBox}>
+                                    <Icons.ShieldCheck size={32} color={colors.primaryDark} weight="fill" />
+                                    <Typo size={14} fontWeight="700" color={colors.neutral900}>Anonymous Voting</Typo>
+                                    <Typo size={12} color={colors.neutral500} style={{ textAlign: "center" }}>
+                                        Voters cannot be displayed because this poll was configured as anonymous.
+                                    </Typo>
+                                </View>
+                            ) : (
+                                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={pollVoterStyles.scroll}>
+                                    {poll.options.map((opt) => (
+                                        <View key={opt.id} style={pollVoterStyles.optionSection}>
+                                            <View style={pollVoterStyles.optionHeader}>
+                                                <Typo size={14} fontWeight="700" color={colors.neutral900}>{opt.text}</Typo>
+                                                <View style={pollVoterStyles.countPill}>
+                                                    <Typo size={11} fontWeight="800" color={colors.primaryDark}>{opt.votes.length} votes</Typo>
+                                                </View>
+                                            </View>
+                                            {opt.votes.length === 0 ? (
+                                                <Typo size={12} color={colors.neutral400} style={{ fontStyle: "italic", marginLeft: 4 }}>No votes yet</Typo>
+                                            ) : (
+                                                <View style={pollVoterStyles.voterList}>
+                                                    {opt.votes.map((vote) => (
+                                                        <View key={vote.userId} style={pollVoterStyles.voterRow}>
+                                                            <View style={pollVoterStyles.voterAvatarPlaceholder}>
+                                                                <Typo size={11} fontWeight="800" color={colors.primaryDark}>
+                                                                    {(vote.userName || "U")[0].toUpperCase()}
+                                                                </Typo>
+                                                            </View>
+                                                            <Typo size={13} fontWeight="600" color={colors.neutral800}>{vote.userName}</Typo>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            )}
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            )}
+                        </Animated.View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+const pollVoterStyles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+    sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius._30, borderTopRightRadius: radius._30, paddingHorizontal: spacingX._20, paddingTop: verticalScale(12), paddingBottom: verticalScale(34), maxHeight: "80%" },
+    handle: { width: scale(36), height: verticalScale(4), borderRadius: radius.full, backgroundColor: colors.neutral300, alignSelf: "center", marginBottom: verticalScale(12) },
+    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: verticalScale(16), paddingBottom: verticalScale(10), borderBottomWidth: 1, borderBottomColor: colors.neutral100 },
+    closeBtn: { width: scale(32), height: scale(32), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center" },
+    anonBox: { alignItems: "center", justifyContent: "center", paddingVertical: verticalScale(36), gap: verticalScale(8) },
+    scroll: { gap: verticalScale(14), paddingBottom: verticalScale(10) },
+    optionSection: { backgroundColor: colors.neutral50, borderRadius: radius._15, padding: spacingX._12, borderWidth: 1, borderColor: colors.neutral200 },
+    optionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: verticalScale(8) },
+    countPill: { backgroundColor: colors.primaryLight, paddingHorizontal: scale(8), paddingVertical: verticalScale(2), borderRadius: radius.full },
+    voterList: { gap: verticalScale(6) },
+    voterRow: { flexDirection: "row", alignItems: "center", gap: scale(8), paddingVertical: verticalScale(3) },
+    voterAvatarPlaceholder: { width: scale(24), height: scale(24), borderRadius: radius.full, backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center" },
+});
+
+// ─────────────────────────────────────────────
 // POLL BUBBLE
 // ─────────────────────────────────────────────
 const PollBubble = ({
@@ -887,6 +998,7 @@ const PollBubble = ({
     formattedTime?: string;
 }) => {
     const [, setTick] = useState(0);
+    const [showVoterModal, setShowVoterModal] = useState(false);
 
     useEffect(() => {
         if (!poll.endsAt || poll.isClosed) return;
@@ -1261,6 +1373,25 @@ const PollBubble = ({
                     )}
                 </View>
 
+                <TouchableOpacity
+                    onPress={() => setShowVoterModal(true)}
+                    activeOpacity={0.75}
+                    style={pollStyles.viewVotesBtn}
+                >
+                    <Icons.UsersThree
+                        size={verticalScale(12)}
+                        color={colors.primaryDark}
+                        weight="bold"
+                    />
+                    <Typo
+                        size={10}
+                        fontWeight="700"
+                        color={colors.primaryDark}
+                    >
+                        View Votes
+                    </Typo>
+                </TouchableOpacity>
+
                 {isMe && !isPollEnded ? (
                     <TouchableOpacity
                         onPress={handleClose}
@@ -1307,6 +1438,13 @@ const PollBubble = ({
                     {formattedTime}
                 </Typo>
             )}
+
+            {/* ── Poll Voter Breakdown Modal (Feature 8) ── */}
+            <PollVoterModal
+                visible={showVoterModal}
+                poll={poll}
+                onClose={() => setShowVoterModal(false)}
+            />
         </Animated.View>
     );
 };
@@ -1513,6 +1651,15 @@ const pollStyles = StyleSheet.create({
         height: 3,
         borderRadius: radius.full,
         backgroundColor: colors.neutral300,
+    },
+    viewVotesBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: scale(8),
+        paddingVertical: verticalScale(3),
+        borderRadius: radius.full,
+        backgroundColor: colors.primaryLight,
     },
     closeButton: {
         flexDirection: "row",
@@ -1778,6 +1925,18 @@ const DeliveryStatusIcon = ({
 };
 
 // ─────────────────────────────────────────────
+// TRANSLATION PRESETS (Feature 2)
+// ─────────────────────────────────────────────
+const TRANSLATION_LANGUAGES = [
+    { code: "en", label: "English 🇬🇧" },
+    { code: "es", label: "Spanish 🇪🇸" },
+    { code: "fr", label: "French 🇫🇷" },
+    { code: "de", label: "German 🇩🇪" },
+    { code: "hi", label: "Hindi 🇮🇳" },
+    { code: "ja", label: "Japanese 🇯🇵" },
+];
+
+// ─────────────────────────────────────────────
 // MAIN MESSAGE ITEM
 // ─────────────────────────────────────────────
 const MessageItem = ({
@@ -1791,6 +1950,7 @@ const MessageItem = ({
     onUnpin,
     deliveryStatus,
     searchHighlight,
+    isTargetHighlight,
     customBubbleMine,
     customBubbleOther,
 }: {
@@ -1804,6 +1964,7 @@ const MessageItem = ({
     onUnpin?: (messageId: string) => void;
     deliveryStatus?: DeliveryStatus;
     searchHighlight?: string;
+    isTargetHighlight?: boolean;
     customBubbleMine?: string;
     customBubbleOther?: string;
 }) => {
@@ -1817,6 +1978,7 @@ const MessageItem = ({
     const [showImageViewer, setShowImageViewer] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [translatedText, setTranslatedText] = useState<string | null>(null);
+    const [selectedTargetLang, setSelectedTargetLang] = useState<{ code: string; label: string }>({ code: "es", label: "Spanish 🇪🇸" });
     const [isTranslating, setIsTranslating] = useState(false);
     const [showOriginal, setShowOriginal] = useState(false);
 
@@ -1931,7 +2093,13 @@ const MessageItem = ({
         }),
     [isDeleted, item, onReply]);
 
-    const handleLongPress = () => { if (isDeleted || isPollMessage) return; setShowActions(true); };
+    const handleLongPress = () => {
+        if (isDeleted || isPollMessage) return;
+        if (Platform.OS !== 'web') {
+            try { Vibration.vibrate(30); } catch (_) {}
+        }
+        setShowActions(true);
+    };
     const handleDismiss = () => setShowActions(false);
 
     const handleCopy = async () => {
@@ -1941,18 +2109,31 @@ const MessageItem = ({
         setTimeout(() => setShowToast(false), 1800);
     };
 
-    const handleTranslate = async () => {
+    const handleTranslate = () => {
         if (!item.content) return;
         setShowActions(false);
-        setIsTranslating(true);
-        const res = await translateMessage(item.content, "es");
-        if (res.success && res.data?.translatedText) {
-            setTranslatedText(res.data.translatedText);
-            setShowOriginal(false);
-        } else {
-            Alert.alert("Translation", res.msg || "Could not translate message");
-        }
-        setIsTranslating(false);
+        Alert.alert(
+            "Translate Message",
+            "Choose target language:",
+            [
+                ...TRANSLATION_LANGUAGES.map(lang => ({
+                    text: lang.label,
+                    onPress: async () => {
+                        setSelectedTargetLang(lang);
+                        setIsTranslating(true);
+                        const res = await translateMessage(item.content, lang.code);
+                        if (res.success && res.data?.translatedText) {
+                            setTranslatedText(res.data.translatedText);
+                            setShowOriginal(false);
+                        } else {
+                            Alert.alert("Translation", res.msg || "Could not translate message");
+                        }
+                        setIsTranslating(false);
+                    }
+                })),
+                { text: "Cancel", style: "cancel" }
+            ]
+        );
     };
 
     const handleReply = () => { setShowActions(false); onReply(item); };
@@ -2069,6 +2250,7 @@ const MessageItem = ({
                     style={[
                         styles.messageContainer,
                         isMe ? styles.myMessage : styles.theirMessage,
+                        isTargetHighlight && styles.targetHighlight,
                         { transform: [{ translateX: swipeX }] },
                     ]}
                 >
@@ -2195,6 +2377,11 @@ const MessageItem = ({
                                         style={styles.attachement}
                                         transition={100}
                                     />
+                                    {item.attachmentMeta?.isHd && (
+                                        <View style={styles.hdBadge}>
+                                            <Typo size={9} fontWeight="800" color={colors.white}>HD</Typo>
+                                        </View>
+                                    )}
                                     <View style={styles.zoomHint}>
                                         <Icons.MagnifyingGlassPlus
                                             size={verticalScale(13)}
@@ -2228,7 +2415,7 @@ const MessageItem = ({
                                     <View style={styles.translationHeader}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                             <Icons.Translate size={verticalScale(12)} color={colors.primaryDark} weight="bold" />
-                                            <Typo size={11} fontWeight="700" color={colors.neutral800}>Spanish Translation</Typo>
+                                            <Typo size={11} fontWeight="700" color={colors.neutral800}>{selectedTargetLang.label} Translation</Typo>
                                         </View>
                                         <TouchableOpacity onPress={() => setShowOriginal(prev => !prev)} activeOpacity={0.7}>
                                             <Typo size={10} color={colors.primaryDark} fontWeight="600">
@@ -2578,6 +2765,20 @@ const styles = StyleSheet.create({
     zoomHint: {
         position: "absolute", bottom: verticalScale(8), right: verticalScale(8),
         backgroundColor: "rgba(0,0,0,0.45)", borderRadius: radius.full, padding: 5,
+    },
+    hdBadge: {
+        position: 'absolute',
+        top: verticalScale(8),
+        left: scale(8),
+        backgroundColor: 'rgba(0,0,0,0.65)',
+        borderRadius: radius._5,
+        paddingHorizontal: scale(5),
+        paddingVertical: verticalScale(1),
+    },
+    targetHighlight: {
+        backgroundColor: 'rgba(234, 179, 8, 0.25)',
+        borderRadius: radius._15,
+        padding: 4,
     },
     messageAvatar: { alignSelf: "flex-end" },
     timeRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: spacingX._5, marginTop: spacingY._5 },

@@ -146,11 +146,13 @@ const StarredMessagesScreen = () => {
         const msg = item.message || item.messageId;
         const sender = msg?.sender || msg?.senderId;
         const senderName = sender?.name || "Chat";
+        const msgId = msg?.id || msg?._id || "";
         router.push({
             pathname: "/(main)/conversation",
             params: {
                 id: item.conversationId,
                 name: senderName,
+                highlightMessageId: msgId,
             },
         });
     }, [router]);

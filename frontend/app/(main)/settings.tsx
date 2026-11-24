@@ -670,7 +670,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={12} color={colors.neutral400} fontWeight="600">
-                        Bubbly v3.2.0 · Flagship Grand Edition
+                        Bubbly v3.4.0 · Flagship Edition
                     </Typo>
                     <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
                         Made with care for seamless connection
