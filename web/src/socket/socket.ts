@@ -14,12 +14,16 @@ export function connectSocket(): Promise<Socket> {
       auth: { token },
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 500,
     });
 
     socket.on("connect", () => {
       console.log("[Bubbly Web] Socket connected:", socket?.id);
+      // Immediately request all core data upon connection!
+      socket?.emit("getConversations", null);
+      socket?.emit("getContacts", null);
+      socket?.emit("getStories", null);
     });
 
     socket.on("disconnect", (reason) => {

@@ -486,6 +486,22 @@ Build the website:
 npm run build
 ```
 
+### 5. Configure and run the web application
+
+The web application links directly with mobile users through the shared backend and Socket.IO network.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Build the web application for production:
+
+```bash
+npm run build
+```
+
 ---
 
 ## Environment configuration
@@ -548,6 +564,14 @@ The following scripts are documented from the project's package configuration. R
 |---|---|
 | `npm run dev` | Start the website development server. |
 | `npm run build` | Build the website for production. |
+
+### Web Application
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start the Bubbly web app development server on Vite. |
+| `npm run build` | Compile TypeScript and bundle production assets with Vite. |
+| `npm run preview` | Preview production build locally. |
 
 ---
 

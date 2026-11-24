@@ -19,7 +19,11 @@ export function intializeSocket(server: any): SocketIOServer {
         : "*";
 
     const io = new SocketIOServer(server, {
-        cors: { origin: allowedOrigins }
+        cors: { origin: allowedOrigins },
+        pingTimeout: 20000,
+        pingInterval: 25000,
+        maxHttpBufferSize: 1e7,
+        connectTimeout: 45000,
     });
     setIO(io);
 

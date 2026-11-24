@@ -370,11 +370,12 @@ const popupStyles = StyleSheet.create({
 // ─────────────────────────────────────────────
 // VOICE MESSAGE PLAYER
 // ─────────────────────────────────────────────
-const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe }: { voiceUrl: string; voiceDuration: number; isMe: boolean }) => {
+const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { voiceUrl: string; voiceDuration: number; isMe: boolean; content?: string }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(0);
     const [totalDuration, setTotalDuration] = useState(voiceDuration);
+    const [showTranscript, setShowTranscript] = useState(false);
     const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
     const player = useAudioPlayer(voiceUrl, { updateInterval: 200 });
     const status = useAudioPlayerStatus(player);
@@ -494,10 +495,23 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe }: { voiceUrl: s
                     <Typo size={10} fontWeight="500" color={isMe ? colors.neutral600 : colors.neutral500}>
                         {isPlaying || currentTime > 0 ? `${formatDuration(currentTime)} / ${formatDuration(totalDuration)}` : formatDuration(totalDuration)}
                     </Typo>
-                    <TouchableOpacity onPress={handleToggleSpeed} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
-                        <Typo size={9} fontWeight="700" color={colors.neutral800}>{playbackSpeed}x</Typo>
-                    </TouchableOpacity>
+                    <View style={voiceStyles.metaActions}>
+                        <TouchableOpacity onPress={handleToggleSpeed} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                            <Typo size={9} fontWeight="700" color={colors.neutral800}>{playbackSpeed}x</Typo>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setShowTranscript(prev => !prev)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                            <Typo size={9} fontWeight="700" color={colors.neutral800}>{showTranscript ? "Hide" : "Transcribe 📝"}</Typo>
+                        </TouchableOpacity>
+                    </View>
                 </View>
+                {showTranscript && (
+                    <View style={voiceStyles.transcriptWrap}>
+                        <Icons.Quotes size={11} color={colors.primaryDark} weight="fill" />
+                        <Typo size={11.5} color={colors.neutral800} style={{ fontStyle: 'italic', flex: 1, lineHeight: 16 }}>
+                            {content?.trim() || "Voice note transcribed on Bubbly."}
+                        </Typo>
+                    </View>
+                )}
             </View>
         </View>
     );
@@ -638,7 +652,17 @@ const voiceStyles = StyleSheet.create({
     waveform: { flexDirection: "row", alignItems: "center", gap: 2, height: verticalScale(20) },
     bar: { width: 3, borderRadius: 2 },
     metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    metaActions: { flexDirection: "row", alignItems: "center", gap: scale(4) },
     speedBtn: { paddingHorizontal: spacingX._6, paddingVertical: verticalScale(2), borderRadius: radius.full },
+    transcriptWrap: {
+        marginTop: verticalScale(5),
+        padding: spacingX._7,
+        backgroundColor: "rgba(0,0,0,0.04)",
+        borderRadius: radius._8,
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: scale(5),
+    },
 });
 
 const CallMessageBubble = ({
@@ -1711,7 +1735,7 @@ const editStyles = StyleSheet.create({
 // ─────────────────────────────────────────────
 // MESSAGE DELIVERY STATUS
 // ─────────────────────────────────────────────
-type DeliveryStatus = "sent" | "delivered" | "seen";
+type DeliveryStatus = "sending" | "sent" | "delivered" | "seen";
 
 const DeliveryStatusIcon = ({
     status,
@@ -1726,7 +1750,13 @@ const DeliveryStatusIcon = ({
             entering={FadeIn.duration(140)}
             style={styles.deliveryStatus}
         >
-            {status === "sent" ? (
+            {status === "sending" ? (
+                <Icons.Clock
+                    size={verticalScale(12)}
+                    color={colors.neutral500}
+                    weight="regular"
+                />
+            ) : status === "sent" ? (
                 <Icons.Check
                     size={verticalScale(13)}
                     color={colors.neutral500}
@@ -2138,6 +2168,7 @@ const MessageItem = ({
                                     voiceUrl={item.voiceUrl!}
                                     voiceDuration={item.voiceDuration || 0}
                                     isMe={isMe}
+                                    content={item.content}
                                 />
                             )}
 

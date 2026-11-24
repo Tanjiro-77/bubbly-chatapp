@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAuth } from "./context/AuthContext";
 import { useCall } from "./context/CallContext";
 import { useTheme } from "./context/ThemeContext";
@@ -33,6 +33,7 @@ import {
 } from "./types";
 import {
   getConversations,
+  fetchConversations,
   newConversation,
   getMessages,
   newMessage as onNewMessage,
@@ -62,6 +63,7 @@ import {
   openViewOnce,
   onViewOnceOpened,
   getStories,
+  fetchStories,
   createStory,
   viewStory,
   reactToStory,
@@ -72,6 +74,8 @@ import {
 import { MessageSquare, Sparkles } from "lucide-react";
 
 const LOCKED_STORAGE_KEY = "bubbly_locked_chats";
+const CACHED_CONVERSATIONS_KEY = "bubbly_cache_conversations";
+const CACHED_STORIES_KEY = "bubbly_cache_stories";
 
 export const App: React.FC = () => {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -95,11 +99,29 @@ export const App: React.FC = () => {
     toggleVideo,
   } = useCall();
 
-  // Primary State
-  const [conversations, setConversations] = useState<ConversationProps[]>([]);
+  // Primary State - Instant 0ms Cache Loading
+  const [conversations, setConversations] = useState<ConversationProps[]>(() => {
+    try {
+      const cached = localStorage.getItem(CACHED_CONVERSATIONS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [activeConversation, setActiveConversation] = useState<ConversationProps | null>(null);
   const [messages, setMessages] = useState<MessageProps[]>([]);
-  const [stories, setStories] = useState<StoryGroupProps[]>([]);
+  const [stories, setStories] = useState<StoryGroupProps[]>(() => {
+    try {
+      const cached = localStorage.getItem(CACHED_STORIES_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [onlineMap, setOnlineMap] = useState<Record<string, boolean>>({});
   const [typingMap, setTypingMap] = useState<Record<string, string>>({});
   const [draftMap, setDraftMap] = useState<Record<string, string>>({});
@@ -121,6 +143,85 @@ export const App: React.FC = () => {
   const [replyingTo, setReplyingTo] = useState<MessageProps | null>(null);
   const [editingMessage, setEditingMessage] = useState<MessageProps | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // In-Chat Search State
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+
+  const searchMatches = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const queryLower = searchQuery.toLowerCase();
+    return messages.filter(
+      (m) => m.content && m.content.toLowerCase().includes(queryLower)
+    );
+  }, [messages, searchQuery]);
+
+  const scrollToMatch = (index: number) => {
+    if (searchMatches.length === 0) return;
+    const targetMsg = searchMatches[index];
+    if (targetMsg) {
+      const msgId = targetMsg.id || (targetMsg as any)._id;
+      const el = document.getElementById(`msg-${msgId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+  };
+
+  const handleNextSearchMatch = () => {
+    if (searchMatches.length === 0) return;
+    const nextIdx = (currentMatchIndex + 1) % searchMatches.length;
+    setCurrentMatchIndex(nextIdx);
+    scrollToMatch(nextIdx);
+  };
+
+  const handlePrevSearchMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prevIdx =
+      (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    setCurrentMatchIndex(prevIdx);
+    scrollToMatch(prevIdx);
+  };
+
+  useEffect(() => {
+    if (searchMatches.length > 0) {
+      scrollToMatch(0);
+    }
+  }, [searchQuery]);
+
+  const handleTogglePinChat = (convId: string) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c._id === convId ? { ...c, isPinned: !c.isPinned } : c
+      )
+    );
+    addToast("info", "Chat pin status updated");
+  };
+
+  const handleToggleMuteChat = (convId: string, currentMuted: boolean) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c._id === convId ? { ...c, isMuted: !currentMuted } : c
+      )
+    );
+    if (activeConversation?._id === convId) {
+      setActiveConversation((prev) =>
+        prev ? { ...prev, isMuted: !currentMuted } : null
+      );
+    }
+    addToast("info", !currentMuted ? "Conversation muted" : "Conversation unmuted");
+  };
+
+  const handleDeleteConversation = (convId: string) => {
+    if (confirm("Are you sure you want to delete this conversation?")) {
+      setConversations((prev) => prev.filter((c) => c._id !== convId));
+      if (activeConversation?._id === convId) {
+        setActiveConversation(null);
+      }
+      addToast("info", "Conversation deleted");
+    }
+  };
 
   const addToast = (type: "success" | "error" | "info", message: string) => {
     const id = Math.random().toString(36).substring(7);
@@ -158,18 +259,28 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Load initial data
+    // Load initial data & update cache
     getConversations((res: ResponseProps) => {
       if (res.success && Array.isArray(res.data)) {
         setConversations(res.data);
+        try {
+          localStorage.setItem(CACHED_CONVERSATIONS_KEY, JSON.stringify(res.data));
+        } catch {}
       }
     });
 
     getStories((res: ResponseProps) => {
       if (res.success && Array.isArray(res.data)) {
         setStories(res.data);
+        try {
+          localStorage.setItem(CACHED_STORIES_KEY, JSON.stringify(res.data));
+        } catch {}
       }
     });
+
+    // Explicitly emit requests to server immediately
+    fetchConversations();
+    fetchStories();
 
     // Listen for new conversations
     const handleNewConversation = (res: ResponseProps) => {
@@ -553,12 +664,12 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-[#fafaf9] dark:bg-[#121214] text-[#292524] dark:text-[#f5f5f4] select-none font-sans">
+    <div className="h-screen w-screen flex overflow-hidden bg-[#1c1917] text-[#292524] dark:text-[#f5f5f4] select-none font-sans">
       {/* LEFT PANE: Conversations, Stories, Search, Navigation */}
       <div
         className={`${
           activeConversation ? "hidden md:flex" : "flex"
-        } w-full md:w-80 lg:w-96 shrink-0 h-full`}
+        } w-full md:w-[380px] lg:w-[420px] shrink-0 h-full border-r border-black/10 dark:border-white/10`}
       >
         <ChatListPane
           conversations={conversations}
@@ -569,7 +680,12 @@ export const App: React.FC = () => {
           typingMap={typingMap}
           draftMap={draftMap}
           lockedChatIds={lockedChatIds}
-          onSelectConversation={(conv) => setActiveConversation(conv)}
+          onSelectConversation={(conv) => {
+            setActiveConversation(conv);
+            setIsSearching(false);
+            setSearchQuery("");
+            setCurrentMatchIndex(0);
+          }}
           onOpenNewChat={() => setShowNewChat(true)}
           onOpenVault={() => setShowVault(true)}
           onOpenCallLogs={() => setShowCallLogs(true)}
@@ -578,6 +694,10 @@ export const App: React.FC = () => {
           onOpenProfile={() => setShowSettings(true)}
           onOpenCreateStory={() => setShowCreateStory(true)}
           onViewStoryGroup={(group) => setActiveStoryGroup(group)}
+          onTogglePin={handleTogglePinChat}
+          onToggleMute={handleToggleMuteChat}
+          onDeleteConversation={handleDeleteConversation}
+          onLockChatToVault={handleToggleLockChat}
         />
       </div>
 
@@ -585,7 +705,7 @@ export const App: React.FC = () => {
       <div
         className={`${
           !activeConversation ? "hidden md:flex" : "flex"
-        } flex-1 h-full flex-col relative overflow-hidden bg-white/40 dark:bg-zinc-950/40`}
+        } flex-1 h-full flex-col relative overflow-hidden bg-[#FAF5EE] dark:bg-[#121214]`}
       >
         {activeConversation ? (
           <>
@@ -601,9 +721,30 @@ export const App: React.FC = () => {
                   : false
               }
               typingUser={typingMap[activeConversation._id] || null}
+              searchQuery={searchQuery}
+              searchMatchesCount={searchMatches.length}
+              currentMatchIndex={currentMatchIndex}
+              isSearching={isSearching}
               onVoiceCall={() => handleStartCall("voice")}
               onVideoCall={() => handleStartCall("video")}
-              onToggleSearch={() => {}}
+              onToggleSearch={() => {
+                setIsSearching((prev) => !prev);
+                if (isSearching) {
+                  setSearchQuery("");
+                  setCurrentMatchIndex(0);
+                }
+              }}
+              onChangeSearchQuery={(q) => {
+                setSearchQuery(q);
+                setCurrentMatchIndex(0);
+              }}
+              onPrevMatch={handlePrevSearchMatch}
+              onNextMatch={handleNextSearchMatch}
+              onCloseSearch={() => {
+                setIsSearching(false);
+                setSearchQuery("");
+                setCurrentMatchIndex(0);
+              }}
               onOpenStarred={() => setShowStarred(true)}
               onOpenDetails={() => setShowDetailsDrawer(true)}
               onBack={() => setActiveConversation(null)}
@@ -624,6 +765,7 @@ export const App: React.FC = () => {
               messages={messages}
               currentUserId={currentUserId}
               isGroup={activeConversation.type === "group"}
+              searchQuery={isSearching ? searchQuery : ""}
               onReact={handleReact}
               onReply={(msg) => setReplyingTo(msg)}
               onStar={handleStar}
@@ -658,23 +800,50 @@ export const App: React.FC = () => {
             />
           </>
         ) : (
-          // Empty State on Desktop
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 select-none">
-            <div className="w-24 h-24 rounded-3xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-500 flex items-center justify-center shadow-inner mb-6">
-              <MessageSquare className="w-12 h-12" />
+          // Authentic Bubbly Empty State on Desktop
+          <div className="relative h-full flex flex-col items-center justify-center text-center p-8 select-none bg-[#FAF5EE] dark:bg-[#121214] overflow-hidden">
+            {/* Background pattern wallpaper */}
+            <div
+              className="absolute inset-0 pointer-events-none opacity-30 bg-repeat z-0"
+              style={{
+                backgroundImage: `url('/bgPattern.png')`,
+                backgroundSize: "320px 320px",
+              }}
+            />
+
+            <div className="relative z-10 flex flex-col items-center max-w-md">
+              <div className="w-28 h-28 rounded-[36px] bg-[#fef3c7] dark:bg-amber-500/20 text-[#d97706] flex items-center justify-center shadow-xl shadow-amber-500/10 mb-6 border border-[#f59e0b]/30">
+                <img
+                  src="/logo-glow.png"
+                  alt="Bubbly"
+                  className="w-16 h-16 object-contain drop-shadow"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = "none";
+                  }}
+                />
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#fef3c7] dark:bg-amber-500/20 text-[#d97706] text-xs font-black tracking-wider uppercase mb-3">
+                <Sparkles className="w-3.5 h-3.5 fill-current" />
+                V3.2.0 • Real-Time Linked Network
+              </div>
+
+              <h2 className="text-3xl font-black text-stone-900 dark:text-white tracking-tight mb-3">
+                Connect Beyond Messages 💛
+              </h2>
+
+              <p className="text-sm text-stone-600 dark:text-stone-300 leading-relaxed mb-8 font-medium">
+                Seamlessly synchronized with your Bubbly mobile app. Send instant messages, share voice notes, post stories, and place HD calls across all your devices.
+              </p>
+
+              <button
+                onClick={() => setShowNewChat(true)}
+                className="py-3.5 px-8 rounded-full bg-[#f59e0b] hover:bg-[#d97706] active:scale-95 text-[#1c1917] font-extrabold text-sm shadow-xl shadow-amber-500/30 transition transform hover:-translate-y-0.5 duration-150 flex items-center gap-2"
+              >
+                <MessageSquare className="w-4 h-4 fill-current" />
+                Start New Conversation
+              </button>
             </div>
-            <h2 className="text-2xl font-black text-stone-900 dark:text-white tracking-tight mb-2">
-              Select a chat to start messaging
-            </h2>
-            <p className="text-sm text-stone-500 dark:text-zinc-400 max-w-sm leading-relaxed mb-6 font-medium">
-              Seamlessly connected with your Bubbly mobile app. Real-time messages, audio notes, media, stories, and calls across all your devices.
-            </p>
-            <button
-              onClick={() => setShowNewChat(true)}
-              className="py-3 px-6 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs shadow-lg shadow-amber-500/30 transition transform hover:scale-105 active:scale-95"
-            >
-              Start New Conversation
-            </button>
           </div>
         )}
       </div>

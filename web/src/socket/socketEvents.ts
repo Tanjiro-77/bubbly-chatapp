@@ -23,15 +23,46 @@ const socketOp = (eventName: string, payloadOrCb: any, cbOrOff?: any) => {
   }
 };
 
+// ── Explicit Emitters for Instant Data Fetching ──
+export const fetchConversations = () => {
+  const socket = getSocket();
+  if (socket) {
+    socket.emit("getConversations", null);
+  }
+};
+
+export const fetchContacts = () => {
+  const socket = getSocket();
+  if (socket) {
+    socket.emit("getContacts", null);
+  }
+};
+
+export const fetchStories = () => {
+  const socket = getSocket();
+  if (socket) {
+    socket.emit("getStories", null);
+  }
+};
+
 // Conversations & Messages
-export const getConversations = (cbOrPayload?: any, off = false) => socketOp("getConversations", cbOrPayload, off);
+export const getConversations = (cbOrPayload?: any, off = false) => {
+  socketOp("getConversations", cbOrPayload, off);
+  if (typeof cbOrPayload === "function" && !off) {
+    // Also trigger the fetch immediately so the server sends the conversations!
+    fetchConversations();
+  }
+};
+
 export const newConversation = (cbOrPayload?: any, off = false) => socketOp("newConversation", cbOrPayload, off);
 export const getMessages = (payload: any, cb?: any) => socketOp("getMessages", payload, cb);
 export const newMessage = (cbOrPayload: any, off = false) => socketOp("newMessage", cbOrPayload, off);
+
 export const markAsRead = (conversationId: string) => {
   const socket = getSocket();
   if (socket) socket.emit("markAsRead", { conversationId });
 };
+
 export const onUnreadCountUpdate = (cb: any, off = false) => socketOp("unreadCountUpdate", cb, off);
 export const messageDelivered = (payload: { messageId: string; conversationId: string }) => {
   const socket = getSocket();
@@ -78,7 +109,13 @@ export const closePoll = (payload: any, off = false) => socketOp("closePoll", pa
 export const onPollUpdated = (cb: any, off = false) => socketOp("pollUpdated", cb, off);
 
 // User & Contacts
-export const getContacts = (cbOrPayload?: any, off = false) => socketOp("getContacts", cbOrPayload, off);
+export const getContacts = (cbOrPayload?: any, off = false) => {
+  socketOp("getContacts", cbOrPayload, off);
+  if (typeof cbOrPayload === "function" && !off) {
+    // Also trigger fetch immediately so server sends contacts right away!
+    fetchContacts();
+  }
+};
 export const updateProfile = (payload: any, off = false) => socketOp("updateProfile", payload, off);
 export const getUserStatus = (payload: any, off = false) => socketOp("getUserStatus", payload, off);
 export const onUserStatus = (cb: any, off = false) => socketOp("userStatus", cb, off);
@@ -98,7 +135,12 @@ export const toggleMuteConversation = (payload: { conversationId: string; durati
 
 // Stories
 export const createStory = (payload: any, cb?: any) => socketOp("createStory", payload, cb);
-export const getStories = (cbOrPayload?: any, off = false) => socketOp("getStories", cbOrPayload, off);
+export const getStories = (cbOrPayload?: any, off = false) => {
+  socketOp("getStories", cbOrPayload, off);
+  if (typeof cbOrPayload === "function" && !off) {
+    fetchStories();
+  }
+};
 export const viewStory = (payload: any, off = false) => socketOp("viewStory", payload, off);
 export const reactToStory = (payload: any, off = false) => socketOp("reactToStory", payload, off);
 export const replyToStory = (payload: any, off = false) => socketOp("replyToStory", payload, off);
@@ -130,14 +172,17 @@ export const callEnd = (callId: string) => {
   const socket = getSocket();
   if (socket) socket.emit("call:end", { callId });
 };
-export const callSignal = (payload: { callId: string; targetUserId: string; payload: any }) => {
+export const callSignal = (payload: any) => {
   const socket = getSocket();
   if (socket) socket.emit("call:signal", payload);
 };
+
+export const onIncomingCall = (cb: any, off = false) => socketOp("call:incoming", cb, off);
 export const onCallIncoming = (cb: any, off = false) => socketOp("call:incoming", cb, off);
-export const onCallRinging = (cb: any, off = false) => socketOp("call:ringing", cb, off);
 export const onCallAccepted = (cb: any, off = false) => socketOp("call:accepted", cb, off);
-export const onCallEnded = (cb: any, off = false) => socketOp("call:ended", cb, off);
-export const onCallFailed = (cb: any, off = false) => socketOp("call:failed", cb, off);
+export const onCallRejected = (cb: any, off = false) => socketOp("call:rejected", cb, off);
 export const onCallConnected = (cb: any, off = false) => socketOp("call:connected", cb, off);
+export const onCallEnded = (cb: any, off = false) => socketOp("call:ended", cb, off);
+export const onCallRinging = (cb: any, off = false) => socketOp("call:ringing", cb, off);
+export const onCallFailed = (cb: any, off = false) => socketOp("call:failed", cb, off);
 export const onCallSignal = (cb: any, off = false) => socketOp("call:signal", cb, off);

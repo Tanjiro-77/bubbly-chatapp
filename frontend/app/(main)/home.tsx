@@ -701,6 +701,41 @@ const Home = () => {
                         maxToRenderPerBatch={10}
                         windowSize={7}
                         removeClippedSubviews={Platform.OS === 'android'}
+                        ListHeaderComponent={
+                            selectedTab === 0 && !searchQuery.trim() && filterCategory === "all" ? (
+                                <TouchableOpacity
+                                    style={styles.notesSelfCard}
+                                    activeOpacity={0.8}
+                                    onPress={() => router.push({
+                                        pathname: "/(main)/conversation",
+                                        params: {
+                                            id: `notes_${currentUser?.id}`,
+                                            name: "Notes to Self 📝",
+                                            type: "direct",
+                                            participants: JSON.stringify([currentUser]),
+                                        }
+                                    })}
+                                >
+                                    <View style={styles.notesSelfLeft}>
+                                        <View style={styles.notesSelfIcon}>
+                                            <Icons.Notebook size={verticalScale(20)} color={colors.primaryDark} weight="fill" />
+                                        </View>
+                                        <View style={{ flex: 1, gap: 2 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <Typo size={14.5} fontWeight="700" color={colors.neutral900}>Notes to Self</Typo>
+                                                <View style={styles.notesSelfBadge}>
+                                                    <Typo size={9.5} fontWeight="700" color={colors.primaryDark}>YOU</Typo>
+                                                </View>
+                                            </View>
+                                            <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
+                                                Personal notebook for ideas, links & reminders
+                                            </Typo>
+                                        </View>
+                                    </View>
+                                    <Icons.CaretRight size={16} color={colors.neutral350} />
+                                </TouchableOpacity>
+                            ) : null
+                        }
                         ListEmptyComponent={
                             loading ? (
                                 <View style={styles.centerState}>
@@ -1293,5 +1328,37 @@ const styles = StyleSheet.create({
         borderRadius: radius._10,
         alignItems: "center",
         justifyContent: "center",
+    },
+    notesSelfCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: colors.neutral50,
+        borderRadius: radius._15,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: verticalScale(11),
+        marginBottom: spacingY._10,
+        borderWidth: 1,
+        borderColor: colors.neutral200,
+    },
+    notesSelfLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._10,
+        flex: 1,
+    },
+    notesSelfIcon: {
+        width: verticalScale(40),
+        height: verticalScale(40),
+        borderRadius: radius.full,
+        backgroundColor: colors.primaryLight,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    notesSelfBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: radius.full,
+        backgroundColor: colors.primaryLight,
     },
 });

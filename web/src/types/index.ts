@@ -151,6 +151,7 @@ export interface ConversationProps {
   };
   unreadCount?: number;
   isMuted?: boolean;
+  isPinned?: boolean;
   mutedUntil?: string | null;
   pinnedMessages?: {
     id: string;

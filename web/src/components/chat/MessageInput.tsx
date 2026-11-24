@@ -4,17 +4,17 @@ import {
   Paperclip,
   Smile,
   Mic,
-  Square,
   Trash2,
   X,
   Image as ImageIcon,
   FileText,
   BarChart2,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import { useAudioRecorder } from "../../hooks/useAudioRecorder";
 import { uploadMediaToCloudinary } from "../../services/mediaService";
-import { MessageProps, SelectedFileProps } from "../../types";
+import { MessageProps } from "../../types";
 
 interface MessageInputProps {
   conversationId: string;
@@ -38,14 +38,23 @@ interface MessageInputProps {
   onOpenPollModal: () => void;
 }
 
-const EMOJI_LIST = [
-  "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🥲", "🥹", "😊", "😇", "🙂", "🙃", "😉",
-  "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓",
-  "😎", "🥸", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫",
-  "😩", "🥺", "😢", "😭", "😮‍💨", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨",
-  "👍", "👎", "👏", "🙌", "🤝", "🙏", "✌️", "🤞", "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉",
-  "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞",
-  "✨", "🎉", "🔥", "🚀", "💡", "💯", "🎈", "🎁", "☕️", "🍕", "🍔", "🍻", "🥂", "🏆", "🌟"
+const EMOJI_CATEGORIES = [
+  {
+    name: "Quick",
+    emojis: ["❤️", "😂", "🤣", "😍", "🥰", "😘", "😊", "😎", "🤩", "🥳", "😭", "😢", "🔥", "💯", "✨", "🎉", "👍", "👏", "🙌", "🙏"],
+  },
+  {
+    name: "Smileys",
+    emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "🙂", "🙃", "😉", "😌", "😋", "😛", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🥳", "😏"],
+  },
+  {
+    name: "Gestures",
+    emojis: ["👍", "👎", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✌️", "🤞", "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉", "👆", "👇", "☝️"],
+  },
+  {
+    name: "Hearts & Fire",
+    emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "🔥"],
+  },
 ];
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -96,7 +105,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
       onStopTyping();
-    }, 2000);
+    }, 2500);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -228,7 +237,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   return (
-    <div className="relative border-t border-stone-200 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl p-3 sm:p-4 select-none">
+    <div className="relative border-t border-stone-200/80 dark:border-white/10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl p-3 sm:p-4 select-none">
       {/* Hidden file input */}
       <input
         type="file"
@@ -237,7 +246,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         className="hidden"
       />
 
-      {/* Reply Preview Bar */}
+      {/* Reply Preview Bar matching mobile conversation.tsx */}
       {replyingTo && (
         <div className="flex items-center justify-between p-2.5 mb-2 rounded-2xl bg-amber-500/10 border-l-4 border-amber-500 animate-slide-up">
           <div className="truncate pr-4 text-xs">
@@ -259,8 +268,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
       {/* Edit Mode Bar */}
       {editingMessage && (
-        <div className="flex items-center justify-between p-2.5 mb-2 rounded-2xl bg-blue-500/10 border-l-4 border-blue-500 animate-slide-up">
-          <span className="font-bold text-xs text-blue-700 dark:text-blue-400">
+        <div className="flex items-center justify-between p-2.5 mb-2 rounded-2xl bg-sky-500/10 border-l-4 border-sky-500 animate-slide-up">
+          <span className="font-bold text-xs text-sky-700 dark:text-sky-400">
             Editing message
           </span>
           <button
@@ -272,7 +281,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         </div>
       )}
 
-      {/* Selected File Preview */}
+      {/* Selected File Preview with View Once toggle */}
       {selectedFile && (
         <div className="flex items-center gap-3 p-3 mb-2 rounded-2xl bg-amber-50 dark:bg-zinc-800/90 border border-amber-200 dark:border-amber-900/40 animate-slide-up">
           {previewUrl ? (
@@ -286,21 +295,21 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             <span className="text-xs font-bold block truncate text-stone-900 dark:text-white">
               {selectedFile.name}
             </span>
-            <span className="text-[10px] text-stone-500 dark:text-zinc-400">
+            <span className="text-[10px] text-stone-500 dark:text-zinc-400 font-semibold">
               {(selectedFile.size / 1024).toFixed(1)} KB
             </span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsViewOnce(!isViewOnce)}
-              className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition ${
                 isViewOnce
-                  ? "bg-amber-500 text-white"
-                  : "bg-black/5 dark:bg-white/10 text-stone-600 dark:text-zinc-300"
+                  ? "bg-amber-500 text-stone-950 shadow-md shadow-amber-500/30"
+                  : "bg-black/5 dark:bg-white/10 text-stone-600 dark:text-zinc-300 hover:bg-black/10"
               }`}
               title="View Once"
             >
-              <Lock className="w-3.5 h-3.5" /> 1
+              <Lock className="w-3.5 h-3.5" /> 1 View Once
             </button>
             <button
               onClick={clearSelectedFile}
@@ -312,26 +321,35 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         </div>
       )}
 
-      {/* Emoji Picker Popup */}
+      {/* Categorized Emoji Picker Dropdown */}
       {showEmojis && (
-        <div className="absolute bottom-20 left-4 z-40 w-72 sm:w-80 h-64 p-3 rounded-3xl bg-white dark:bg-zinc-800 shadow-2xl border border-black/10 dark:border-white/10 overflow-y-auto grid grid-cols-8 gap-1 animate-scale-in">
-          {EMOJI_LIST.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => {
-                setText((prev) => prev + emoji);
-              }}
-              className="text-xl p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition transform hover:scale-120"
-            >
-              {emoji}
-            </button>
+        <div className="absolute bottom-20 left-4 z-40 w-80 h-72 p-3.5 rounded-3xl bg-white dark:bg-zinc-800 shadow-2xl border border-black/10 dark:border-white/10 overflow-y-auto animate-scale-in">
+          {EMOJI_CATEGORIES.map((cat) => (
+            <div key={cat.name} className="mb-3">
+              <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-zinc-500 block mb-1.5">
+                {cat.name}
+              </span>
+              <div className="grid grid-cols-8 gap-1">
+                {cat.emojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      setText((prev) => prev + emoji);
+                    }}
+                    className="text-xl p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition transform hover:scale-125"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
 
-      {/* Attachments Menu Popup */}
+      {/* Attachments Menu matching mobile Plus menu */}
       {showAttachMenu && (
-        <div className="absolute bottom-20 left-12 z-40 w-48 p-2 rounded-2xl bg-white dark:bg-zinc-800 shadow-2xl border border-black/10 dark:border-white/10 space-y-1 animate-scale-in">
+        <div className="absolute bottom-20 left-12 z-40 w-52 p-2 rounded-2xl bg-white dark:bg-zinc-800 shadow-2xl border border-black/10 dark:border-white/10 space-y-1 animate-scale-in">
           <button
             onClick={() => {
               if (fileInputRef.current) {
@@ -339,7 +357,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                 fileInputRef.current.click();
               }
             }}
-            className="w-full flex items-center gap-3 p-2 hover:bg-amber-50 dark:hover:bg-zinc-700/60 rounded-xl text-xs font-semibold text-stone-700 dark:text-zinc-200 transition"
+            className="w-full flex items-center gap-3 p-2.5 hover:bg-amber-50 dark:hover:bg-zinc-700/60 rounded-xl text-xs font-bold text-stone-800 dark:text-zinc-200 transition"
           >
             <ImageIcon className="w-4 h-4 text-amber-500" /> Photo or Video
           </button>
@@ -350,16 +368,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                 fileInputRef.current.click();
               }
             }}
-            className="w-full flex items-center gap-3 p-2 hover:bg-amber-50 dark:hover:bg-zinc-700/60 rounded-xl text-xs font-semibold text-stone-700 dark:text-zinc-200 transition"
+            className="w-full flex items-center gap-3 p-2.5 hover:bg-amber-50 dark:hover:bg-zinc-700/60 rounded-xl text-xs font-bold text-stone-800 dark:text-zinc-200 transition"
           >
-            <FileText className="w-4 h-4 text-sky-500" /> Document
+            <FileText className="w-4 h-4 text-sky-500" /> Document / File
           </button>
           <button
             onClick={() => {
               setShowAttachMenu(false);
               onOpenPollModal();
             }}
-            className="w-full flex items-center gap-3 p-2 hover:bg-amber-50 dark:hover:bg-zinc-700/60 rounded-xl text-xs font-semibold text-stone-700 dark:text-zinc-200 transition"
+            className="w-full flex items-center gap-3 p-2.5 hover:bg-amber-50 dark:hover:bg-zinc-700/60 rounded-xl text-xs font-bold text-stone-800 dark:text-zinc-200 transition"
           >
             <BarChart2 className="w-4 h-4 text-emerald-500" /> Create Poll
           </button>
@@ -369,11 +387,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       {/* Main Input Row */}
       <div className="flex items-end gap-2">
         {isRecording ? (
-          // Recording view
+          // Recording Live Bar
           <div className="flex-1 flex items-center justify-between p-2.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 animate-pulse">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-              <span className="text-xs font-bold text-rose-600 dark:text-rose-400">
+              <span className="text-xs font-black text-rose-600 dark:text-rose-400">
                 Recording audio... {Math.floor(recordingTime / 60)}:
                 {recordingTime % 60 < 10 ? "0" : ""}
                 {recordingTime % 60}
@@ -404,7 +422,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                 onClick={() => setShowEmojis(!showEmojis)}
                 className={`p-2.5 rounded-2xl transition ${
                   showEmojis
-                    ? "bg-amber-100 text-amber-600 dark:bg-zinc-800 dark:text-amber-400"
+                    ? "bg-amber-500/20 text-amber-500"
                     : "text-stone-500 hover:text-amber-500 hover:bg-black/5 dark:hover:bg-white/5"
                 }`}
                 title="Emojis"
@@ -415,10 +433,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
                 className={`p-2.5 rounded-2xl transition ${
                   showAttachMenu
-                    ? "bg-amber-100 text-amber-600 dark:bg-zinc-800 dark:text-amber-400"
+                    ? "bg-amber-500/20 text-amber-500"
                     : "text-stone-500 hover:text-amber-500 hover:bg-black/5 dark:hover:bg-white/5"
                 }`}
-                title="Attach file or poll"
+                title="Attach file, poll, or photo"
               >
                 <Paperclip className="w-5 h-5" />
               </button>
@@ -437,18 +455,18 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               />
             </div>
 
-            {/* Mic or Send button */}
+            {/* Mic or Send button in Honey Amber */}
             {text.trim() || selectedFile ? (
               <button
                 onClick={handleSend}
                 disabled={isUploading}
-                className="p-3 mb-1 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold shadow-lg shadow-amber-500/30 transition transform active:scale-95 disabled:opacity-50"
+                className="p-3 mb-1 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black shadow-lg shadow-amber-500/30 transition transform active:scale-95 disabled:opacity-50"
                 title="Send"
               >
                 {isUploading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-stone-950 border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <Send className="w-5 h-5" />
+                  <Send className="w-5 h-5 stroke-[2.5]" />
                 )}
               </button>
             ) : (

@@ -53,13 +53,14 @@ const SharedMediaScreen = () => {
 
         const handler = (res: ResponseProps) => {
             setLoading(false);
-            if (res.success && Array.isArray(res.data?.messages)) {
-                setMessages(res.data.messages);
+            if (res.success) {
+                const list = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.messages) ? res.data.messages : []);
+                setMessages(list);
             }
         };
 
         getMessages(handler);
-        getMessages({ conversationId: conversationId as string, page: 1, limit: 100 });
+        getMessages({ conversationId: conversationId as string, page: 0, limit: 100 });
 
         return () => {
             getMessages(handler, true);

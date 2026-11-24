@@ -218,11 +218,13 @@ const ChatThemeModal = ({
     visible,
     currentThemeId,
     onSelectTheme,
+    onPickCustomWallpaper,
     onClose,
 }: {
     visible: boolean;
     currentThemeId: string;
     onSelectTheme: (theme: ChatTheme) => void;
+    onPickCustomWallpaper?: () => void;
     onClose: () => void;
 }) => (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -270,12 +272,149 @@ const ChatThemeModal = ({
                                 );
                             })}
                         </ScrollView>
+
+                        {onPickCustomWallpaper && (
+                            <TouchableOpacity
+                                style={themeModalStyles.customWallBtn}
+                                onPress={onPickCustomWallpaper}
+                                activeOpacity={0.8}
+                            >
+                                <Icons.Image size={18} color={colors.primaryDark} weight="fill" />
+                                <Typo size={13.5} fontWeight="700" color={colors.neutral800}>
+                                    Choose Photo from Gallery
+                                </Typo>
+                            </TouchableOpacity>
+                        )}
                     </Animated.View>
                 </TouchableWithoutFeedback>
             </Animated.View>
         </TouchableWithoutFeedback>
     </Modal>
 );
+
+// ── Disappearing Messages Modal ──
+const DISAPPEARING_OPTIONS = [
+    { label: "Off", seconds: 0, desc: "Messages will not disappear" },
+    { label: "24 Hours", seconds: 86400, desc: "New messages disappear after 24 hours" },
+    { label: "7 Days", seconds: 604800, desc: "New messages disappear after 7 days" },
+    { label: "90 Days", seconds: 7776000, desc: "New messages disappear after 90 days" },
+];
+
+const DisappearingModal = ({
+    visible,
+    currentSeconds,
+    onSelect,
+    onClose,
+}: {
+    visible: boolean;
+    currentSeconds: number;
+    onSelect: (sec: number) => void;
+    onClose: () => void;
+}) => (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <TouchableWithoutFeedback onPress={onClose}>
+            <View style={disappearingStyles.overlay}>
+                <TouchableWithoutFeedback>
+                    <Animated.View entering={FadeInUp.duration(260).springify()} style={disappearingStyles.sheet}>
+                        <View style={disappearingStyles.handle} />
+                        <View style={disappearingStyles.header}>
+                            <Icons.Timer size={22} color={colors.primaryDark} weight="fill" />
+                            <Typo size={17} fontWeight="800" color={colors.neutral900}>
+                                Disappearing Messages
+                            </Typo>
+                        </View>
+                        <Typo size={12.5} color={colors.neutral500} style={{ marginBottom: verticalScale(14) }}>
+                            For enhanced privacy, new messages will disappear automatically from this chat.
+                        </Typo>
+
+                        {DISAPPEARING_OPTIONS.map((opt) => {
+                            const isSelected = currentSeconds === opt.seconds;
+                            return (
+                                <TouchableOpacity
+                                    key={opt.seconds}
+                                    style={[disappearingStyles.row, isSelected && disappearingStyles.rowSelected]}
+                                    onPress={() => onSelect(opt.seconds)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={{ flex: 1 }}>
+                                        <Typo size={14.5} fontWeight={isSelected ? "700" : "500"} color={colors.neutral900}>
+                                            {opt.label}
+                                        </Typo>
+                                        <Typo size={11.5} color={colors.neutral400} style={{ marginTop: 2 }}>
+                                            {opt.desc}
+                                        </Typo>
+                                    </View>
+                                    <View style={[disappearingStyles.radio, isSelected && disappearingStyles.radioActive]}>
+                                        {isSelected && <View style={disappearingStyles.radioInner} />}
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </Animated.View>
+                </TouchableWithoutFeedback>
+            </View>
+        </TouchableWithoutFeedback>
+    </Modal>
+);
+
+// ── Group Mention Autocomplete Bar ──
+const GroupMentionBar = ({
+    candidates,
+    onSelect,
+}: {
+    candidates: any[];
+    onSelect: (candidate: any) => void;
+}) => {
+    if (!candidates || candidates.length === 0) return null;
+
+    return (
+        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(140)} style={mentionStyles.container}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={mentionStyles.scroll}>
+                {candidates.map((member) => (
+                    <TouchableOpacity
+                        key={member._id || member.id}
+                        style={mentionStyles.pill}
+                        onPress={() => onSelect(member)}
+                        activeOpacity={0.75}
+                    >
+                        <Avatar uri={member.avatar} size={22} />
+                        <Typo size={12} fontWeight="600" color={colors.neutral800}>
+                            @{member.name}
+                        </Typo>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </Animated.View>
+    );
+};
+
+// ── In-App Toast Dropdown Banner ──
+const InAppToastBanner = ({
+    toast,
+    onPress,
+    onDismiss,
+}: {
+    toast: { convId: string; senderName: string; text: string; avatar?: string } | null;
+    onPress: () => void;
+    onDismiss: () => void;
+}) => {
+    if (!toast) return null;
+
+    return (
+        <Animated.View entering={FadeInDown.duration(280).springify()} exiting={FadeOut.duration(200)} style={inAppToastStyles.banner}>
+            <TouchableOpacity style={inAppToastStyles.touchable} onPress={onPress} activeOpacity={0.85}>
+                <Avatar uri={toast.avatar} size={36} />
+                <View style={{ flex: 1, gap: 2 }}>
+                    <Typo size={13} fontWeight="700" color={colors.neutral900}>{toast.senderName}</Typo>
+                    <Typo size={11.5} color={colors.neutral600} textProps={{ numberOfLines: 1 }}>{toast.text}</Typo>
+                </View>
+                <TouchableOpacity onPress={onDismiss} style={inAppToastStyles.closeBtn} activeOpacity={0.7}>
+                    <Icons.X size={14} color={colors.neutral500} weight="bold" />
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
 
 const themeModalStyles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
@@ -309,6 +448,42 @@ const themeModalStyles = StyleSheet.create({
     previewWrap: { gap: 6, paddingTop: 6 },
     miniBubble: { width: '70%', height: verticalScale(18), borderRadius: radius._6 },
     cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacingY._5 },
+    customWallBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(8),
+        backgroundColor: colors.neutral100,
+        borderRadius: radius.full,
+        paddingVertical: verticalScale(11),
+        borderWidth: 1,
+        borderColor: colors.neutral200,
+        marginTop: verticalScale(6),
+    },
+});
+
+const disappearingStyles = StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.white, borderTopLeftRadius: radius._30, borderTopRightRadius: radius._30, paddingHorizontal: spacingX._20, paddingTop: verticalScale(14), paddingBottom: verticalScale(34) },
+    handle: { width: scale(36), height: verticalScale(4), borderRadius: radius.full, backgroundColor: colors.neutral300, alignSelf: 'center', marginBottom: verticalScale(12) },
+    header: { flexDirection: 'row', alignItems: 'center', gap: scale(8), marginBottom: verticalScale(4) },
+    row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: verticalScale(12), borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.neutral100 },
+    rowSelected: { backgroundColor: colors.primaryLight + "30", borderRadius: radius._10, paddingHorizontal: spacingX._8 },
+    radio: { width: scale(20), height: scale(20), borderRadius: radius.full, borderWidth: 2, borderColor: colors.neutral300, alignItems: 'center', justifyContent: 'center' },
+    radioActive: { borderColor: colors.primary, backgroundColor: colors.primary },
+    radioInner: { width: scale(8), height: scale(8), borderRadius: radius.full, backgroundColor: colors.white },
+});
+
+const mentionStyles = StyleSheet.create({
+    container: { backgroundColor: colors.white, paddingVertical: verticalScale(6), paddingHorizontal: spacingX._12, borderTopWidth: 1, borderTopColor: colors.neutral200 },
+    scroll: { gap: scale(8) },
+    pill: { flexDirection: 'row', alignItems: 'center', gap: scale(6), backgroundColor: colors.neutral100, borderRadius: radius.full, paddingHorizontal: scale(8), paddingVertical: verticalScale(4), borderWidth: 1, borderColor: colors.neutral200 },
+});
+
+const inAppToastStyles = StyleSheet.create({
+    banner: { position: 'absolute', top: Platform.OS === 'ios' ? verticalScale(48) : verticalScale(14), left: spacingX._15, right: spacingX._15, zIndex: 999 },
+    touchable: { flexDirection: 'row', alignItems: 'center', gap: scale(10), backgroundColor: colors.white, borderRadius: radius._20, paddingHorizontal: spacingX._12, paddingVertical: verticalScale(10), shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, borderWidth: 1, borderColor: colors.primaryLight },
+    closeBtn: { width: scale(24), height: scale(24), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center' },
 });
 
 // ── Format duration ──
@@ -901,7 +1076,7 @@ const Conversation = () => {
     const [selectedFile, setSelectedFile] = useState<SelectedFileProps | null>(null);
     const [loading, setLoading] = useState(false);
     const [messages, setMessages] = useState<MessageProps[]>([]);
-    const [messageStatuses, setMessageStatuses] = useState<Record<string, "sent" | "delivered" | "seen">>({});
+    const [messageStatuses, setMessageStatuses] = useState<Record<string, "sending" | "sent" | "delivered" | "seen">>({});
     const [replyTo, setReplyTo] = useState<ReplyToProps | null>(null);
     const [typingUser, setTypingUser] = useState<string | null>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -937,7 +1112,9 @@ const Conversation = () => {
     const micAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: micScale.value }] }));
 
     const isDirect = type === 'direct';
+    const isNotesToSelf = typeof conversationId === 'string' && conversationId.startsWith('notes_');
     const otherParticipant = useMemo(() => {
+        if (isNotesToSelf) return null;
         const fromParticipants = isDirect ? participants.find((p: any) => (p._id || p.id) !== currentUser?.id) : null;
         if (fromParticipants) return fromParticipants;
         if (!isDirect) return null;
@@ -950,11 +1127,12 @@ const Conversation = () => {
             };
         }
         return null;
-    }, [isDirect, participants, currentUser?.id, messages]);
+    }, [isDirect, isNotesToSelf, participants, currentUser?.id, messages]);
 
     let conversationAvatar = avatar;
-    if (isDirect && otherParticipant) conversationAvatar = otherParticipant.avatar;
-    let conversationName = isDirect ? otherParticipant?.name : name;
+    if (isNotesToSelf) conversationAvatar = currentUser?.avatar || avatar;
+    else if (isDirect && otherParticipant) conversationAvatar = otherParticipant.avatar;
+    let conversationName = isNotesToSelf ? "Notes to Self 📝" : (isDirect ? otherParticipant?.name : name);
 
     // ── Advanced Features State (Features 2, 3, 4, 5, 7, 9, 10, V3.1.2) ──
     const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
@@ -982,8 +1160,9 @@ const Conversation = () => {
         }).catch(() => {});
     }, [conversationId]);
 
-    // ── Chat Wallpaper & Theme (Feature 14) ──
+    // ── Chat Wallpaper & Theme (Feature 14 & V3.2.0 Custom Wallpaper) ──
     const [selectedTheme, setSelectedTheme] = useState<ChatTheme>(CHAT_THEMES[0]);
+    const [customWallpaperUri, setCustomWallpaperUri] = useState<string | null>(null);
     const [showThemeModal, setShowThemeModal] = useState(false);
 
     useEffect(() => {
@@ -994,20 +1173,135 @@ const Conversation = () => {
                 if (found) setSelectedTheme(found);
             }
         }).catch(() => {});
+        AsyncStorage.getItem(`@bubbly_custom_wallpaper_${conversationId}`).then((savedUri) => {
+            if (savedUri) setCustomWallpaperUri(savedUri);
+        }).catch(() => {});
     }, [conversationId]);
 
     const handleSelectTheme = (th: ChatTheme) => {
         setSelectedTheme(th);
+        setCustomWallpaperUri(null);
         setShowThemeModal(false);
         if (conversationId) {
             AsyncStorage.setItem(`@bubbly_chat_theme_${conversationId}`, th.id).catch(() => {});
+            AsyncStorage.removeItem(`@bubbly_custom_wallpaper_${conversationId}`).catch(() => {});
         }
+    };
+
+    const handlePickCustomWallpaper = async () => {
+        setShowThemeModal(false);
+        try {
+            const res = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: false,
+                quality: 0.85,
+            });
+            if (!res.canceled && res.assets && res.assets[0]?.uri) {
+                const uri = res.assets[0].uri;
+                setCustomWallpaperUri(uri);
+                if (conversationId) {
+                    await AsyncStorage.setItem(`@bubbly_custom_wallpaper_${conversationId}`, uri).catch(() => {});
+                }
+            }
+        } catch (e) {
+            console.log("handlePickCustomWallpaper error:", e);
+        }
+    };
+
+    // ── Disappearing Messages State (Feature 8) ──
+    const [disappearingSeconds, setDisappearingSeconds] = useState<number>(0);
+    const [showDisappearingModal, setShowDisappearingModal] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (!conversationId) return;
+        AsyncStorage.getItem(`@bubbly_disappearing_${conversationId}`).then((saved) => {
+            if (saved) {
+                const sec = parseInt(saved, 10);
+                if (!isNaN(sec)) setDisappearingSeconds(sec);
+            }
+        }).catch(() => {});
+    }, [conversationId]);
+
+    const handleSelectDisappearing = async (seconds: number) => {
+        setDisappearingSeconds(seconds);
+        setShowDisappearingModal(false);
+        if (conversationId) {
+            await AsyncStorage.setItem(`@bubbly_disappearing_${conversationId}`, seconds.toString()).catch(() => {});
+        }
+        Alert.alert(
+            "Disappearing Messages",
+            seconds === 0
+                ? "Disappearing messages turned off."
+                : `New messages will now disappear after ${seconds === 86400 ? "24 hours" : seconds === 604800 ? "7 days" : "90 days"}.`
+        );
+    };
+
+    // ── In-App Toast Dropdown Banner (Feature 9) ──
+    const [incomingToast, setIncomingToast] = useState<{ convId: string; senderName: string; text: string; avatar?: string } | null>(null);
+    const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── Group Mention Candidates (Feature 7) ──
+    const mentionCandidates = useMemo(() => {
+        if (type !== 'group' || !message) return [];
+        const match = message.match(/@(\w*)$/);
+        if (!match) return [];
+        const prefix = match[1].toLowerCase();
+        return participants.filter(p => {
+            const pId = (p._id || p.id)?.toString();
+            if (pId === currentUser?.id?.toString()) return false;
+            if (!prefix) return true;
+            return (p.name || "").toLowerCase().includes(prefix);
+        });
+    }, [type, message, participants, currentUser?.id]);
+
+    const handleSelectMention = (member: any) => {
+        const newText = message.replace(/@(\w*)$/, `@${member.name} `);
+        setMessage(newText);
     };
 
     // ── Network status & Auto-scroll pill (Features 17 & 18) ──
     const [isOnlineNetwork, setIsOnlineNetwork] = useState(isSocketConnected());
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const [newMessagesBelow, setNewMessagesBelow] = useState(0);
+
+    // ── Offline Message Outbox & Auto-Sync (Feature 1) ──
+    const flushOutbox = useCallback(async () => {
+        if (!conversationId || !isSocketConnected()) return;
+        try {
+            const key = `@bubbly_outbox_${conversationId}`;
+            const raw = await AsyncStorage.getItem(key);
+            if (!raw) return;
+            const queue: any[] = JSON.parse(raw);
+            if (!Array.isArray(queue) || queue.length === 0) return;
+            await AsyncStorage.removeItem(key);
+
+            for (const item of queue) {
+                newMessage({
+                    conversationId: item.conversationId,
+                    sender: item.sender,
+                    content: item.content,
+                    attachement: item.attachement,
+                    attachmentMeta: item.attachmentMeta,
+                    type: item.type,
+                    replyTo: item.replyTo,
+                });
+                if (item.tempId) {
+                    setMessageStatuses(prev => ({
+                        ...prev,
+                        [item.tempId]: "sent",
+                    }));
+                }
+            }
+        } catch (err) {
+            console.log("flushOutbox error:", err);
+        }
+    }, [conversationId]);
+
+    useEffect(() => {
+        if (isSocketConnected()) {
+            flushOutbox();
+        }
+    }, [flushOutbox]);
 
     // ── Android Back Button Listener ──
     useEffect(() => {
@@ -1019,6 +1313,10 @@ const Conversation = () => {
             }
             if (showThemeModal) {
                 setShowThemeModal(false);
+                return true;
+            }
+            if (showDisappearingModal) {
+                setShowDisappearingModal(false);
                 return true;
             }
             if (showPollModal) {
@@ -1040,12 +1338,17 @@ const Conversation = () => {
             return false;
         });
         return () => backHandler.remove();
-    }, [isSearching, showThemeModal, showPollModal, groupInfoVisible, forwardModalVisible, showAttachOptions]);
+    }, [isSearching, showThemeModal, showDisappearingModal, showPollModal, groupInfoVisible, forwardModalVisible, showAttachOptions]);
 
     // ── Connection Status Listener ──
     useEffect(() => {
-        return onSocketConnectionChange(setIsOnlineNetwork);
-    }, []);
+        return onSocketConnectionChange((connected) => {
+            setIsOnlineNetwork(connected);
+            if (connected) {
+                flushOutbox();
+            }
+        });
+    }, [flushOutbox]);
 
     const handleScroll = (event: any) => {
         const offsetY = event.nativeEvent.contentOffset.y;
@@ -1241,6 +1544,16 @@ const Conversation = () => {
             res.data.conversationId?.toString() !==
             conversationId?.toString()
         ) {
+            if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+            setIncomingToast({
+                convId: res.data.conversationId,
+                senderName: res.data.sender?.name || "New Message",
+                text: res.data.content || (res.data.attachement ? "📷 Attachment" : "New message"),
+                avatar: res.data.sender?.avatar,
+            });
+            toastTimeoutRef.current = setTimeout(() => {
+                setIncomingToast(null);
+            }, 4000);
             return;
         }
 
@@ -1574,6 +1887,52 @@ const Conversation = () => {
             emitStopTyping({ conversationId: conversationId as string, senderId: currentUser.id as string });
         }
 
+        // ── Offline Message Outbox (Feature 1) ──
+        if (!selectedFile && (!isOnlineNetwork || !isSocketConnected())) {
+            const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+            const offlineMsg: MessageProps = {
+                id: tempId,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: message.trim(),
+                attachement: null,
+                attachmentMeta: null,
+                type: 'text',
+                replyTo: replyTo || null,
+                reactions: [],
+                createdAt: new Date().toISOString(),
+            };
+
+            setMessages(prev => [offlineMsg, ...prev]);
+            setMessageStatuses(prev => ({ ...prev, [tempId]: "sending" }));
+
+            try {
+                const key = `@bubbly_outbox_${conversationId}`;
+                const raw = await AsyncStorage.getItem(key);
+                const queue = raw ? JSON.parse(raw) : [];
+                queue.push({
+                    conversationId,
+                    sender: { id: currentUser.id as string, name: currentUser.name, avatar: currentUser.avatar },
+                    content: message.trim(),
+                    attachement: null,
+                    attachmentMeta: null,
+                    type: 'text',
+                    replyTo: replyTo?.id || null,
+                    tempId,
+                });
+                await AsyncStorage.setItem(key, JSON.stringify(queue));
+            } catch (e) {
+                console.log("Failed to queue offline message:", e);
+            }
+
+            if (conversationId) {
+                AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+            }
+            setMessage("");
+            setReplyTo(null);
+            return;
+        }
+
         setLoading(true);
         try {
             let attachement = null;
@@ -1757,6 +2116,12 @@ const Conversation = () => {
                 text: "Chat Wallpaper & Theme",
                 onPress: () => setShowThemeModal(true),
             },
+            {
+                text: disappearingSeconds > 0
+                    ? `Disappearing Messages (${disappearingSeconds === 86400 ? '24h' : disappearingSeconds === 604800 ? '7d' : '90d'} ⏱️)`
+                    : "Disappearing Messages",
+                onPress: () => setShowDisappearingModal(true),
+            },
             { text: "Mute Notifications", onPress: handleMuteOptions },
         ];
         if (type === 'group') {
@@ -1791,14 +2156,18 @@ const Conversation = () => {
         if (searchMatches.length === 0) return;
         const nextIdx = (activeSearchIndex - 1 + searchMatches.length) % searchMatches.length;
         setActiveSearchIndex(nextIdx);
-        flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
+        try {
+            flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
+        } catch (_) {}
     };
 
     const handleSearchNext = () => {
         if (searchMatches.length === 0) return;
         const nextIdx = (activeSearchIndex + 1) % searchMatches.length;
         setActiveSearchIndex(nextIdx);
-        flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
+        try {
+            flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
+        } catch (_) {}
     };
 
     const canSend = message.trim().length > 0 || selectedFile !== null;
@@ -1845,6 +2214,27 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.5}>
+            {/* ── In-App Toast Dropdown Banner (Feature 9) ── */}
+            <InAppToastBanner
+                toast={incomingToast}
+                onPress={() => {
+                    const t = incomingToast;
+                    setIncomingToast(null);
+                    if (t) {
+                        router.push({
+                            pathname: "/(main)/conversation",
+                            params: {
+                                id: t.convId,
+                                name: t.senderName,
+                                avatar: t.avatar,
+                                type: "direct"
+                            }
+                        });
+                    }
+                }}
+                onDismiss={() => setIncomingToast(null)}
+            />
+
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : undefined} style={styles.container}>
 
                 {/* ── Header ── */}
@@ -1854,11 +2244,20 @@ const Conversation = () => {
                         <TouchableOpacity style={styles.headerInfo} activeOpacity={0.75}>
                             <View style={styles.avatarWrap}>
                                 <Avatar size={38} uri={conversationAvatar as string} isGroup={type === 'group'} />
-                                {isDirect && contactIsOnline && <View style={styles.onlineDot} />}
+                                {!isNotesToSelf && isDirect && contactIsOnline && <View style={styles.onlineDot} />}
                             </View>
                             <View style={styles.headerText}>
-                                <Typo color={colors.white} fontWeight="700" size={16} textProps={{ numberOfLines: 1 }}>{conversationName}</Typo>
-                                {typingUser ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                    <Typo color={colors.white} fontWeight="700" size={16} textProps={{ numberOfLines: 1 }}>{conversationName}</Typo>
+                                    {disappearingSeconds > 0 && (
+                                        <Icons.Timer size={verticalScale(14)} color={colors.primaryLight} weight="fill" />
+                                    )}
+                                </View>
+                                {isNotesToSelf ? (
+                                    <Typo color={'rgba(255,255,255,0.7)'} size={12} fontWeight="500">
+                                        Private Notebook 🔒
+                                    </Typo>
+                                ) : typingUser ? (
                                     <Animated.View entering={FadeIn.duration(200)} style={styles.headerTypingRow}>
                                         <View style={styles.headerTypingDots}>
                                             <TypingDot delay={0} /><TypingDot delay={150} /><TypingDot delay={300} />
@@ -1881,7 +2280,7 @@ const Conversation = () => {
                         <TouchableOpacity style={styles.callBtn} onPress={() => setIsSearching(prev => !prev)} activeOpacity={0.7}>
                             <Icons.MagnifyingGlass weight="bold" color={colors.white} size={verticalScale(18)} />
                         </TouchableOpacity>
-                        {isDirect && (
+                        {!isNotesToSelf && isDirect && (
                             <>
                                 <TouchableOpacity style={styles.callBtn} onPress={() => handleStartCall('voice')} activeOpacity={0.7}>
                                     <Icons.Phone weight="fill" color={colors.white} size={verticalScale(18)} />
@@ -1907,6 +2306,23 @@ const Conversation = () => {
 
                 {/* ── Content Sheet with Custom Theme Background ── */}
                 <View style={[styles.content, { backgroundColor: selectedTheme.bg }]}>
+                    {/* ── Custom Photo Wallpaper (Feature 5) ── */}
+                    {customWallpaperUri && (
+                        <>
+                            <Image
+                                source={{ uri: customWallpaperUri }}
+                                style={StyleSheet.absoluteFill}
+                                contentFit="cover"
+                            />
+                            <View
+                                style={[
+                                    StyleSheet.absoluteFill,
+                                    { backgroundColor: selectedTheme.isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.45)' }
+                                ]}
+                            />
+                        </>
+                    )}
+
                     {/* ── Search Bar ── */}
                     {isSearching && (
                         <ChatSearchBar
@@ -1941,11 +2357,14 @@ const Conversation = () => {
                         onEndReachedThreshold={0.3}
                         initialNumToRender={15}
                         maxToRenderPerBatch={10}
-                        windowSize={11}
+                        windowSize={7}
                         removeClippedSubviews={Platform.OS === 'android'}
                         keyboardShouldPersistTaps="handled"
                         onScroll={handleScroll}
                         scrollEventThrottle={32}
+                        onScrollToIndexFailed={(info) => {
+                            flatListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true });
+                        }}
                         ListFooterComponent={isLoadingMore ? <LoadMoreIndicator /> : null}
                         ListHeaderComponent={typingUser ? <TypingIndicator name={typingUser} isDirect={isDirect as boolean} /> : null}
                         ListEmptyComponent={
@@ -1974,6 +2393,9 @@ const Conversation = () => {
                             </TouchableOpacity>
                         </Animated.View>
                     )}
+
+                    {/* ── Group Mention Autocomplete Bar (Feature 7) ── */}
+                    <GroupMentionBar candidates={mentionCandidates} onSelect={handleSelectMention} />
 
                     {/* ── Input Bar ── */}
                     <View style={styles.inputBar}>
@@ -2226,7 +2648,16 @@ const Conversation = () => {
                 visible={showThemeModal}
                 currentThemeId={selectedTheme.id}
                 onSelectTheme={handleSelectTheme}
+                onPickCustomWallpaper={handlePickCustomWallpaper}
                 onClose={() => setShowThemeModal(false)}
+            />
+
+            {/* ── Disappearing Messages Modal (Feature 8) ── */}
+            <DisappearingModal
+                visible={showDisappearingModal}
+                currentSeconds={disappearingSeconds}
+                onSelect={handleSelectDisappearing}
+                onClose={() => setShowDisappearingModal(false)}
             />
         </ScreenWrapper>
     );

@@ -30,6 +30,7 @@ interface MessageBubbleProps {
   isMe: boolean;
   showSenderName?: boolean;
   currentUserId: string;
+  searchQuery?: string;
   onReact: (messageId: string, emoji: string) => void;
   onReply: (message: MessageProps) => void;
   onStar: (messageId: string) => void;
@@ -50,6 +51,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   isMe,
   showSenderName = false,
   currentUserId,
+  searchQuery = "",
   onReact,
   onReply,
   onStar,
@@ -89,20 +91,37 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
-  // View once state check
   const isViewOnce = message.isViewOnce;
   const isViewOnceOpened = isViewOnce && message.viewOnceOpenedBy?.includes(currentUserId);
+
+  // Text highlighter for in-chat search
+  const renderHighlightedContent = (content: string) => {
+    if (!searchQuery || !searchQuery.trim()) {
+      return content;
+    }
+    const regex = new RegExp(`(${searchQuery})`, "gi");
+    const parts = content.split(regex);
+    return parts.map((part, i) =>
+      part.toLowerCase() === searchQuery.toLowerCase() ? (
+        <mark key={i} className="bg-amber-300 dark:bg-amber-500/80 text-black px-0.5 rounded">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
 
   return (
     <div
       id={`msg-${messageId}`}
-      className={`group relative flex flex-col mb-1.5 transition-all ${
+      className={`group relative flex flex-col mb-1.5 transition-all select-none ${
         isMe ? "items-end" : "items-start"
       }`}
     >
       {/* Sender Name in Group Chat */}
       {showSenderName && !isMe && (
-        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 ml-3 mb-0.5">
+        <span className="text-[11px] font-black text-amber-700 dark:text-amber-400 ml-3 mb-0.5">
           {message.sender?.name || "Participant"}
         </span>
       )}
@@ -154,7 +173,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           <button
             onClick={() => onPin(messageId)}
             className={`p-1 hover:text-amber-500 rounded-full transition ${
-              message.isPinned ? "text-amber-500" : ""
+              message.isPinned ? "text-amber-500 fill-amber-500" : ""
             }`}
             title="Pin message"
           >
@@ -222,21 +241,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Bubble Body */}
+        {/* Bubble Body with Authentic Bubbly Styles */}
         <div
-          className={`relative px-4 py-2.5 rounded-3xl shadow-sm text-sm transition-all duration-150 ${
+          className={`relative px-4 py-2.5 rounded-3xl text-sm transition-all duration-150 select-text ${
             isMe
-              ? "glass-bubble-my text-stone-900 dark:text-amber-100 rounded-tr-xs"
+              ? "glass-bubble-my text-stone-950 dark:text-amber-100 rounded-tr-xs"
               : "glass-bubble-other text-stone-900 dark:text-zinc-100 rounded-tl-xs"
-          } ${message.isPinned ? "ring-2 ring-amber-400/60" : ""}`}
+          } ${message.isPinned ? "ring-2 ring-amber-400/80" : ""}`}
         >
-          {/* Reply Context Banner */}
+          {/* Quoted Reply Banner */}
           {message.replyTo && (
             <div
               onClick={() => onJumpToReply && onJumpToReply(message.replyTo!.id)}
               className="mb-2 p-2 rounded-xl bg-black/5 dark:bg-white/10 border-l-4 border-amber-500 cursor-pointer hover:opacity-90 transition text-xs"
             >
-              <span className="font-bold text-amber-700 dark:text-amber-400 block truncate">
+              <span className="font-black text-amber-700 dark:text-amber-400 block truncate">
                 {message.replyTo.senderName}
               </span>
               <p className="text-stone-600 dark:text-zinc-300 truncate">
@@ -245,9 +264,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           )}
 
-          {/* Forwarded Header */}
+          {/* Forwarded Tag */}
           {message.isForwarded && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold italic text-stone-500 dark:text-zinc-400 mb-1">
+            <span className="flex items-center gap-1 text-[10px] font-bold italic text-stone-500 dark:text-zinc-400 mb-1">
               <Share2 className="w-3 h-3" /> Forwarded
             </span>
           )}
@@ -262,7 +281,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               ) : (
                 <button
                   onClick={() => onOpenViewOnce(messageId)}
-                  className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition transform active:scale-95"
+                  className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950 font-black text-xs shadow-md shadow-amber-500/20 transition transform active:scale-95"
                 >
                   <Lock className="w-4 h-4" /> View Once (Click to open)
                 </button>
@@ -277,6 +296,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     src={message.attachement}
                     alt="Photo"
                     onClick={() => onOpenImage(message.attachement!)}
+                    loading="lazy"
                     className="w-full h-full object-cover rounded-2xl hover:scale-102 transition duration-200"
                   />
                 </div>
@@ -318,7 +338,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     <span className="font-bold text-xs truncate block text-stone-900 dark:text-white">
                       {message.attachmentMeta?.name || "Shared Document"}
                     </span>
-                    <span className="text-[10px] text-stone-500 dark:text-zinc-400 font-medium">
+                    <span className="text-[10px] text-stone-500 dark:text-zinc-400 font-semibold">
                       {message.attachmentMeta?.size
                         ? formatFileSize(message.attachmentMeta.size)
                         : "Download"}
@@ -370,7 +390,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     )}
                   </div>
                   <div>
-                    <span className="capitalize block">
+                    <span className="capitalize block font-bold">
                       {message.callMeta.status} {message.callMeta.kind} call
                     </span>
                     {message.callMeta.duration > 0 && (
@@ -383,10 +403,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </div>
               )}
 
-              {/* TEXT CONTENT */}
+              {/* TEXT CONTENT WITH SEARCH HIGHLIGHTING */}
               {message.content && (
-                <p className="whitespace-pre-wrap break-words leading-relaxed select-text font-normal">
-                  {message.content}
+                <p className="whitespace-pre-wrap break-words leading-relaxed select-text font-medium text-[13.5px]">
+                  {renderHighlightedContent(message.content)}
                 </p>
               )}
 
@@ -403,14 +423,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
 
           {/* Footer Info (Time, Edited, Starred, Pin, Checkmark) */}
-          <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] opacity-75 font-medium select-none">
+          <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] opacity-75 font-semibold select-none">
             {message.isSaved && <Star className="w-3 h-3 text-amber-500 fill-amber-500" />}
-            {message.isPinned && <Pin className="w-3 h-3 text-amber-500" />}
+            {message.isPinned && <Pin className="w-3 h-3 text-amber-500 fill-amber-500" />}
             {message.isEdited && <span className="italic">edited</span>}
             <span>{timeFormatted}</span>
             {isMe && (
-              <span title="Delivered">
-                <CheckCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span title="Read receipt">
+                <CheckCheck className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 stroke-[2.5]" />
               </span>
             )}
           </div>
@@ -436,10 +456,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <button
                   key={emoji}
                   onClick={() => onReact(messageId, emoji)}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm transition border ${
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black shadow-xs transition border ${
                     hasReacted
-                      ? "bg-amber-100 dark:bg-amber-950/80 border-amber-400 text-amber-900 dark:text-amber-200"
-                      : "bg-white dark:bg-zinc-800 border-black/10 dark:border-white/10 text-stone-700 dark:text-zinc-300"
+                      ? "bg-amber-100 dark:bg-amber-950/80 border-amber-400 text-amber-900 dark:text-amber-200 scale-105"
+                      : "bg-white dark:bg-zinc-800 border-black/10 dark:border-white/10 text-stone-700 dark:text-zinc-300 hover:scale-105"
                   }`}
                 >
                   <span>{emoji}</span>

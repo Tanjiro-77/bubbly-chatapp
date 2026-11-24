@@ -2,7 +2,17 @@ import React from "react";
 import { ConversationProps } from "../../types";
 import { Avatar } from "../common/Avatar";
 import { format, isToday, isYesterday } from "date-fns";
-import { Pin, BellOff, Check, CheckCheck, Phone, Video, Image as ImageIcon, Mic, FileText } from "lucide-react";
+import {
+  Pin,
+  BellOff,
+  CheckCheck,
+  Phone,
+  Video,
+  Image as ImageIcon,
+  Mic,
+  FileText,
+  MoreVertical,
+} from "lucide-react";
 
 interface ConversationItemProps {
   conversation: ConversationProps;
@@ -11,9 +21,38 @@ interface ConversationItemProps {
   isOnline?: boolean;
   typingUser?: string | null;
   draftText?: string | null;
+  searchQuery?: string;
   onSelect: (conv: ConversationProps) => void;
-  onContextMenu?: (e: React.MouseEvent, conv: ConversationProps) => void;
+  onOpenActions?: () => void;
 }
+
+// Matched text highlighter matching mobile HighlightText
+const HighlightText: React.FC<{
+  text: string;
+  query?: string;
+  className?: string;
+}> = ({ text, query = "", className = "" }) => {
+  if (!query.trim()) {
+    return <span className={className}>{text}</span>;
+  }
+  const parts = text.split(new RegExp(`(${query})`, "gi"));
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <span
+            key={i}
+            className="bg-[#fef3c7] dark:bg-amber-500/30 text-[#1c1917] dark:text-amber-200 font-extrabold px-0.5 rounded"
+          >
+            {part}
+          </span>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  );
+};
 
 export const ConversationItem: React.FC<ConversationItemProps> = ({
   conversation,
@@ -22,21 +61,25 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   isOnline = false,
   typingUser,
   draftText,
+  searchQuery = "",
   onSelect,
-  onContextMenu,
+  onOpenActions,
 }) => {
   const isGroup = conversation.type === "group";
 
-  // Identify recipient
+  // Partner or Group Name
   const partner = !isGroup
     ? conversation.participants?.find((p) => p._id !== currentUserId)
     : null;
 
-  const title = isGroup ? conversation.name || "Group Chat" : partner?.name || "User";
+  const displayName = isGroup ? conversation.name || "Group Chat" : partner?.name || "User";
   const avatarSrc = isGroup ? conversation.avatar : partner?.avatar;
 
   const lastMsg = conversation.lastMessage;
-  const isLastMsgMe = lastMsg && lastMsg.senderId === currentUserId;
+  const isLastMsgMe =
+    lastMsg &&
+    (lastMsg.senderId === currentUserId ||
+      (lastMsg as any).sender?._id === currentUserId);
 
   const formatLastTime = (dateStr?: string) => {
     if (!dateStr) return "";
@@ -46,119 +89,170 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
     return format(date, "MMM d");
   };
 
+  const isPinned =
+    (conversation.pinnedMessages && conversation.pinnedMessages.length > 0) ||
+    conversation.isPinned;
+  const unreadCount = conversation.unreadCount || 0;
+  const hasUnread = unreadCount > 0;
+
   const renderSnippet = () => {
     if (typingUser) {
       return (
-        <span className="text-amber-600 dark:text-amber-400 font-bold animate-pulse">
-          typing...
+        <span className="text-[#22c55e] font-bold flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-ping" />
+          {isGroup ? `${typingUser} is typing...` : "typing..."}
         </span>
       );
     }
-    if (draftText) {
+    if (draftText && !hasUnread) {
       return (
-        <span className="text-rose-500 font-semibold truncate">
-          Draft: {draftText}
+        <span className="text-[#ef4444] font-semibold truncate">
+          Draft: <span className="text-stone-600 dark:text-stone-300 font-normal">{draftText}</span>
         </span>
       );
     }
     if (!lastMsg) {
-      return <span className="italic opacity-60">Tap to start chatting</span>;
+      return <span className="italic text-stone-400">Tap to start chatting 👋</span>;
     }
 
     if (lastMsg.type === "image") {
       return (
-        <span className="flex items-center gap-1 font-medium">
-          <ImageIcon className="w-3.5 h-3.5 text-amber-500" /> Photo
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <ImageIcon className="w-3.5 h-3.5 text-[#d97706]" /> Photo
         </span>
       );
     }
     if (lastMsg.type === "video") {
       return (
-        <span className="flex items-center gap-1 font-medium">
-          <Video className="w-3.5 h-3.5 text-amber-500" /> Video
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <Video className="w-3.5 h-3.5 text-[#d97706]" /> Video
         </span>
       );
     }
     if (lastMsg.type === "voice") {
       return (
-        <span className="flex items-center gap-1 font-medium">
-          <Mic className="w-3.5 h-3.5 text-amber-500" /> Voice message
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <Mic className="w-3.5 h-3.5 text-[#d97706]" /> Voice note
         </span>
       );
     }
     if (lastMsg.type === "file") {
       return (
-        <span className="flex items-center gap-1 font-medium">
-          <FileText className="w-3.5 h-3.5 text-sky-500" /> Document
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <FileText className="w-3.5 h-3.5 text-[#0284c7]" /> Document
         </span>
       );
     }
     if (lastMsg.type === "call") {
       return (
-        <span className="flex items-center gap-1 font-medium">
-          <Phone className="w-3.5 h-3.5 text-emerald-500" /> Call
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <Phone className="w-3.5 h-3.5 text-[#22c55e]" /> Call
         </span>
       );
     }
 
-    return <span>{lastMsg.content || "Message"}</span>;
+    return (
+      <HighlightText
+        text={lastMsg.content || "Message"}
+        query={searchQuery}
+        className={hasUnread ? "font-semibold text-stone-900 dark:text-white" : "text-stone-500 dark:text-stone-400"}
+      />
+    );
   };
-
-  const isPinned = conversation.pinnedMessages && conversation.pinnedMessages.length > 0;
 
   return (
     <div
       onClick={() => onSelect(conversation)}
-      onContextMenu={(e) => {
-        if (onContextMenu) {
-          e.preventDefault();
-          onContextMenu(e, conversation);
-        }
-      }}
-      className={`px-3 py-3 rounded-2xl cursor-pointer transition flex items-center gap-3 select-none mb-1 group ${
+      className={`px-4 sm:px-5 py-3 cursor-pointer transition flex items-center gap-3.5 select-none relative group border-b border-stone-100 dark:border-stone-800/40 ${
         isActive
-          ? "bg-amber-500/15 dark:bg-amber-500/20 shadow-xs border border-amber-500/30"
-          : "hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
+          ? "bg-[#fef3c7]/60 dark:bg-amber-500/10 border-l-4 border-l-[#f59e0b]"
+          : hasUnread
+          ? "bg-amber-50/40 dark:bg-stone-800/30 hover:bg-amber-50/70"
+          : "hover:bg-[#fafaf9] dark:hover:bg-stone-800/40"
       }`}
     >
-      {/* Avatar */}
-      <Avatar
-        src={avatarSrc}
-        name={title}
-        size="md"
-        isGroup={isGroup}
-        isOnline={isOnline}
-      />
+      {/* ── Avatar with Live Online Indicator (52px matching mobile) ── */}
+      <div className="relative shrink-0">
+        <Avatar
+          uri={avatarSrc}
+          size={50}
+          isGroup={isGroup}
+        />
+        {!isGroup && isOnline && (
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#22c55e] border-2 border-white dark:border-[#121214] shadow-xs" />
+        )}
+      </div>
 
-      {/* Content */}
-      <div className="flex-1 truncate">
-        {/* Name and Time */}
-        <div className="flex items-center justify-between mb-0.5">
-          <h3 className="font-bold text-sm text-stone-900 dark:text-white truncate">
-            {title}
-          </h3>
-          <span className="text-[10px] font-medium text-stone-400 dark:text-zinc-500 shrink-0 ml-2">
-            {formatLastTime(lastMsg?.createdAt || conversation.updatedAt)}
-          </span>
+      {/* ── Content Body ── */}
+      <div className="flex-1 min-w-0 pr-1">
+        {/* Top Row: Name + Pinned + Time */}
+        <div className="flex items-center justify-between mb-1">
+          <HighlightText
+            text={displayName}
+            query={searchQuery}
+            className={`text-[15px] truncate max-w-[190px] leading-snug ${
+              hasUnread || isActive
+                ? "font-extrabold text-stone-900 dark:text-white"
+                : "font-bold text-stone-800 dark:text-stone-200"
+            }`}
+          />
+
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            {conversation.isMuted && (
+              <BellOff className="w-3.5 h-3.5 text-stone-400" />
+            )}
+            {isPinned && (
+              <div className="p-0.5 rounded bg-[#fef3c7] dark:bg-amber-500/20 text-[#d97706]">
+                <Pin className="w-3 h-3 fill-current" />
+              </div>
+            )}
+            <span
+              className={`text-[11px] font-semibold ${
+                hasUnread
+                  ? "text-[#d97706] font-bold"
+                  : "text-stone-400 dark:text-stone-500"
+              }`}
+            >
+              {formatLastTime(lastMsg?.createdAt || conversation.updatedAt)}
+            </span>
+          </div>
         </div>
 
-        {/* Snippet and Badges */}
-        <div className="flex items-center justify-between text-xs text-stone-500 dark:text-zinc-400">
-          <div className="flex items-center gap-1 truncate pr-2">
+        {/* Bottom Row: Delivery tick + snippet + unread badge */}
+        <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
+          <div className="flex items-center gap-1.5 truncate pr-2">
             {isLastMsgMe && lastMsg && (
-              <CheckCheck className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <CheckCheck
+                className={`w-4 h-4 shrink-0 stroke-[2.5] ${
+                  hasUnread
+                    ? "text-stone-400"
+                    : "text-[#0284c7]" // Sky blue read receipt matching mobile
+                }`}
+              />
             )}
-            <span className="truncate">{renderSnippet()}</span>
+            <span className="truncate text-xs leading-relaxed">
+              {renderSnippet()}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {conversation.isMuted && <BellOff className="w-3.5 h-3.5 text-stone-400" />}
-            {isPinned && <Pin className="w-3 h-3 text-amber-500" />}
-            {conversation.unreadCount && conversation.unreadCount > 0 ? (
-              <span className="w-5 h-5 rounded-full bg-amber-500 text-white font-extrabold text-[10px] flex items-center justify-center shadow-xs">
-                {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+          <div className="flex items-center gap-1 shrink-0">
+            {hasUnread && (
+              <span className="min-w-[19px] h-[19px] px-1.5 rounded-full bg-[#ef4444] text-white font-extrabold text-[10px] flex items-center justify-center shadow-xs">
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
-            ) : null}
+            )}
+
+            {/* Quick 3-dot context menu trigger */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenActions?.();
+              }}
+              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-stone-400 transition"
+              title="Chat Options"
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

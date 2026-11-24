@@ -217,7 +217,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const conversation = await Conversation.findOne({
                 _id: data.conversationId,
                 participants: userId,
-            });
+            }).select("_id").lean();
             if (!conversation) {
                 socket.emit("getMessages", { success: false, msg: "Not a member of this conversation" });
                 return;
@@ -239,30 +239,40 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 }
             }
 
-            const totalCount = await Message.countDocuments({ conversationId: data.conversationId });
-
-            const messages = await Message.find({ conversationId: data.conversationId })
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(PAGE_LIMIT)
-                .populate<{ senderId: { _id: string; name: string; avatar: string } }>({
-                    path: "senderId",
-                    select: "name avatar"
-                })
-                .populate<{
-                    replyTo: {
-                        _id: string;
-                        content: string;
-                        senderId: { name: string };
-                        voiceUrl?: string;
-                        type?: string;
-                    } | null
-                }>({
-                    path: "replyTo",
-                    select: "content senderId voiceUrl type",
-                    populate: { path: "senderId", select: "name" }
-                })
-                .lean();
+            // High-speed parallel execution for count, message batch, and pinned messages
+            const [totalCount, messages, conversationDoc] = await Promise.all([
+                Message.countDocuments({ conversationId: data.conversationId }),
+                Message.find({ conversationId: data.conversationId })
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(PAGE_LIMIT)
+                    .populate<{ senderId: { _id: string; name: string; avatar: string } }>({
+                        path: "senderId",
+                        select: "name avatar"
+                    })
+                    .populate<{
+                        replyTo: {
+                            _id: string;
+                            content: string;
+                            senderId: { name: string };
+                            voiceUrl?: string;
+                            type?: string;
+                        } | null
+                    }>({
+                        path: "replyTo",
+                        select: "content senderId voiceUrl type",
+                        populate: { path: "senderId", select: "name" }
+                    })
+                    .lean(),
+                Conversation.findById(data.conversationId)
+                    .select("pinnedMessages")
+                    .populate({
+                        path: "pinnedMessages",
+                        select: "content senderId type createdAt isDeleted",
+                        populate: { path: "senderId", select: "name avatar" },
+                    })
+                    .lean(),
+            ]);
 
             const saved = await SavedMessage.find({
                 userId,
@@ -287,15 +297,6 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 }),
                 isSaved: savedSet.has(message._id.toString()),
             }));
-
-            const conversationDoc = await Conversation.findById(data.conversationId)
-                .select("pinnedMessages")
-                .populate({
-                    path: "pinnedMessages",
-                    select: "content senderId type createdAt isDeleted",
-                    populate: { path: "senderId", select: "name avatar" },
-                })
-                .lean();
 
             socket.emit("getMessages", {
                 success: true,

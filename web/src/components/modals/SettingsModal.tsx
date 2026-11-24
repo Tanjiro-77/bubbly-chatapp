@@ -16,6 +16,10 @@ import {
   ShieldCheck,
   Check,
   Upload,
+  Github,
+  Mail,
+  ExternalLink,
+  Code2,
 } from "lucide-react";
 import { uploadMediaToCloudinary } from "../../services/mediaService";
 
@@ -64,9 +68,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
       <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl border border-black/10 dark:border-white/10 flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="p-4 border-b border-stone-200 dark:border-white/10 flex items-center justify-between">
-          <h3 className="font-extrabold text-base text-stone-900 dark:text-white">
-            Settings & Preferences
-          </h3>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+            <h3 className="font-extrabold text-base text-stone-900 dark:text-white">
+              Settings & About Bubbly
+            </h3>
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition"
@@ -78,7 +85,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {/* Profile Edit Section */}
           <form onSubmit={handleSaveProfile} className="space-y-4">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400 block">
+            <span className="text-xs font-black uppercase tracking-wider text-stone-400 block">
               Profile
             </span>
 
@@ -115,7 +122,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
 
             <button
               type="submit"
-              className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition flex items-center gap-1.5"
+              className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-black text-xs transition flex items-center gap-1.5 shadow-md shadow-amber-500/20"
             >
               {savedSuccess ? (
                 <>
@@ -129,7 +136,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
 
           {/* Preferences Section */}
           <div className="space-y-3 pt-4 border-t border-stone-200 dark:border-white/10">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400 block">
+            <span className="text-xs font-black uppercase tracking-wider text-stone-400 block">
               Preferences
             </span>
 
@@ -173,7 +180,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
                     Sound Effects & Chimes
                   </span>
                   <span className="text-[10px] text-stone-500 dark:text-zinc-400">
-                    Message sounds & call ringer
+                    Message pops & calling ringer
                   </span>
                 </div>
               </div>
@@ -210,18 +217,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
             </div>
           </div>
 
-          {/* About Bubbly */}
-          <div className="pt-4 border-t border-stone-200 dark:border-white/10 space-y-2">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400 block">
-              About
+          {/* Developer & Release Info matching mobile about.tsx */}
+          <div className="pt-4 border-t border-stone-200 dark:border-white/10 space-y-3">
+            <span className="text-xs font-black uppercase tracking-wider text-stone-400 block">
+              Developer & Release
             </span>
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs">
-              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-bold mb-1">
-                <Sparkles className="w-4 h-4 text-amber-500" /> Bubbly Web v3.1.2
+
+            {/* Developer Card */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-3.5">
+              <div className="w-13 h-13 rounded-2xl overflow-hidden border-2 border-amber-500 shrink-0 shadow-md">
+                <img
+                  src="/developer-photo.png"
+                  alt="Arnav Khari"
+                  className="w-full h-full object-cover"
+                />
               </div>
-              <p className="text-[11px] text-stone-600 dark:text-zinc-400 leading-relaxed">
-                Connect Beyond Messages. Unified messaging across Android, iOS, and Web with real-time sync, stories, and voice/video calling.
-              </p>
+              <div className="flex-1 truncate">
+                <span className="font-black text-sm text-stone-900 dark:text-white block">
+                  Arnav Khari
+                </span>
+                <span className="text-[11px] text-amber-700 dark:text-amber-400 font-bold block">
+                  Creator & Full-Stack Architect
+                </span>
+                <span className="text-[10px] text-stone-500 dark:text-zinc-400">
+                  arnavkhari.77@gmail.com
+                </span>
+              </div>
+            </div>
+
+            {/* Links & Repository */}
+            <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+              <a
+                href="https://github.com/Tanjiro-77/bubbly-chatapp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-stone-800 dark:text-zinc-200 transition"
+              >
+                <Github className="w-4 h-4" /> GitHub Repo
+              </a>
+              <a
+                href="mailto:arnavkhari.77@gmail.com"
+                className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-stone-800 dark:text-zinc-200 transition"
+              >
+                <Mail className="w-4 h-4" /> Email Feedback
+              </a>
             </div>
           </div>
 

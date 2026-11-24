@@ -9,7 +9,7 @@
     --primary-dark: 217 119 6;
   }
 
-  /* Custom scrollbar for slick chat UI */
+  /* Ultra-smooth custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -18,45 +18,80 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(168, 162, 158, 0.3);
+    background: rgba(168, 162, 158, 0.25);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(168, 162, 158, 0.5);
+    background: rgba(245, 158, 11, 0.6);
   }
 }
 
-/* Glassmorphism helpers */
+/* Background wallpaper pattern matching mobile ScreenWrapper */
+.bubbly-pattern-bg {
+  background-image: url('/bgPattern.png');
+  background-repeat: repeat;
+  background-size: 280px;
+}
+
+/* Performance optimizations for low-end and high-end PCs */
+.hardware-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+  will-change: transform, opacity;
+}
+
+/* Virtual rendering optimization for infinite message lists on low-end PCs */
+.msg-item-optimized {
+  content-visibility: auto;
+  contain-intrinsic-size: 70px;
+}
+
+/* Glassmorphism surfaces */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 .dark .glass-panel {
-  background: rgba(24, 24, 27, 0.85);
+  background: rgba(24, 24, 27, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* Authentic Bubbly Message Bubbles */
 .glass-bubble-my {
-  background: linear-gradient(135deg, #FFF6D6 0%, #FEE89F 100%);
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  background: #FFF2C6;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  box-shadow: 0 1px 2px rgba(217, 119, 6, 0.06);
 }
 
 .dark .glass-bubble-my {
   background: linear-gradient(135deg, #78350f 0%, #451a03 100%);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .glass-bubble-other {
-  background: #ffffff;
+  background: #FFFFFF;
   border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .dark .glass-bubble-other {
   background: #27272a;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Hide scrollbars for clean story strip */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

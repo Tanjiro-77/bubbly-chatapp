@@ -11,21 +11,49 @@ export async function connectSocket(): Promise<Socket> {
         throw new Error("no token found. User must login first");
     }
 
+    // If socket exists but disconnected, reconnect immediately with current token
+    if (socket && !socket.connected) {
+        socket.auth = { token };
+        socket.connect();
+        return socket;
+    }
+
     if (!socket) {
         socket = io(API_URL, {
             auth: { token },
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 15000,
         });
 
-        // wait for connection
+        // Wait for initial connection with a 6-second timeout race so app never freezes on launch
         await new Promise((resolve) => {
-            socket?.on("connect", () => {
+            const timeoutId = setTimeout(() => {
+                resolve(false);
+            }, 6000);
+
+            socket?.once("connect", () => {
+                clearTimeout(timeoutId);
                 console.log("Socket connected:", socket?.id);
                 resolve(true);
-            })
+            });
+
+            socket?.once("connect_error", (err) => {
+                clearTimeout(timeoutId);
+                console.log("Initial socket connect_error:", err.message);
+                resolve(false);
+            });
         });
 
-        socket.on('disconnect', () => {
-            console.log('Socket disconnected');
+        socket.on('disconnect', (reason) => {
+            console.log('Socket disconnected:', reason);
+        });
+
+        socket.on('connect', () => {
+            console.log('Socket reconnected:', socket?.id);
         });
     }
 

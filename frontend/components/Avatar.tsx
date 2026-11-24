@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import React from 'react'
 import { AvatarProps } from "../types"
 import { verticalScale } from "../utils/styling"
@@ -9,12 +9,26 @@ import { getAvatarPath } from "../services/imageService"
 const Avatar = ({ uri, size = 40, style, isGroup = false }: AvatarProps) => {
     return (
         <View style={[styles.avatar, { height: verticalScale(size), width: verticalScale(size) }, style]}>
-            <Image style={{ flex: 1 }} source={getAvatarPath(uri, isGroup)} contentFit="cover" transition={100} />
+            <Image
+                style={{ flex: 1 }}
+                source={getAvatarPath(uri, isGroup)}
+                contentFit="cover"
+                transition={120}
+                cachePolicy="memory-disk"
+                recyclingKey={typeof uri === 'string' ? uri : undefined}
+            />
         </View>
-    )
-}
+    );
+};
 
-export default Avatar
+export default React.memo(Avatar, (prev, next) => {
+    return (
+        prev.uri === next.uri &&
+        prev.size === next.size &&
+        prev.isGroup === next.isGroup &&
+        prev.style === next.style
+    );
+});
 
 const styles = StyleSheet.create({
     avatar: {
