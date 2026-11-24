@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform, Modal, Alert, TouchableWithoutFeedback } from 'react-native';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenWrapper from "../../components/ScreenWrapper";
@@ -13,6 +13,8 @@ import {
     onUserStatus,
     onTyping,
     onStopTyping,
+    toggleMuteConversation,
+    markAsRead,
 } from "../../socket/socketEvents";
 import { verticalScale, scale } from "../../utils/styling";
 import * as Icons from 'phosphor-react-native';
@@ -46,6 +48,9 @@ const Home = () => {
     const [draftMap, setDraftMap] = useState<Record<string, string>>({});
     const [lockedChatIds, setLockedChatIds] = useState<string[]>([]);
     const typingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+    const [actionConv, setActionConv] = useState<ConversationProps | null>(null);
+    const [actionModalVisible, setActionModalVisible] = useState(false);
 
     const loadDraftsAndLocked = useCallback(async () => {
         try {
@@ -228,6 +233,14 @@ const Home = () => {
     const totalUnreadCurrent = selectedTab === 0 ? totalUnreadDirect : totalUnreadGroup;
     const totalPinnedCurrent = activeList.filter(c => c.pinnedMessages && c.pinnedMessages.length > 0).length;
 
+    // ── VIP Pinned Contacts ──
+    const pinnedVIPs = useMemo(() => {
+        return conversations.filter(c =>
+            !lockedChatIds.includes(c._id) &&
+            ((c.pinnedMessages && c.pinnedMessages.length > 0) || (c as any).isPinned)
+        );
+    }, [conversations, lockedChatIds]);
+
     const handleSearchClose = () => {
         setSearchQuery("");
         setIsSearchActive(false);
@@ -237,6 +250,80 @@ const Home = () => {
         setSelectedTab(tab);
         setSearchQuery("");
         setFilterCategory("all");
+    };
+
+    // ── Long-Press Action Sheet Handlers ──
+    const handleLongPress = useCallback((item: ConversationProps) => {
+        setActionConv(item);
+        setActionModalVisible(true);
+    }, []);
+
+    const handleCloseActionModal = () => {
+        setActionModalVisible(false);
+        setActionConv(null);
+    };
+
+    const handleTogglePin = () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        const willPin = !(actionConv as any).isPinned && (!actionConv.pinnedMessages || actionConv.pinnedMessages.length === 0);
+        setConversations(prev => prev.map(c => c._id === convId ? ({ ...c, isPinned: willPin } as any) : c));
+        handleCloseActionModal();
+    };
+
+    const handleToggleMute = () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        const newMuted = !actionConv.isMuted;
+        toggleMuteConversation({ conversationId: convId, unmute: !newMuted });
+        setConversations(prev => prev.map(c => c._id === convId ? { ...c, isMuted: newMuted } : c));
+        handleCloseActionModal();
+    };
+
+    const handleToggleRead = () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        if ((actionConv.unreadCount || 0) > 0) {
+            markAsRead(convId);
+            setConversations(prev => prev.map(c => c._id === convId ? { ...c, unreadCount: 0 } : c));
+        } else {
+            setConversations(prev => prev.map(c => c._id === convId ? { ...c, unreadCount: 1 } : c));
+        }
+        handleCloseActionModal();
+    };
+
+    const handleLockToVault = async () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        const convName = actionConv.name || "Conversation";
+        handleCloseActionModal();
+        try {
+            const nextLocked = [...lockedChatIds, convId];
+            await AsyncStorage.setItem('@bubbly_locked_chats', JSON.stringify(nextLocked));
+            setLockedChatIds(nextLocked);
+            Alert.alert("Locked to Vault 🔒", `"${convName}" has been moved to your Secret Chat Vault.`);
+        } catch (_) {}
+    };
+
+    const handleDeleteConversation = () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        const convName = actionConv.name || "this chat";
+        handleCloseActionModal();
+        Alert.alert(
+            "Delete Conversation",
+            `Are you sure you want to delete ${convName}? This will remove it from your chat list.`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => {
+                        setConversations(prev => prev.filter(c => c._id !== convId));
+                    }
+                }
+            ]
+        );
     };
 
     const renderConversationItem = useCallback(({ item, index }: { item: ConversationProps; index: number }) => {
@@ -256,9 +343,10 @@ const Home = () => {
                 isOnline={isOnline}
                 typingUser={typingUser}
                 draftText={draftText}
+                onLongPress={handleLongPress}
             />
         );
-    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap]);
+    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap, handleLongPress]);
 
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.4}>
@@ -273,7 +361,7 @@ const Home = () => {
                         <View style={styles.brandRow}>
                             <View style={styles.brandBadge}>
                                 <Typo size={10} fontWeight="800" color={colors.neutral900}>
-                                    V3.1.2
+                                    V3.2.0
                                 </Typo>
                             </View>
                             <Typo size={12.5} color={'rgba(255,255,255,0.6)'} fontWeight="500">
@@ -292,6 +380,14 @@ const Home = () => {
 
                     {/* Header Quick Actions */}
                     <View style={styles.headerActions}>
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/qrCode")}
+                            style={styles.headerIconBtn}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.QrCode size={verticalScale(20)} color={colors.white} weight="regular" />
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             onPress={() => router.push("/(main)/callLogs")}
                             style={styles.headerIconBtn}
@@ -334,6 +430,85 @@ const Home = () => {
                 >
                     {/* ── Story Bar ── */}
                     <StoryBar />
+
+                    {/* ── VIP Pinned Carousel ── */}
+                    {pinnedVIPs.length > 0 && (
+                        <View style={styles.vipSection}>
+                            <View style={styles.vipHeaderRow}>
+                                <View style={styles.vipTitleRow}>
+                                    <Icons.PushPin size={verticalScale(13)} color={colors.primaryDark} weight="fill" />
+                                    <Typo size={12} fontWeight="800" color={colors.neutral800}>
+                                        PINNED VIP CHATS
+                                    </Typo>
+                                </View>
+                                <Typo size={11} fontWeight="600" color={colors.neutral400}>
+                                    {pinnedVIPs.length} Pinned
+                                </Typo>
+                            </View>
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.vipScrollContent}
+                            >
+                                {pinnedVIPs.map((vip) => {
+                                    const other = vip.type === 'direct'
+                                        ? vip.participants?.find((p: any) => p._id !== currentUser?.id)
+                                        : null;
+                                    const vipAvatar = vip.type === 'direct' ? (other?.avatar || vip.avatar) : vip.avatar;
+                                    const vipName = (vip.type === 'direct' ? other?.name : vip.name) || "VIP";
+                                    const isOnline = other ? !!onlineUsers[other._id] : false;
+                                    const unread = vip.unreadCount || 0;
+
+                                    return (
+                                        <TouchableOpacity
+                                            key={vip._id}
+                                            style={styles.vipCard}
+                                            activeOpacity={0.75}
+                                            onPress={() => router.push({
+                                                pathname: "/(main)/conversation",
+                                                params: {
+                                                    id: vip._id,
+                                                    name: vip.name,
+                                                    avatar: vip.avatar,
+                                                    type: vip.type,
+                                                    participants: JSON.stringify(vip.participants)
+                                                }
+                                            })}
+                                            onLongPress={() => handleLongPress(vip)}
+                                        >
+                                            <View style={styles.vipAvatarWrap}>
+                                                <View style={styles.vipRing}>
+                                                    <Avatar uri={vipAvatar} size={48} isGroup={vip.type === 'group'} />
+                                                </View>
+                                                {vip.type === 'direct' && isOnline && (
+                                                    <View style={styles.vipOnlineDot} />
+                                                )}
+                                                <View style={styles.vipPinBadge}>
+                                                    <Icons.PushPin size={scale(9)} color={colors.black} weight="fill" />
+                                                </View>
+                                                {unread > 0 && (
+                                                    <View style={styles.vipUnreadBadge}>
+                                                        <Typo size={9} fontWeight="800" color={colors.white}>
+                                                            {unread > 9 ? "9+" : unread}
+                                                        </Typo>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Typo
+                                                size={11.5}
+                                                fontWeight="600"
+                                                color={colors.neutral800}
+                                                textProps={{ numberOfLines: 1 }}
+                                                style={styles.vipName}
+                                            >
+                                                {vipName.split(" ")[0]}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    )}
 
                     {/* ── V3 Segmented Tabs (Messages vs Groups) ── */}
                     <View style={styles.tabsRow}>
@@ -611,6 +786,156 @@ const Home = () => {
                 </Button>
             </Animated.View>
 
+            {/* ── Conversation Quick Action Sheet Modal ── */}
+            <Modal
+                visible={actionModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={handleCloseActionModal}
+                statusBarTranslucent
+            >
+                <TouchableWithoutFeedback onPress={handleCloseActionModal}>
+                    <View style={styles.modalOverlay}>
+                        <TouchableWithoutFeedback>
+                            <Animated.View
+                                entering={FadeInUp.duration(260).springify()}
+                                style={styles.actionSheet}
+                            >
+                                <View style={styles.sheetHandle} />
+
+                                {actionConv && (
+                                    <>
+                                        {/* Sheet Header info */}
+                                        <View style={styles.sheetHeader}>
+                                            <Avatar
+                                                uri={
+                                                    actionConv.type === 'direct'
+                                                        ? (actionConv.participants.find(p => p._id !== currentUser?.id)?.avatar || actionConv.avatar)
+                                                        : actionConv.avatar
+                                                }
+                                                size={46}
+                                                isGroup={actionConv.type === 'group'}
+                                            />
+                                            <View style={{ flex: 1 }}>
+                                                <Typo size={16} fontWeight="700" color={colors.neutral900}>
+                                                    {actionConv.type === 'direct'
+                                                        ? (actionConv.participants.find(p => p._id !== currentUser?.id)?.name || actionConv.name)
+                                                        : actionConv.name}
+                                                </Typo>
+                                                <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
+                                                    {actionConv.type === 'direct' ? "Direct Conversation" : "Group Chat"}
+                                                </Typo>
+                                            </View>
+                                            <TouchableOpacity
+                                                onPress={handleCloseActionModal}
+                                                style={styles.sheetCloseBtn}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        {/* Action Rows */}
+                                        <View style={styles.sheetOptions}>
+                                            {/* Pin / Unpin */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={handleTogglePin}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: colors.primaryLight }]}>
+                                                        <Icons.PushPin size={18} color={colors.primaryDark} weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        {(actionConv as any).isPinned || (actionConv.pinnedMessages && actionConv.pinnedMessages.length > 0)
+                                                            ? "Unpin Conversation"
+                                                            : "Pin to Top (VIP)"}
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
+                                            {/* Mute / Unmute */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={handleToggleMute}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: actionConv.isMuted ? "#dcfce7" : "#fef3c7" }]}>
+                                                        {actionConv.isMuted ? (
+                                                            <Icons.Bell size={18} color="#16a34a" weight="fill" />
+                                                        ) : (
+                                                            <Icons.BellSlash size={18} color="#d97706" weight="fill" />
+                                                        )}
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        {actionConv.isMuted ? "Unmute Notifications" : "Mute Notifications"}
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
+                                            {/* Mark as Read / Unread */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={handleToggleRead}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: "#e0f2fe" }]}>
+                                                        <Icons.EnvelopeOpen size={18} color="#0284c7" weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        {(actionConv.unreadCount || 0) > 0 ? "Mark as Read" : "Mark as Unread"}
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
+                                            {/* Lock to Secret Vault */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={handleLockToVault}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: "#dcfce7" }]}>
+                                                        <Icons.LockKey size={18} color="#16a34a" weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        Lock to Secret Vault
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
+                                            {/* Delete Conversation */}
+                                            <TouchableOpacity
+                                                style={[styles.sheetOptionRow, { borderBottomWidth: 0 }]}
+                                                activeOpacity={0.7}
+                                                onPress={handleDeleteConversation}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: colors.rose + "1A" }]}>
+                                                        <Icons.Trash size={18} color={colors.rose} weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.rose}>
+                                                        Delete Chat
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.rose} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </>
+                                )}
+                            </Animated.View>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
+            </Modal>
+
         </ScreenWrapper>
     );
 };
@@ -828,5 +1153,145 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.35,
         shadowRadius: 10,
         elevation: 6,
+    },
+
+    // ── VIP Pinned Carousel ──
+    vipSection: {
+        paddingTop: spacingY._10,
+        paddingBottom: verticalScale(8),
+    },
+    vipHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: spacingX._20,
+        marginBottom: verticalScale(8),
+    },
+    vipTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: scale(5),
+    },
+    vipScrollContent: {
+        paddingHorizontal: spacingX._20,
+        gap: scale(14),
+    },
+    vipCard: {
+        alignItems: 'center',
+        width: scale(62),
+    },
+    vipAvatarWrap: {
+        position: 'relative',
+    },
+    vipRing: {
+        padding: 2,
+        borderRadius: radius.full,
+        borderWidth: 2,
+        borderColor: colors.primary,
+    },
+    vipOnlineDot: {
+        position: 'absolute',
+        bottom: 2,
+        right: 2,
+        width: verticalScale(12),
+        height: verticalScale(12),
+        borderRadius: radius.full,
+        backgroundColor: colors.green,
+        borderWidth: 2,
+        borderColor: colors.white,
+    },
+    vipPinBadge: {
+        position: 'absolute',
+        top: -2,
+        right: -2,
+        width: scale(16),
+        height: scale(16),
+        borderRadius: radius.full,
+        backgroundColor: colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: colors.white,
+    },
+    vipUnreadBadge: {
+        position: 'absolute',
+        top: -2,
+        left: -2,
+        minWidth: scale(16),
+        height: scale(16),
+        borderRadius: radius.full,
+        backgroundColor: colors.rose,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 3,
+        borderWidth: 1.5,
+        borderColor: colors.white,
+    },
+    vipName: {
+        marginTop: verticalScale(5),
+        textAlign: 'center',
+    },
+
+    // ── Action Sheet Modal ──
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.45)",
+        justifyContent: "flex-end",
+    },
+    actionSheet: {
+        backgroundColor: colors.white,
+        borderTopLeftRadius: radius._30,
+        borderTopRightRadius: radius._30,
+        paddingHorizontal: spacingX._20,
+        paddingTop: verticalScale(12),
+        paddingBottom: verticalScale(34),
+    },
+    sheetHandle: {
+        width: scale(36),
+        height: verticalScale(4),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral300,
+        alignSelf: "center",
+        marginBottom: verticalScale(14),
+    },
+    sheetHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(12),
+        paddingBottom: verticalScale(14),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.neutral100,
+        marginBottom: verticalScale(6),
+    },
+    sheetCloseBtn: {
+        width: scale(32),
+        height: scale(32),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral100,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    sheetOptions: {
+        gap: verticalScale(2),
+    },
+    sheetOptionRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: verticalScale(12),
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.neutral100,
+    },
+    sheetOptionLeft: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(12),
+    },
+    sheetOptionIcon: {
+        width: scale(36),
+        height: scale(36),
+        borderRadius: radius._10,
+        alignItems: "center",
+        justifyContent: "center",
     },
 });

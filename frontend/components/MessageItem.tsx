@@ -2,7 +2,7 @@ import {
     StyleSheet, View, Modal, FlatList,
     TouchableOpacity, TouchableWithoutFeedback,
     Pressable, TextInput, Dimensions, ScrollView, Alert, Linking,
-    PanResponder, Animated as RNAnimated
+    PanResponder, Animated as RNAnimated, Platform, Vibration
 } from 'react-native'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { AttachmentMetaProps, MessageProps, PollProps, ReactionProps, ReplyToProps } from "../types"
@@ -1830,6 +1830,9 @@ const MessageItem = ({
     const [showHeartBurst, setShowHeartBurst] = useState(false);
 
     const triggerHeartBurst = () => {
+        if (Platform.OS !== 'web') {
+            try { Vibration.vibrate(35); } catch (_) {}
+        }
         setShowHeartBurst(true);
         heartScale.setValue(0.2);
         heartOpacity.setValue(1);

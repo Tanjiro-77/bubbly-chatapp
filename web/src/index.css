@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: 245 158 11;
+    --primary-light: 254 243 199;
+    --primary-dark: 217 119 6;
+  }
+
+  /* Custom scrollbar for slick chat UI */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(168, 162, 158, 0.3);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 162, 158, 0.5);
+  }
+}
+
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.dark .glass-panel {
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-bubble-my {
+  background: linear-gradient(135deg, #FFF6D6 0%, #FEE89F 100%);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.dark .glass-bubble-my {
+  background: linear-gradient(135deg, #78350f 0%, #451a03 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.glass-bubble-other {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.dark .glass-bubble-other {
+  background: #27272a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}

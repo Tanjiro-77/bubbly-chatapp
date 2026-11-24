@@ -1,0 +1,263 @@
+import React, { useState, useEffect, useRef } from "react";
+import { StoryGroupProps, StoryItemProps } from "../../types";
+import { X, ChevronLeft, ChevronRight, Eye, Trash2, Send, Heart, Flame } from "lucide-react";
+import { Avatar } from "../common/Avatar";
+import { formatDistanceToNow } from "date-fns";
+
+interface StoryViewerModalProps {
+  storyGroup: StoryGroupProps | null;
+  currentUserId: string;
+  onClose: () => void;
+  onReact: (storyId: string, emoji: string) => void;
+  onReply: (userId: string, text: string, storyId: string) => void;
+  onDelete: (storyId: string) => void;
+}
+
+const STORY_REACTIONS = ["❤️", "🔥", "😂", "😮", "👏", "🎉"];
+
+export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
+  storyGroup,
+  currentUserId,
+  onClose,
+  onReact,
+  onReply,
+  onDelete,
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [showViewers, setShowViewers] = useState(false);
+  const timerRef = useRef<any>(null);
+
+  if (!storyGroup || !storyGroup.stories || storyGroup.stories.length === 0) return null;
+
+  const isMe = storyGroup.user.id === currentUserId;
+  const currentStory: StoryItemProps = storyGroup.stories[currentIndex] || storyGroup.stories[0];
+
+  // Auto-progress 5-second timer
+  useEffect(() => {
+    setProgress(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    if (isPaused) return;
+
+    const interval = 50; // update every 50ms
+    const step = 100 / (5000 / interval);
+
+    timerRef.current = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          handleNext();
+          return 0;
+        }
+        return prev + step;
+      });
+    }, interval);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [currentIndex, isPaused]);
+
+  const handleNext = () => {
+    if (currentIndex < storyGroup.stories.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+      setProgress(0);
+    } else {
+      onClose();
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+      setProgress(0);
+    }
+  };
+
+  const handleSendReply = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim()) return;
+    onReply(storyGroup.user.id, replyText.trim(), currentStory._id);
+    setReplyText("");
+    alert("Reply sent!");
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex items-center justify-center select-none"
+      onMouseDown={() => setIsPaused(true)}
+      onMouseUp={() => setIsPaused(false)}
+      onTouchStart={() => setIsPaused(true)}
+      onTouchEnd={() => setIsPaused(false)}
+    >
+      {/* Story Stage Container */}
+      <div className="relative w-full max-w-md h-[90vh] sm:h-[85vh] rounded-3xl overflow-hidden bg-zinc-950 flex flex-col justify-between shadow-2xl border border-white/10">
+        {/* Top Header: Progress Bars & Author */}
+        <div className="absolute top-0 inset-x-0 z-30 p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+          {/* Progress segments */}
+          <div className="flex items-center gap-1.5 mb-3">
+            {storyGroup.stories.map((story, idx) => (
+              <div
+                key={story._id}
+                className="flex-1 h-1 rounded-full bg-white/30 overflow-hidden"
+              >
+                <div
+                  className="h-full bg-white transition-all duration-75"
+                  style={{
+                    width:
+                      idx < currentIndex
+                        ? "100%"
+                        : idx === currentIndex
+                        ? `${progress}%`
+                        : "0%",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Author info & Actions */}
+          <div className="flex items-center justify-between text-white">
+            <div className="flex items-center gap-3">
+              <Avatar
+                src={storyGroup.user.avatar}
+                name={storyGroup.user.name}
+                size="sm"
+              />
+              <div>
+                <span className="font-bold text-sm block leading-tight">
+                  {storyGroup.user.name}
+                </span>
+                <span className="text-[10px] text-white/70">
+                  {currentStory.createdAt
+                    ? formatDistanceToNow(new Date(currentStory.createdAt), { addSuffix: true })
+                    : "Recently"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isMe && (
+                <button
+                  onClick={() => onDelete(currentStory._id)}
+                  className="p-2 hover:bg-white/20 rounded-full transition text-rose-400"
+                  title="Delete story"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white/20 rounded-full transition"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Story Body */}
+        <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+          {/* Tap Areas */}
+          <div
+            onClick={handlePrev}
+            className="absolute left-0 inset-y-0 w-1/3 z-20 cursor-pointer"
+          />
+          <div
+            onClick={handleNext}
+            className="absolute right-0 inset-y-0 w-1/3 z-20 cursor-pointer"
+          />
+
+          {currentStory.type === "text" ? (
+            <div
+              className="w-full h-full flex items-center justify-center p-8 text-center"
+              style={{
+                background:
+                  currentStory.backgroundColor ||
+                  "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+              }}
+            >
+              <p className="text-2xl font-bold text-white drop-shadow-md leading-relaxed whitespace-pre-wrap">
+                {currentStory.text}
+              </p>
+            </div>
+          ) : currentStory.type === "video" ? (
+            <video
+              src={currentStory.mediaUrl}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <img
+              src={currentStory.mediaUrl}
+              alt="Story"
+              className="w-full h-full object-contain"
+            />
+          )}
+        </div>
+
+        {/* Bottom Bar: Reactions & Reply / Viewers */}
+        <div className="relative z-30 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+          {isMe ? (
+            <div className="flex items-center justify-between text-white text-xs">
+              <button
+                onClick={() => setShowViewers(!showViewers)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md transition"
+              >
+                <Eye className="w-4 h-4" />
+                <span className="font-bold">
+                  {currentStory.viewers?.length || 0} Viewers
+                </span>
+              </button>
+              <div className="flex items-center gap-1">
+                {currentStory.reactions?.map((r, i) => (
+                  <span key={i} className="text-sm">
+                    {r.emoji}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Quick Emojis */}
+              <div className="flex items-center justify-around py-1">
+                {STORY_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => onReact(currentStory._id, emoji)}
+                    className="text-2xl hover:scale-130 transition transform active:scale-90"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+
+              {/* Reply Input */}
+              <form onSubmit={handleSendReply} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder={`Reply to ${storyGroup.user.name}...`}
+                  className="flex-1 py-2.5 px-4 rounded-full bg-white/15 border border-white/20 text-white placeholder:text-white/60 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                />
+                <button
+                  type="submit"
+                  disabled={!replyText.trim()}
+                  className="p-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition disabled:opacity-40"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

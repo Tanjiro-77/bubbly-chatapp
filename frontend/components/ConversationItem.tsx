@@ -1,4 +1,4 @@
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View, Platform, Vibration } from 'react-native';
 import React from 'react';
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import Avatar from "./Avatar";
@@ -65,6 +65,7 @@ const ConversationItem = ({
     isOnline,
     typingUser,
     draftText,
+    onLongPress,
 }: ConversationListItemProps & { searchQuery?: string }) => {
 
     const { user: currentUser } = useAuth();
@@ -115,6 +116,13 @@ const ConversationItem = ({
         });
     };
 
+    const handleLongPress = () => {
+        if (Platform.OS !== 'web') {
+            try { Vibration.vibrate(35); } catch (_) {}
+        }
+        onLongPress?.(item);
+    };
+
     const lastMessageDate = getLastMessageDate();
     const lastMessageContent = getLastMessageContent();
 
@@ -126,6 +134,8 @@ const ConversationItem = ({
                     hasUnread && styles.conversationItemUnread,
                 ]}
                 onPress={openConversation}
+                onLongPress={handleLongPress}
+                delayLongPress={300}
                 activeOpacity={0.7}
             >
                 {/* ── Avatar with Live Online Indicator ── */}
@@ -287,7 +297,8 @@ export default React.memo(ConversationItem, (prev, next) => {
         prev.searchQuery === next.searchQuery &&
         prev.isOnline === next.isOnline &&
         prev.typingUser === next.typingUser &&
-        prev.draftText === next.draftText
+        prev.draftText === next.draftText &&
+        prev.onLongPress === next.onLongPress
     );
 });
 

@@ -535,6 +535,22 @@ export default function SettingsScreen() {
                         label="Call History & Logs"
                         subtitle="View incoming, outgoing, and missed calls"
                         onPress={() => router.push("/(main)/callLogs")}
+                    />
+                    <Row
+                        icon="qr-code"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "55"}
+                        label="My QR Code & Scanner"
+                        subtitle="Share profile and connect instantly"
+                        onPress={() => router.push("/(main)/qrCode")}
+                    />
+                    <Row
+                        icon="storage"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "55"}
+                        label="Data & Storage Usage"
+                        subtitle="Manage media downloads and cache"
+                        onPress={() => router.push("/(main)/storageManager")}
                         isLast
                     />
                 </SectionCard>
@@ -654,7 +670,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={12} color={colors.neutral400} fontWeight="600">
-                        Bubbly v3.1.2 · Flagship Edition
+                        Bubbly v3.2.0 · Flagship Grand Edition
                     </Typo>
                     <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
                         Made with care for seamless connection

@@ -138,6 +138,7 @@ export type ConversationListItemProps = {
   isOnline?: boolean;
   typingUser?: string | null;
   draftText?: string | null;
+  onLongPress?: (item: ConversationProps) => void;
 };
 
 export type ConversationProps = {

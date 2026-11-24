@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bubbly",
     "slug": "frontend",
-    "version": "3.1.2",
+    "version": "3.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bubbly",
@@ -14,9 +14,21 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 4,
+      "versionCode": 5,
       "predictiveBackGestureEnabled": false,
       "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.CAMERA",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.VIBRATE",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
@@ -34,7 +46,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.arnav5569.chat",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Bubbly needs access to your camera to take photos and record video for chats and stories.",
@@ -42,6 +54,12 @@
         "NSPhotoLibraryUsageDescription": "Bubbly needs access to your photos to send images, videos, and custom avatars.",
         "NSPhotoLibraryAddUsageDescription": "Bubbly needs access to save photos and media from chats to your photo library.",
         "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "fetch",
+          "audio",
+          "voip",
+          "fetch",
           "audio",
           "voip",
           "fetch",
@@ -79,6 +97,12 @@
       "eas": {
         "projectId": "881b5abb-ca66-4fca-83e3-b616aa9f0862"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/881b5abb-ca66-4fca-83e3-b616aa9f0862"
     }
   }
 }

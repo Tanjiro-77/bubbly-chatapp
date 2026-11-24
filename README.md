@@ -65,13 +65,14 @@ A full-stack, real-time messaging application for conversations, groups, stories
 
 **Bubbly** is a mobile-first, full-stack messaging application built to bring everyday communication into one connected experience. It combines private conversations, group chats, stories, media sharing, voice messages, and audio/video calls in a single application.
 
-The repository contains three connected parts:
+The repository contains four connected parts:
 
 | Part | Description |
 |---|---|
 | **Mobile application** | Cross-platform Android and iOS application built with React Native and Expo. |
+| **Web application** | Real-time desktop and mobile browser messaging experience built with React 19, TypeScript, Vite, and Tailwind CSS. |
 | **Backend** | TypeScript server built with Node.js, Express, MongoDB, and Socket.IO. |
-| **Website** | Web experience built with React, TypeScript, Vite, and TanStack Start. |
+| **Website** | Release showcase and landing page built with React, TypeScript, Vite, and TanStack Start. |
 
 Bubbly is developed with an emphasis on real-time interaction, maintainable application structure, mobile usability, and practical full-stack engineering.
 
