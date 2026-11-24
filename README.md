@@ -73,7 +73,23 @@ Bubbly is developed with an emphasis on real-time interaction, maintainable appl
 
 ---
 
-## Application screenshots
+## Application Screenshots
+
+<p align="center">
+  <img src="./screenshots/01.png" width="160" alt="Bubbly Screenshot 1" />
+  <img src="./screenshots/02.png" width="160" alt="Bubbly Screenshot 2" />
+  <img src="./screenshots/03.png" width="160" alt="Bubbly Screenshot 3" />
+  <img src="./screenshots/04.png" width="160" alt="Bubbly Screenshot 4" />
+  <img src="./screenshots/05.png" width="160" alt="Bubbly Screenshot 5" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/06.png" width="160" alt="Bubbly Screenshot 6" />
+  <img src="./screenshots/07.png" width="160" alt="Bubbly Screenshot 7" />
+  <img src="./screenshots/08.png" width="160" alt="Bubbly Screenshot 8" />
+  <img src="./screenshots/09.png" width="160" alt="Bubbly Screenshot 9" />
+  <img src="./screenshots/10.png" width="160" alt="Bubbly Screenshot 10" />
+</p>
 
 Explore the Bubbly mobile experience through the following **10 promotional screenshots**.
 
