@@ -1,5 +1,7 @@
 import dotenv from "dotenv";
+import path from "path";
 dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 import express from "express";
 import http from "http";
@@ -8,6 +10,7 @@ import dns from "dns";
 import connectDB from "./config/db";
 import authRoutes from "./routes/auth.routes";
 import appRoutes from "./routes/app.routes";
+import errorReportRoutes from "./routes/errorReport.routes";
 import { intializeSocket } from "./socket/socket";
 import { startScheduledMessageWorker } from "./services/scheduledWorker";
 
@@ -27,7 +30,8 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
@@ -41,6 +45,7 @@ app.use(cors({
 
 app.use("/auth", authRoutes);
 app.use("/api", appRoutes);
+app.use("/api/errors", errorReportRoutes);
 
 app.get("/", (req, res) => {
     res.send("Server is running");

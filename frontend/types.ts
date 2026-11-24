@@ -63,6 +63,7 @@ export interface DecodedTokenProps {
 export type AuthContextProps = {
   token: string | null;
   user: UserProps | null;
+  isLoading?: boolean;
 
   signIn: (
     email: string,

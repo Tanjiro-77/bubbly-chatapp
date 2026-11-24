@@ -12,6 +12,7 @@ import { markOnboardingCompleted } from "../hooks/useOnboarding";
 export const AuthContext = createContext<AuthContextProps>({
     token: null,
     user: null,
+    isLoading: true,
     signIn: async () => { },
     signInWithGoogle: async () => { },
     signUp: async () => { },
@@ -23,6 +24,7 @@ export const AuthContext = createContext<AuthContextProps>({
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [token, setToken] = useState<string | null>(null);
     const [user, setUser] = useState<UserProps | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
     const router = useRouter();
 
     useEffect(() => {
@@ -30,46 +32,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, [])
 
     const loadToken = async () => {
-        const storedToken = await AsyncStorage.getItem("token");
-        if (storedToken) {
-            try {
+        try {
+            const storedToken = await AsyncStorage.getItem("token");
+            if (storedToken) {
                 const decoded = jwtDecode<DecodedTokenProps>(storedToken);
                 if (decoded.exp && decoded.exp < Date.now() / 1000) {
-                    // token has expired, naviage to welcome page
+                    // token has expired
                     await AsyncStorage.removeItem('token');
-                    gotoWelcomePage();
-                    return;
+                } else {
+                    // user is logged in
+                    setToken(storedToken);
+                    await connectSocket();
+                    setUser(decoded.user);
                 }
-
-                // user is logged in
-                setToken(storedToken);
-                await connectSocket();
-                setUser(decoded.user);
-
-                gotoHomePage();
-            } catch (error) {
-                gotoWelcomePage();
-                console.log('failed to decode token:', error);
             }
-        } else {
-            gotoWelcomePage();
+        } catch (error) {
+            console.log('failed to decode token:', error);
+        } finally {
+            // Keep splash visible briefly (900ms) for smooth brand presentation
+            setTimeout(() => {
+                setIsLoading(false);
+            }, 900);
         }
     };
-
-    const gotoHomePage = () => {
-
-        // wait is only for showing splash screen
-        setTimeout(() => {
-            router.replace('/(main)/home')
-        }, 1500);
-    }
-
-    const gotoWelcomePage = () => {
-        // wait is only for showing splash screen
-        setTimeout(() => {
-            router.replace('/(auth)/welcome')
-        }, 1500);
-    }
 
     const updateToken = async (token: string) => {
         if (token) {
@@ -133,7 +118,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ token, user, signIn, signInWithGoogle, signUp, signOut, updateToken, updateUserPhone }}>
+        <AuthContext.Provider value={{ token, user, isLoading, signIn, signInWithGoogle, signUp, signOut, updateToken, updateUserPhone }}>
             {children}
         </AuthContext.Provider>
     );

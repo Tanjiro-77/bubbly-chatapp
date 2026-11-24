@@ -638,14 +638,15 @@ export default function SettingsScreen() {
                     <Row
                         icon="bug-report"
                         iconColor={colors.neutral700}
-                        label="Report a Bug"
-                        onPress={() => openLink(BUG_REPORT_URL)}
+                        label="Report an Issue / Bug"
+                        subtitle="Send diagnostic report & screenshot"
+                        onPress={() => router.push("/(main)/reportBugModal")}
                     />
                     <Row
                         icon="mail"
                         iconColor={colors.neutral700}
                         label="Send Feedback"
-                        onPress={() => openLink(FEEDBACK_EMAIL)}
+                        onPress={() => router.push("/(main)/reportBugModal")}
                     />
                     <Row
                         icon="info"

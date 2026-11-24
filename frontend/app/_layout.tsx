@@ -2,17 +2,24 @@ import { StyleSheet } from 'react-native'
 import React, { useEffect, useState } from 'react'
 import { Stack, useRouter, useSegments } from "expo-router"
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import * as Sentry from '@sentry/react-native';
 import { AuthProvider, useAuth } from "../contexts/authContext";
 import { onCallIncoming } from '../socket/socketEvents';
 import { IncomingCallProps } from '../types';
 import { isOnboardingCompleted } from '../hooks/useOnboarding';
+import { initSentry, setupGlobalErrorHandlers, setSentryUser } from '../services/errorReporter';
+import AppErrorBoundary from '../components/ErrorBoundary';
+
+// Initialize Sentry and Global Unhandled Exception Handlers
+initSentry();
+setupGlobalErrorHandlers();
 
 // ─── Navigation guard ─────────────────────────────────────────────────────────
 // Runs on every auth state change and on startup.
 // Determines whether to show onboarding, auth screens, or the main app.
 
 const NavigationGuard = () => {
-    const { user } = useAuth();
+    const { user, isLoading } = useAuth();
     const router = useRouter();
     const segments = useSegments();
 
@@ -29,14 +36,22 @@ const NavigationGuard = () => {
         isOnboardingCompleted().then(setOnboardingDone);
     }, []);
 
-    // Route guard — runs when onboarding state or auth state is known
+    // Sync authenticated user context with Sentry
     useEffect(() => {
-        // Still loading onboarding state — wait
-        if (onboardingDone === null) return;
+        setSentryUser(user);
+    }, [user]);
+
+    // Route guard — runs when auth state and onboarding state are both determined
+    useEffect(() => {
+        // Still loading auth or onboarding state — keep showing splash screen
+        if (isLoading || onboardingDone === null) return;
 
         if (!onboardingDone) {
             // First install — show onboarding
-            router.replace("/onboarding");
+            const inOnboarding = segments[0] === "onboarding";
+            if (!inOnboarding) {
+                router.replace("/onboarding");
+            }
             return;
         }
 
@@ -55,7 +70,7 @@ const NavigationGuard = () => {
                 router.replace("/(auth)/welcome");
             }
         }
-    }, [onboardingDone, user]);
+    }, [isLoading, onboardingDone, user]);
 
     return null;
 };
@@ -121,6 +136,10 @@ const StackLayout = () => {
                 name="(main)/createStory"
                 options={{ presentation: "modal" }}
             />
+            <Stack.Screen
+                name="(main)/reportBugModal"
+                options={{ presentation: "modal" }}
+            />
             {/* ── About ── */}
             <Stack.Screen
                 name="(main)/about"
@@ -134,15 +153,17 @@ const StackLayout = () => {
 
 const RootLayout = () => {
     return (
-        <SafeAreaProvider>
-            <AuthProvider>
-                <StackLayout />
-                <NavigationGuard />
-            </AuthProvider>
-        </SafeAreaProvider>
+        <AppErrorBoundary>
+            <SafeAreaProvider>
+                <AuthProvider>
+                    <StackLayout />
+                    <NavigationGuard />
+                </AuthProvider>
+            </SafeAreaProvider>
+        </AppErrorBoundary>
     );
 };
 
-export default RootLayout;
+export default Sentry.wrap(RootLayout);
 
 const styles = StyleSheet.create({});
