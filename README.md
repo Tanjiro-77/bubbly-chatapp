@@ -91,56 +91,6 @@ Bubbly is developed with an emphasis on real-time interaction, maintainable appl
   <img src="./screenshots/10.png" width="160" alt="Bubbly Screenshot 10" />
 </p>
 
-Explore the Bubbly mobile experience through the following **10 promotional screenshots**.
-
-The gallery uses iOS/iPhone screenshot dimensions, with each image displayed at a consistent width while preserving its original aspect ratio. Screenshots are arranged in numerical order from `1.png` to `10.png`.
-
-<p align="center">
-  <img src="screenshots/1.png" width="180" alt="Bubbly introduction and welcome screen" />
-  &nbsp;
-  <img src="screenshots/2.png" width="180" alt="Bubbly account creation experience" />
-  &nbsp;
-  <img src="screenshots/3.png" width="180" alt="Bubbly conversations and inbox interface" />
-  &nbsp;
-  <img src="screenshots/4.png" width="180" alt="Bubbly settings and app controls" />
-  &nbsp;
-  <img src="screenshots/5.png" width="180" alt="Bubbly Story Studio and story creation interface" />
-</p>
-
-<p align="center">
-  <sub>
-    <strong>01 · Welcome</strong> &nbsp;·&nbsp;
-    <strong>02 · Get Started</strong> &nbsp;·&nbsp;
-    <strong>03 · Conversations</strong> &nbsp;·&nbsp;
-    <strong>04 · Settings</strong> &nbsp;·&nbsp;
-    <strong>05 · Story Studio</strong>
-  </sub>
-</p>
-
-<br />
-
-<p align="center">
-  <img src="screenshots/6.png" width="180" alt="Bubbly story viewing experience" />
-  &nbsp;
-  <img src="screenshots/7.png" width="180" alt="Bubbly about and application information screen" />
-  &nbsp;
-  <img src="screenshots/8.png" width="180" alt="Bubbly group conversation interface" />
-  &nbsp;
-  <img src="screenshots/9.png" width="180" alt="Bubbly storage and data usage controls" />
-  &nbsp;
-  <img src="screenshots/10.png" width="180" alt="Bubbly active audio calling interface" />
-</p>
-
-<p align="center">
-  <sub>
-    <strong>06 · Stories</strong> &nbsp;·&nbsp;
-    <strong>07 · About Bubbly</strong> &nbsp;·&nbsp;
-    <strong>08 · Group Chat</strong> &nbsp;·&nbsp;
-    <strong>09 · Storage & Data</strong> &nbsp;·&nbsp;
-    <strong>10 · Audio Call</strong>
-  </sub>
-</p>
-
 ---
 
 ## Features
