@@ -1,5 +1,5 @@
 import axios from "axios";
-import * as Contacts from "expo-contacts";
+import * as Contacts from "expo-contacts/legacy";
 import { API_URL } from "../constants";
 
 export interface PhoneContactItem {
@@ -33,47 +33,55 @@ export const cleanPhoneNumber = (raw: string): string => {
  */
 export const fetchDevicePhoneContacts = async (): Promise<{
     status: Contacts.PermissionStatus;
+    canAskAgain: boolean;
     contacts: PhoneContactItem[];
 }> => {
-    try {
-        const { status } = await Contacts.requestPermissionsAsync();
-        if (status !== Contacts.PermissionStatus.GRANTED) {
-            return { status, contacts: [] };
-        }
+    let permission = await Contacts.getPermissionsAsync();
+    if (permission.status !== Contacts.PermissionStatus.GRANTED) {
+        permission = await Contacts.requestPermissionsAsync();
+    }
 
-        const { data } = await Contacts.getContactsAsync({
-            fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
-            sort: Contacts.SortTypes.FirstName,
-        });
+    if (permission.status !== Contacts.PermissionStatus.GRANTED) {
+        return {
+            status: permission.status,
+            canAskAgain: permission.canAskAgain ?? true,
+            contacts: [],
+        };
+    }
 
-        const list: PhoneContactItem[] = [];
-        const seenNumbers = new Set<string>();
+    const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+        sort: Contacts.SortTypes.FirstName,
+    });
 
-        if (Array.isArray(data)) {
-            for (const item of data) {
-                if (item.phoneNumbers && Array.isArray(item.phoneNumbers)) {
-                    for (const phoneObj of item.phoneNumbers) {
-                        if (phoneObj.number) {
-                            const cleaned = cleanPhoneNumber(phoneObj.number);
-                            if (cleaned.length >= 7 && !seenNumbers.has(cleaned)) {
-                                seenNumbers.add(cleaned);
-                                list.push({
-                                    id: item.id || `${item.name}_${cleaned}`,
-                                    name: item.name || phoneObj.number,
-                                    phoneNumber: cleaned,
-                                });
-                            }
+    const list: PhoneContactItem[] = [];
+    const seenNumbers = new Set<string>();
+
+    if (Array.isArray(data)) {
+        for (const item of data) {
+            if (item.phoneNumbers && Array.isArray(item.phoneNumbers)) {
+                for (const phoneObj of item.phoneNumbers) {
+                    if (phoneObj.number) {
+                        const cleaned = cleanPhoneNumber(phoneObj.number);
+                        if (cleaned.length >= 7 && !seenNumbers.has(cleaned)) {
+                            seenNumbers.add(cleaned);
+                            list.push({
+                                id: item.id || `${item.name}_${cleaned}`,
+                                name: item.name || phoneObj.number,
+                                phoneNumber: cleaned,
+                            });
                         }
                     }
                 }
             }
         }
-
-        return { status, contacts: list };
-    } catch (error) {
-        console.error("fetchDevicePhoneContacts error:", error);
-        return { status: Contacts.PermissionStatus.DENIED, contacts: [] };
     }
+
+    return {
+        status: permission.status,
+        canAskAgain: permission.canAskAgain ?? true,
+        contacts: list,
+    };
 };
 
 /**

@@ -1,4 +1,4 @@
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ScreenWrapper from "../../components/ScreenWrapper";
@@ -177,11 +177,17 @@ const NewConversationModal = () => {
 
         setIsSyncingPhone(true);
         try {
-            const { status, contacts: fetchedList } = await fetchDevicePhoneContacts();
+            const { status, canAskAgain, contacts: fetchedList } = await fetchDevicePhoneContacts();
             if (status !== 'granted') {
                 Alert.alert(
                     "Contact Access Needed",
-                    "Please allow contact access in your phone settings to discover which friends are on Bubbly."
+                    canAskAgain
+                        ? "Please allow contact access when prompted to discover which friends are on Bubbly."
+                        : "Please allow contact access in your phone settings to discover which friends are on Bubbly.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Open Settings", onPress: () => Linking.openSettings().catch(() => {}) },
+                    ]
                 );
                 setIsSyncingPhone(false);
                 return;

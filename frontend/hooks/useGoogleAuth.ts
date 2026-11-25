@@ -38,6 +38,8 @@ export const useGoogleAuth = () => {
         } else if (response?.type === "error") {
             setIsLoading(false);
             Alert.alert("Google Sign-In Error", response.error?.message || "Could not sign in with Google.");
+        } else if (response) {
+            setIsLoading(false);
         }
     }, [response]);
 
@@ -125,7 +127,10 @@ export const useGoogleAuth = () => {
 
         try {
             setIsLoading(true);
-            await promptAsync();
+            const result = await promptAsync();
+            if (result?.type !== "success") {
+                setIsLoading(false);
+            }
         } catch (error: any) {
             console.error("promptAsync error:", error);
             setIsLoading(false);
