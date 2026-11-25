@@ -1,7 +1,7 @@
 // Web Configuration matching Mobile
 export const API_URL =
   import.meta.env.VITE_API_URL ||
-  "https://chat-backend-production-31c8.up.railway.app";
+  "https://bubbly-chatapp-production.up.railway.app";
 
 export const CLOUDINARY_CLOUD_NAME =
   import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dafb37rpe";

@@ -1,6 +1,6 @@
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "https://chat-backend-production-31c8.up.railway.app";
+  "https://bubbly-chatapp-production.up.railway.app";
 
 export const CLOUDINARY_CLOUD_NAME =
   process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || "dafb37rpe";

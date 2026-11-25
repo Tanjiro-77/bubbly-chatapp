@@ -199,7 +199,10 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
                 process.env.GOOGLE_CLIENT_ID,
                 process.env.GOOGLE_ANDROID_CLIENT_ID,
                 process.env.GOOGLE_IOS_CLIENT_ID,
-            ].filter(Boolean);
+            ]
+                .filter(Boolean)
+                .flatMap((val) => String(val).split(",").map((s) => s.trim()))
+                .filter(Boolean);
             if (allowedAudiences.length > 0 && gData.aud && !allowedAudiences.includes(gData.aud)) {
                 res.status(401).json({ success: false, msg: "Google token audience mismatch" });
                 return;
