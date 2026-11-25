@@ -72,3 +72,34 @@ export const getCallHistory = async (page = 0) => {
         return { success: false, msg: "Failed to get call history" };
     }
 };
+
+async function callActionRequest(
+    path: string,
+    method: "GET" | "POST" = "GET"
+) {
+    try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) {
+            return { success: false, msg: "Authentication token not found" };
+        }
+        const response = await fetch(`${API_URL}${path}`, {
+            method,
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+        });
+        return await response.json();
+    } catch (error) {
+        return { success: false, msg: "Call request failed" };
+    }
+}
+
+export const getCallStatus = (callId: string) =>
+    callActionRequest(`/api/call/${callId}/status`, "GET");
+
+export const acceptCallHttp = (callId: string) =>
+    callActionRequest(`/api/call/${callId}/accept`, "POST");
+
+export const rejectCallHttp = (callId: string) =>
+    callActionRequest(`/api/call/${callId}/reject`, "POST");

@@ -17,29 +17,54 @@ import { useAuth } from "../../contexts/authContext"
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
 import GoogleIcon from "../../components/GoogleIcon"
 import { useGoogleAuth } from "../../hooks/useGoogleAuth"
+import AuthLegalFooter from "../../components/AuthLegalFooter"
 
 const Register = () => {
 
     const nameRef = useRef("");
     const emailRef = useRef("");
+    const phoneRef = useRef("");
     const passwordRef = useRef("");
+    const [signupMethod, setSignupMethod] = useState<'phone' | 'email'>('phone');
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
-    const { signUp } = useAuth();
+    const { signUp, signUpWithPhone } = useAuth();
     const { triggerGoogleSignIn, isLoading: isGoogleLoading } = useGoogleAuth();
 
     const handleSubmit = async () => {
         const cleanName = nameRef.current.trim();
-        const cleanEmail = emailRef.current.trim().toLowerCase();
         const cleanPassword = passwordRef.current;
 
-        if (!cleanEmail || !cleanPassword || !cleanName) {
-            Alert.alert('Sign Up', "Please fill all the fields");
+        if (!cleanName || !cleanPassword) {
+            Alert.alert('Sign Up', "Please fill all required fields");
             return;
         }
 
         if (cleanPassword.length < 6) {
             Alert.alert('Sign Up', "Password must be at least 6 characters");
+            return;
+        }
+
+        if (signupMethod === 'phone') {
+            const cleanPhone = phoneRef.current.trim();
+            if (!cleanPhone) {
+                Alert.alert('Sign Up', "Please enter your phone number");
+                return;
+            }
+            try {
+                setIsLoading(true);
+                await signUpWithPhone(cleanPhone, cleanPassword, cleanName, "");
+            } catch (error: any) {
+                Alert.alert("Registration Error", error.message);
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
+        const cleanEmail = emailRef.current.trim().toLowerCase();
+        if (!cleanEmail) {
+            Alert.alert('Sign Up', "Please enter your email address");
             return;
         }
 
@@ -56,7 +81,7 @@ const Register = () => {
     return (
         <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? "padding" : undefined}
+            behavior={Platform.OS === 'ios' ? "padding" : "height"}
         >
             <ScreenWrapper showPattern={true}>
                 <View style={styles.container}>
@@ -90,6 +115,30 @@ const Register = () => {
                                 </Typo>
                             </View>
 
+                            {/* Signup Method Toggle */}
+                            <View style={styles.methodTabs}>
+                                <TouchableOpacity
+                                    style={[styles.methodTab, signupMethod === 'phone' && styles.methodTabActive]}
+                                    onPress={() => setSignupMethod('phone')}
+                                    activeOpacity={0.8}
+                                >
+                                    <Icons.Phone size={15} color={signupMethod === 'phone' ? colors.neutral900 : colors.neutral500} weight="bold" />
+                                    <Typo size={13} fontWeight={signupMethod === 'phone' ? "700" : "600"} color={signupMethod === 'phone' ? colors.neutral900 : colors.neutral500}>
+                                        Phone Number
+                                    </Typo>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.methodTab, signupMethod === 'email' && styles.methodTabActive]}
+                                    onPress={() => setSignupMethod('email')}
+                                    activeOpacity={0.8}
+                                >
+                                    <Icons.At size={15} color={signupMethod === 'email' ? colors.neutral900 : colors.neutral500} weight="bold" />
+                                    <Typo size={13} fontWeight={signupMethod === 'email' ? "700" : "600"} color={signupMethod === 'email' ? colors.neutral900 : colors.neutral500}>
+                                        Email
+                                    </Typo>
+                                </TouchableOpacity>
+                            </View>
+
                             {/* Fields */}
                             <View style={styles.fields}>
                                 <View style={styles.fieldGroup}>
@@ -109,29 +158,53 @@ const Register = () => {
                                     />
                                 </View>
 
-                                <View style={styles.fieldGroup}>
-                                    <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                        EMAIL
-                                    </Typo>
-                                    <Input
-                                        placeholder="you@email.com"
-                                        onChangeText={(value: string) => emailRef.current = value}
-                                        icon={
-                                            <Icons.At
-                                                size={verticalScale(20)}
-                                                color={colors.neutral400}
-                                                weight="regular"
-                                            />
-                                        }
-                                    />
-                                </View>
+                                {signupMethod === 'phone' ? (
+                                    <View style={styles.fieldGroup}>
+                                        <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                            PHONE NUMBER
+                                        </Typo>
+                                        <Input
+                                            placeholder="+91 98765 43210"
+                                            keyboardType="phone-pad"
+                                            autoCapitalize="none"
+                                            onChangeText={(value: string) => phoneRef.current = value}
+                                            icon={
+                                                <Icons.Phone
+                                                    size={verticalScale(20)}
+                                                    color={colors.neutral400}
+                                                    weight="regular"
+                                                />
+                                            }
+                                        />
+                                    </View>
+                                ) : (
+                                    <View style={styles.fieldGroup}>
+                                        <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                            EMAIL
+                                        </Typo>
+                                        <Input
+                                            placeholder="you@email.com"
+                                            keyboardType="email-address"
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                            onChangeText={(value: string) => emailRef.current = value}
+                                            icon={
+                                                <Icons.At
+                                                    size={verticalScale(20)}
+                                                    color={colors.neutral400}
+                                                    weight="regular"
+                                                />
+                                            }
+                                        />
+                                    </View>
+                                )}
 
                                 <View style={styles.fieldGroup}>
                                     <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
                                         PASSWORD
                                     </Typo>
                                     <Input
-                                        placeholder="Min. 8 characters"
+                                        placeholder="Min. 6 characters"
                                         secureTextEntry
                                         onChangeText={(value: string) => passwordRef.current = value}
                                         icon={
@@ -197,6 +270,9 @@ const Register = () => {
                                         </Typo>
                                     </Pressable>
                                 </View>
+
+                                {/* Privacy Policy & Security */}
+                                <AuthLegalFooter actionLabel="By creating an account, you agree to our" />
                             </View>
 
                         </ScrollView>
@@ -244,6 +320,32 @@ const styles = StyleSheet.create({
     // Title
     titleBlock: {
         gap: spacingY._5,
+    },
+
+    // Method Tabs
+    methodTabs: {
+        flexDirection: "row",
+        backgroundColor: colors.neutral100,
+        borderRadius: radius._15,
+        padding: 4,
+        gap: 4,
+    },
+    methodTab: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        paddingVertical: verticalScale(10),
+        borderRadius: radius._12,
+    },
+    methodTabActive: {
+        backgroundColor: colors.white,
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
     },
 
     // Fields

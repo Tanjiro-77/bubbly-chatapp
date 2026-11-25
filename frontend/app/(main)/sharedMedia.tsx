@@ -25,7 +25,7 @@ import Typo from "../../components/Typo";
 import BackButton from "../../components/BackButton";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
-import { getMessages } from "../../socket/socketEvents";
+import { getMessages, isSocketConnected } from "../../socket/socketEvents";
 import { MessageProps, ResponseProps } from "../../types";
 import moment from "moment";
 
@@ -49,9 +49,15 @@ const SharedMediaScreen = () => {
     const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!conversationId) return;
+        const convIdStr = Array.isArray(conversationId) ? conversationId[0] : conversationId;
+        if (!convIdStr || !isSocketConnected()) {
+            setLoading(false);
+            return;
+        }
 
+        const timer = setTimeout(() => setLoading(false), 6000);
         const handler = (res: ResponseProps) => {
+            clearTimeout(timer);
             setLoading(false);
             if (res.success) {
                 const list = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.messages) ? res.data.messages : []);
@@ -60,17 +66,18 @@ const SharedMediaScreen = () => {
         };
 
         getMessages(handler);
-        getMessages({ conversationId: conversationId as string, page: 0, limit: 100 });
+        getMessages({ conversationId: convIdStr, page: 0, limit: 50 });
 
         return () => {
+            clearTimeout(timer);
             getMessages(handler, true);
         };
     }, [conversationId]);
 
-    // Media list (Images)
+    // Media list (Images + Videos)
     const mediaList = useMemo(() => {
         return messages.filter(
-            m => m.type === "image" || (m.attachement && m.attachmentMeta?.mimeType?.startsWith("image/"))
+            m => m.type === "image" || m.type === "video" || (m.attachement && (m.attachmentMeta?.mimeType?.startsWith("image/") || m.attachmentMeta?.mimeType?.startsWith("video/")))
         );
     }, [messages]);
 
@@ -198,10 +205,11 @@ const SharedMediaScreen = () => {
     }, []);
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+            <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
-                <BackButton />
+                <BackButton color={colors.neutral900} />
                 <View style={styles.headerTitleWrap}>
                     <Typo size={18} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                         Shared Content
@@ -353,6 +361,7 @@ const SharedMediaScreen = () => {
                     )}
                 </View>
             </Modal>
+            </View>
         </ScreenWrapper>
     );
 };

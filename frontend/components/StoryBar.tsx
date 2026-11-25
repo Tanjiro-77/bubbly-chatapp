@@ -95,14 +95,22 @@ const StoryBar = () => {
                             </View>
                         )}
 
-                        {/* Plus badge */}
-                        <View style={styles.addBtn}>
+                        {/* Plus badge (separate tap target so users can add multiple stories) */}
+                        <TouchableOpacity
+                            style={styles.addBtn}
+                            onPress={(e) => {
+                                e.stopPropagation?.();
+                                router.push('/(main)/createStory');
+                            }}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            activeOpacity={0.85}
+                        >
                             <Icons.Plus
                                 size={verticalScale(11)}
                                 color={colors.neutral900}
                                 weight="bold"
                             />
-                        </View>
+                        </TouchableOpacity>
                     </View>
 
                     <Typo

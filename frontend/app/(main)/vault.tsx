@@ -26,13 +26,17 @@ import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { getConversations } from "../../socket/socketEvents";
+import { useAuth } from "../../contexts/authContext";
 import { ConversationProps, ResponseProps } from "../../types";
 
-const PIN_STORAGE_KEY = "@bubbly_vault_pin";
-export const LOCKED_CHATS_KEY = "@bubbly_locked_chats";
+const PIN_STORAGE_KEY_PREFIX = "@bubbly_vault_pin";
+export const LOCKED_CHATS_KEY_PREFIX = "@bubbly_locked_chats";
 
 const VaultScreen = () => {
     const router = useRouter();
+    const { user: currentUser } = useAuth();
+    const PIN_STORAGE_KEY = currentUser?.id ? `${PIN_STORAGE_KEY_PREFIX}_${currentUser.id}` : PIN_STORAGE_KEY_PREFIX;
+    const LOCKED_CHATS_KEY = currentUser?.id ? `${LOCKED_CHATS_KEY_PREFIX}_${currentUser.id}` : LOCKED_CHATS_KEY_PREFIX;
     const [savedPin, setSavedPin] = useState<string | null>(null);
     const [pinStage, setPinStage] = useState<"enter" | "setup_new" | "setup_confirm">("enter");
     const [firstSetupPin, setFirstSetupPin] = useState<string>("");
@@ -181,9 +185,10 @@ const VaultScreen = () => {
     // Render Pin Entry / Setup Screen
     if (!isUnlocked) {
         return (
-            <ScreenWrapper>
+            <ScreenWrapper style={{ backgroundColor: colors.white }}>
+                <View style={{ flex: 1, backgroundColor: colors.white }}>
                 <View style={styles.header}>
-                    <BackButton />
+                    <BackButton color={colors.neutral900} />
                     <View style={styles.headerTitleWrap}>
                         <Typo size={18} fontWeight="700" color={colors.neutral900}>
                             Secret Chat Vault
@@ -287,16 +292,18 @@ const VaultScreen = () => {
                         ))}
                     </View>
                 </View>
+                </View>
             </ScreenWrapper>
         );
     }
 
     // Render Vault Content Screen
     return (
-        <ScreenWrapper>
+        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+            <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
-                <BackButton />
+                <BackButton color={colors.neutral900} />
                 <View style={styles.headerTitleWrap}>
                     <Typo size={18} fontWeight="700" color={colors.neutral900}>
                         Secret Vault
@@ -339,7 +346,15 @@ const VaultScreen = () => {
                     data={lockedConversations}
                     keyExtractor={item => item._id}
                     contentContainerStyle={styles.listContent}
-                    renderItem={({ item }) => (
+                    renderItem={({ item }) => {
+                        const isDirect = item.type === "direct";
+                        const other = isDirect
+                            ? item.participants?.find((p: any) => (p._id || p.id) !== currentUser?.id)
+                            : null;
+                        const displayName = isDirect ? (other?.name || "Secret Chat") : (item.name || "Secret Group");
+                        const displayAvatar = isDirect ? (other?.avatar || null) : (item.avatar || null);
+
+                        return (
                         <TouchableOpacity
                             style={styles.chatCard}
                             activeOpacity={0.7}
@@ -348,8 +363,8 @@ const VaultScreen = () => {
                                     pathname: "/(main)/conversation",
                                     params: {
                                         id: item._id,
-                                        name: item.name,
-                                        avatar: item.avatar || "",
+                                        name: displayName,
+                                        avatar: displayAvatar || "",
                                         type: item.type,
                                         participants: JSON.stringify(item.participants || []),
                                     },
@@ -357,12 +372,13 @@ const VaultScreen = () => {
                             }}
                         >
                             <Avatar
-                                uri={item.avatar}
+                                uri={displayAvatar}
+                                isGroup={!isDirect}
                                 size={verticalScale(44)}
                             />
                             <View style={styles.chatInfo}>
                                 <Typo size={15} fontWeight="600" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
-                                    {item.name || "Secret Conversation"}
+                                    {displayName}
                                 </Typo>
                                 <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }} style={{ marginTop: verticalScale(2) }}>
                                     {item.lastMessage?.content || "Hidden & Encrypted Messages"}
@@ -376,9 +392,11 @@ const VaultScreen = () => {
                                 <Icons.LockOpen size={verticalScale(18)} color={colors.rose} weight="bold" />
                             </TouchableOpacity>
                         </TouchableOpacity>
-                    )}
+                        );
+                    }}
                 />
             )}
+            </View>
         </ScreenWrapper>
     );
 };

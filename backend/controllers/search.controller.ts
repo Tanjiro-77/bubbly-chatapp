@@ -37,10 +37,18 @@ export async function searchAll(req: AuthRequest, res: Response) {
         const result: any = { users: [], conversations: [], messages: [], media: [], files: [], links: [] };
 
         if ((!type || type === "all" || type === "users") && rx) {
-            result.users = await User.find({
-                _id: { $ne: userId },
-                $or: [{ name: rx }, { email: rx }],
-            }).select("name email avatar").limit(12).lean();
+            // WhatsApp-style privacy: Only search known users (people you share a conversation with)
+            const knownUsers = await Conversation.find({ participants: userId }).select("participants").lean();
+            const knownIds = Array.from(new Set(
+                knownUsers.flatMap((c: any) => (c.participants || []).map((p: any) => p.toString()))
+            )).filter((id) => id !== userId.toString());
+
+            if (knownIds.length > 0) {
+                result.users = await User.find({
+                    _id: { $in: knownIds },
+                    $or: [{ name: rx }, { email: rx }, { phoneNumber: rx }],
+                }).select("name email phoneNumber avatar").limit(12).lean();
+            }
         }
 
         if ((!type || type === "all" || type === "conversations") && rx) {
@@ -126,7 +134,8 @@ export async function translateText(req: AuthRequest, res: Response) {
             return;
         }
 
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(safeText.slice(0, 500))}&langpair=autodetect|${encodeURIComponent(safeTargetLang)}`;
+        const langPair = `en|${encodeURIComponent(safeTargetLang)}`;
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(safeText.slice(0, 500))}&langpair=${langPair}`;
         
         // Use timeout to prevent hanging on external API
         const controller = new AbortController();
@@ -141,8 +150,11 @@ export async function translateText(req: AuthRequest, res: Response) {
 
         if (!response.ok) throw new Error("Translation service unavailable");
         const json: any = await response.json();
+        if (json?.responseStatus && Number(json.responseStatus) !== 200) {
+            throw new Error(json?.responseDetails || "Translation service rejected language pair");
+        }
         const translatedText = json?.responseData?.translatedText;
-        if (!translatedText) throw new Error("Could not translate");
+        if (!translatedText || typeof translatedText !== "string") throw new Error("Could not translate");
 
         await TranslationCache.create({
             sourceHash: hash,

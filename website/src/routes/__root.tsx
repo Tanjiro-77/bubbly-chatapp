@@ -8,12 +8,13 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
-import { Home, RotateCcw, AlertTriangle, Wifi } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Home, RotateCcw, AlertTriangle, Wifi, ArrowUp } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteHeader, SiteFooter } from "@/components/site/shared";
+import { CommandPalette } from "@/components/site/command-palette";
 
 function NotFoundComponent() {
   return (
@@ -246,19 +247,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Bubbly v3.0 — Connect Beyond Messages" },
+      { title: "Bubbly v3.4 — Connect Beyond Messages" },
       {
         name: "description",
         content:
-          "Bubbly is a full-stack, real-time messaging application for conversations, groups, stories, media sharing, and Agora voice/video communication.",
+          "Bubbly is a full-stack, real-time messaging application for conversations, groups, stories, background push notifications, and Agora voice/video communication.",
       },
       { name: "author", content: "Arnav Khari" },
       { name: "theme-color", content: "#f59e0b" },
-      { property: "og:title", content: "Bubbly v3.0 — Connect Beyond Messages" },
+      { property: "og:title", content: "Bubbly v3.4 — Connect Beyond Messages" },
       {
         property: "og:description",
         content:
-          "Full-stack real-time chat, Agora HD audio/video calling, Story Studio with 7 presets, and Spanish translation. Free & Open Source.",
+          "Full-stack real-time chat, background call alerts, Agora HD audio/video calling, Story Studio with 7 presets, and Spanish translation. Free & Open Source.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -282,10 +283,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const themeInitScript = `
+    try {
+      var saved = localStorage.getItem('bubbly-theme');
+      var dark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.classList.add('dark');
+    } catch (e) {}
+  `;
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
         {children}
@@ -297,14 +307,62 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [scrollPct, setScrollPct] = useState(0);
+  const [showTop, setShowTop] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((o) => !o);
+      }
+    };
+    const onScroll = () => {
+      const doc = document.documentElement;
+      const total = doc.scrollHeight - doc.clientHeight;
+      const pct = total > 0 ? Math.min(100, Math.round((window.scrollY / total) * 100)) : 0;
+      setScrollPct(pct);
+      setShowTop(window.scrollY > 480);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SiteHeader />
+      {/* Global top scroll progress indicator */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed left-0 top-0 z-60 h-0.5 transition-[width] duration-100"
+        style={{
+          width: `${scrollPct}%`,
+          backgroundImage: "var(--gradient-warm)",
+        }}
+      />
+
+      <SiteHeader onOpenCommand={() => setCommandOpen(true)} />
       <main className="min-h-screen">
         <Outlet />
       </main>
       <SiteFooter />
+
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+
+      {showTop && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          aria-label="Scroll to top"
+          className="pop-in fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/90 text-foreground shadow-xl backdrop-blur-xl transition-transform hover:-translate-y-1 hover:border-primary"
+        >
+          <ArrowUp className="h-4 w-4 text-primary" />
+        </button>
+      )}
     </QueryClientProvider>
   );
 }

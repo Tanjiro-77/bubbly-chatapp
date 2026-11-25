@@ -6,6 +6,7 @@ import {
     submitErrorReport,
     getErrorReports,
     updateReportStatus,
+    requireModerator,
 } from "../controllers/errorReport.controller";
 
 const router = Router();
@@ -23,7 +24,7 @@ const reportLimiter = rateLimit({
 router.post("/report", reportLimiter, optionalAuthMiddleware, submitErrorReport);
 
 // Admin view and manage reports
-router.get("/reports", authMiddleware, getErrorReports);
-router.patch("/reports/:id/status", authMiddleware, updateReportStatus);
+router.get("/reports", authMiddleware, requireModerator, getErrorReports);
+router.patch("/reports/:id/status", authMiddleware, requireModerator, updateReportStatus);
 
 export default router;

@@ -18,6 +18,7 @@ import {
   Layers,
   Smile,
   BarChart3,
+  BellRing,
 } from "lucide-react";
 import { sounds } from "@/lib/sound";
 
@@ -51,10 +52,10 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
   >([
     {
       id: "1",
-      text: "Hey! Did you test Bubbly v3.0 yet?",
+      text: "Hey! Did you test Bubbly v3.4 yet?",
       sender: "them",
       time: "10:42 AM",
-      translated: "¡Hola! ¿Ya probaste Bubbly v3.0?",
+      translated: "¡Hola! ¿Ya probaste Bubbly v3.4?",
     },
     {
       id: "2",
@@ -95,7 +96,16 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
 
   // ── Screenshots State ──
   const [activeScreenshot, setActiveScreenshot] = useState(0);
+  const [pushBanner, setPushBanner] = useState<"none" | "message" | "call">("none");
   const replyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerPushPreview = (kind: "message" | "call") => {
+    sounds.playReceive();
+    setPushBanner(kind);
+    if (pushTimeoutRef.current) clearTimeout(pushTimeoutRef.current);
+    pushTimeoutRef.current = setTimeout(() => setPushBanner("none"), 4500);
+  };
 
   // Voice timer simulator
   useEffect(() => {
@@ -126,6 +136,9 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
     return () => {
       if (replyTimeoutRef.current) {
         clearTimeout(replyTimeoutRef.current);
+      }
+      if (pushTimeoutRef.current) {
+        clearTimeout(pushTimeoutRef.current);
       }
     };
   }, []);
@@ -228,6 +241,56 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
 
         {/* Screen Container */}
         <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[2.4rem] bg-card text-foreground">
+          {/* Interactive Push Notification Banner Preview */}
+          {pushBanner !== "none" && (
+            <div className="pop-in absolute inset-x-2.5 top-9 z-40 rounded-2xl border border-primary/40 bg-zinc-950/95 p-2.5 text-white shadow-2xl backdrop-blur-xl">
+              <div className="flex items-start gap-2.5">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-amber-400 text-xs font-extrabold text-black">
+                  B
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-[11px] font-bold">
+                      {pushBanner === "call" ? "Incoming Video Call" : "Arnav Khari"}
+                    </p>
+                    <span className="font-mono text-[9px] text-amber-400">now</span>
+                  </div>
+                  <p className="truncate text-[10px] text-zinc-300">
+                    {pushBanner === "call"
+                      ? "Arnav is calling you on Bubbly..."
+                      : "📷 Sent a photo · Tap to open chat"}
+                  </p>
+                  {pushBanner === "call" && (
+                    <div className="mt-2 flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.playTap();
+                          setPushBanner("none");
+                        }}
+                        className="flex-1 rounded-full bg-rose-500/20 py-1 text-[10px] font-bold text-rose-400 hover:bg-rose-500/30"
+                      >
+                        Decline
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.playPop();
+                          setPushBanner("none");
+                          setActiveTab("call");
+                          setCallActive(true);
+                        }}
+                        className="flex-1 rounded-full bg-emerald-500 py-1 text-[10px] font-bold text-black hover:bg-emerald-400"
+                      >
+                        Accept
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Status Bar */}
           <div className="flex items-center justify-between px-6 pt-3 pb-1 text-[11px] font-semibold text-muted-foreground select-none">
             <span>9:41</span>
@@ -252,9 +315,17 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-bold leading-tight">Arnav Khari</p>
-                  <p className="text-[10px] text-emerald-500 font-medium">online · v3.0</p>
+                  <p className="text-[10px] text-emerald-500 font-medium">online · v3.4</p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    title="Simulate background call push"
+                    onClick={() => triggerPushPreview(pushBanner === "call" ? "message" : "call")}
+                    className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
+                  >
+                    <BellRing className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     type="button"
                     title="Translate messages"

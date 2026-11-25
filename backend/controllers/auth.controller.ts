@@ -2,27 +2,42 @@ import { Request, Response } from "express";
 import User from "../modals/User";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/token";
+import { normalizePhone, getLast10Digits } from "./contact.controller";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
-    const { email, password, name, avatar } = req.body;
+    const { email, password, name, avatar, phoneNumber } = req.body;
     try {
-        if (typeof email !== "string" || typeof password !== "string" || typeof name !== "string") {
+        if (typeof password !== "string" || typeof name !== "string") {
             res.status(400).json({ success: false, msg: "Invalid input fields" });
             return;
         }
 
+        const hasEmail = typeof email === "string" && email.trim().length > 0;
+        const hasPhone = typeof phoneNumber === "string" && phoneNumber.trim().length > 0;
+
+        if (!hasEmail && !hasPhone) {
+            res.status(400).json({ success: false, msg: "Please enter an email or phone number" });
+            return;
+        }
+
         const trimmedName = name.trim();
-        const normalizedEmail = email.trim().toLowerCase();
+        const normalizedEmail = hasEmail ? email.trim().toLowerCase() : undefined;
+        const cleanedPhone = hasPhone ? normalizePhone(phoneNumber) : undefined;
 
         if (!trimmedName || trimmedName.length > 70) {
             res.status(400).json({ success: false, msg: "Name must be between 1 and 70 characters" });
             return;
         }
 
-        if (!EMAIL_REGEX.test(normalizedEmail)) {
+        if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
             res.status(400).json({ success: false, msg: "Please enter a valid email address" });
+            return;
+        }
+
+        if (cleanedPhone !== undefined && (cleanedPhone.length < 7 || cleanedPhone.length > 18)) {
+            res.status(400).json({ success: false, msg: "Phone number must be between 7 and 18 digits" });
             return;
         }
 
@@ -36,22 +51,40 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
             return;
         }
 
-        // Check if user already exists
-        const existingUser = await User.findOne({ email: { $eq: normalizedEmail } });
-        if (existingUser) {
-            res.status(400).json({ success: false, msg: "User already exists" });
-            return;
+        if (normalizedEmail) {
+            const existingEmail = await User.findOne({ email: { $eq: normalizedEmail } });
+            if (existingEmail) {
+                res.status(400).json({ success: false, msg: "An account with this email already exists" });
+                return;
+            }
+        }
+
+        if (cleanedPhone) {
+            const l10 = getLast10Digits(cleanedPhone);
+            const phoneQuery: any[] = [{ phoneNumber: { $eq: cleanedPhone } }];
+            if (l10.length >= 10) {
+                phoneQuery.push({ phoneNumber: { $regex: `${l10}$` } });
+            }
+            const existingPhone = await User.findOne({ $or: phoneQuery });
+            if (existingPhone) {
+                res.status(400).json({ success: false, msg: "This phone number is already registered" });
+                return;
+            }
         }
 
         const safeAvatar = typeof avatar === "string" ? avatar.slice(0, 500) : "";
 
-        // Create a new user
-        const user = new User({
-            email: normalizedEmail,
+        // Create a new user (note: leave email/phoneNumber undefined when absent so sparse unique indexes don't collide)
+        const userDoc: any = {
             password,
             name: trimmedName,
             avatar: safeAvatar,
-        });
+            authProvider: cleanedPhone && !normalizedEmail ? "phone" : "local",
+        };
+        if (normalizedEmail) userDoc.email = normalizedEmail;
+        if (cleanedPhone) userDoc.phoneNumber = cleanedPhone;
+
+        const user = new User(userDoc);
 
         // Hash the password
         const salt = await bcrypt.genSalt(10);
@@ -75,23 +108,44 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 };
 
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
-    const { email, password } = req.body;
+    const { email, phoneNumber, password } = req.body;
 
-    if (typeof email !== "string" || typeof password !== "string") {
+    if (typeof password !== "string" || (!password)) {
         res.status(400).json({ success: false, msg: "Invalid Credentials" });
         return;
     }
 
     try {
-        const normalizedEmail = email.trim().toLowerCase();
-
-        if (!normalizedEmail || !password) {
+        let user = null;
+        if (typeof phoneNumber === "string" && phoneNumber.trim()) {
+            const cleaned = normalizePhone(phoneNumber);
+            if (cleaned.length < 7 || cleaned.length > 18) {
+                res.status(400).json({ success: false, msg: "Please enter a valid phone number" });
+                return;
+            }
+            const l10 = getLast10Digits(cleaned);
+            const phoneConditions: any[] = [{ phoneNumber: { $eq: cleaned } }];
+            if (l10.length >= 10) {
+                phoneConditions.push({ phoneNumber: { $regex: `${l10}$` } });
+            }
+            user = await User.findOne({ $or: phoneConditions });
+        } else if (typeof email === "string" && email.trim()) {
+            const normalizedEmail = email.trim().toLowerCase();
+            // Also allow entering a phone number inside the email field as convenience
+            if (!normalizedEmail.includes("@") && /^\+?[\d\s\-()]{7,18}$/.test(email.trim())) {
+                const cleaned = normalizePhone(email);
+                const l10 = getLast10Digits(cleaned);
+                const phoneConditions: any[] = [{ phoneNumber: { $eq: cleaned } }];
+                if (l10.length >= 10) phoneConditions.push({ phoneNumber: { $regex: `${l10}$` } });
+                user = await User.findOne({ $or: phoneConditions });
+            } else {
+                user = await User.findOne({ email: { $eq: normalizedEmail } });
+            }
+        } else {
             res.status(400).json({ success: false, msg: "Invalid Credentials" });
             return;
         }
 
-        // Find user by normalized email
-        const user = await User.findOne({ email: { $eq: normalizedEmail } });
         if (!user) {
             res.status(400).json({ success: false, msg: "Invalid Credentials" });
             return;
@@ -125,27 +179,65 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
 export const googleAuth = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { idToken, email: bodyEmail, name: bodyName, avatar: bodyAvatar, googleId: bodyGoogleId } = req.body;
+        const { idToken, accessToken, email: bodyEmail, name: bodyName, avatar: bodyAvatar, googleId: bodyGoogleId } = req.body;
 
-        let email = bodyEmail;
-        let name = bodyName;
-        let avatar = bodyAvatar;
-        let googleId = bodyGoogleId;
+        let email: string | undefined;
+        let name: string | undefined;
+        let avatar: string | undefined;
+        let googleId: string | undefined;
+        let verifiedByGoogle = false;
 
-        // If an idToken was passed, verify it with Google OAuth tokeninfo endpoint
+        // 1. Verify Google ID Token if supplied
         if (typeof idToken === "string" && idToken.trim()) {
-            try {
-                const gRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken.trim())}`);
-                if (gRes.ok) {
-                    const gData: any = await gRes.json();
-                    if (gData.email) email = gData.email;
-                    if (gData.name) name = gData.name;
-                    if (gData.picture) avatar = gData.picture;
-                    if (gData.sub) googleId = gData.sub;
-                }
-            } catch (err) {
-                console.warn("Google tokeninfo lookup failed, falling back to body payload:", err);
+            const gRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken.trim())}`);
+            if (!gRes.ok) {
+                res.status(401).json({ success: false, msg: "Invalid or expired Google ID token" });
+                return;
             }
+            const gData: any = await gRes.json();
+            const allowedAudiences = [
+                process.env.GOOGLE_CLIENT_ID,
+                process.env.GOOGLE_ANDROID_CLIENT_ID,
+                process.env.GOOGLE_IOS_CLIENT_ID,
+            ].filter(Boolean);
+            if (allowedAudiences.length > 0 && gData.aud && !allowedAudiences.includes(gData.aud)) {
+                res.status(401).json({ success: false, msg: "Google token audience mismatch" });
+                return;
+            }
+            email = gData.email;
+            name = gData.name;
+            avatar = gData.picture;
+            googleId = gData.sub;
+            verifiedByGoogle = true;
+        }
+        // 2. Otherwise verify Google OAuth Access Token if supplied
+        else if (typeof accessToken === "string" && accessToken.trim()) {
+            const uRes = await fetch("https://www.googleapis.com/userinfo/v2/me", {
+                headers: { Authorization: `Bearer ${accessToken.trim()}` },
+            });
+            if (!uRes.ok) {
+                res.status(401).json({ success: false, msg: "Invalid or expired Google access token" });
+                return;
+            }
+            const uData: any = await uRes.json();
+            email = uData.email;
+            name = uData.name;
+            avatar = uData.picture;
+            googleId = uData.id;
+            verifiedByGoogle = true;
+        }
+
+        // 3. Only permit raw body fallback in explicit non-production dev mode when Google OAuth is unconfigured
+        if (!verifiedByGoogle) {
+            const allowDevFallback = process.env.NODE_ENV !== "production" && !process.env.GOOGLE_CLIENT_ID;
+            if (!allowDevFallback) {
+                res.status(401).json({ success: false, msg: "Verified Google token is required" });
+                return;
+            }
+            email = bodyEmail;
+            name = bodyName;
+            avatar = bodyAvatar;
+            googleId = bodyGoogleId;
         }
 
         if (typeof email !== "string" || !EMAIL_REGEX.test(email.trim().toLowerCase())) {

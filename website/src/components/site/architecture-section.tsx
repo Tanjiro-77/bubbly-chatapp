@@ -74,7 +74,7 @@ export function ArchitectureSection() {
         {/* ── Architecture Nodes Flow ── */}
         <div className="grid gap-4 md:grid-cols-4 mb-12">
           {/* Node 1: Client */}
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm hover:border-primary/50 transition-all">
+          <div className="spotlight-card rounded-3xl p-6">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500 mb-4 border border-amber-500/20">
               <Smartphone className="h-6 w-6" />
             </div>
@@ -83,12 +83,12 @@ export function ArchitectureSection() {
             </p>
             <h3 className="font-display text-lg font-bold text-foreground mt-1">Mobile Client</h3>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              React Native with Expo SDK 57, Reanimated animations, and Socket.IO client.
+              React Native with Expo SDK 57, Reanimated, Agora RTC, and Expo Push Notifications.
             </p>
           </div>
 
           {/* Node 2: Gateway */}
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm hover:border-primary/50 transition-all">
+          <div className="spotlight-card rounded-3xl p-6">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 mb-4 border border-purple-500/20">
               <Server className="h-6 w-6" />
             </div>
@@ -99,12 +99,12 @@ export function ArchitectureSection() {
               Express 5 Server
             </h3>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Node.js backend with JWT authentication middleware, rate limiting, and REST APIs.
+              Node.js 22 API with HS256 JWT auth, bcrypt hashing, rate limiting, and push dispatch.
             </p>
           </div>
 
           {/* Node 3: Socket.IO Gateway */}
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm hover:border-primary/50 transition-all">
+          <div className="spotlight-card rounded-3xl p-6">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 mb-4 border border-emerald-500/20">
               <Radio className="h-6 w-6" />
             </div>
@@ -112,15 +112,15 @@ export function ArchitectureSection() {
               Layer 3
             </p>
             <h3 className="font-display text-lg font-bold text-foreground mt-1">
-              Socket.IO Broker
+              Socket.IO & Push
             </h3>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Real-time room routing, chatEvents, callEvents, groupEvents, and typing indicators.
+              Real-time rooms, typing/read acks, and automatic Expo/FCM wakeups for closed apps.
             </p>
           </div>
 
           {/* Node 4: Services & DB */}
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm hover:border-primary/50 transition-all">
+          <div className="spotlight-card rounded-3xl p-6">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400 mb-4 border border-blue-500/20">
               <Database className="h-6 w-6" />
             </div>
@@ -129,7 +129,7 @@ export function ArchitectureSection() {
             </p>
             <h3 className="font-display text-lg font-bold text-foreground mt-1">MongoDB & Agora</h3>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Mongoose schemas, Agora dynamic RTC token generation, and Cloudinary media CDN.
+              Mongoose persistence, short-lived Agora RTC tokens, and Cloudinary global CDN.
             </p>
           </div>
         </div>
@@ -224,6 +224,36 @@ export function ArchitectureSection() {
                 }`}
               >
                 emit(story:reaction)
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  simulateEvent(
+                    "push:callWakeup",
+                    {
+                      channelId: "calls",
+                      categoryId: "incoming_call",
+                      priority: "high",
+                      ttl: 60,
+                      data: {
+                        type: "call",
+                        kind: "video",
+                        callerName: "Arnav Khari",
+                        actions: ["ACCEPT", "DECLINE"],
+                      },
+                    },
+                    "61ms",
+                    "200 PUSH_DISPATCHED",
+                  )
+                }
+                className={`rounded-full px-3 py-1 font-mono text-[11px] font-semibold transition-all ${
+                  activeEvent.name === "push:callWakeup"
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "bg-surface text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                push(callWakeup)
               </button>
             </div>
           </div>

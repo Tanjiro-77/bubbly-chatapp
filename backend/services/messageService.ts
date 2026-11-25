@@ -4,6 +4,7 @@ import { getIO } from "../socket/io";
 import { assertRateLimit } from "../utils/rateLimit";
 import { canSendInGroup, filterBlockedDirect, getMembership } from "../utils/permissions";
 import { formatMessagePayload, inferMessageType, validateAttachment } from "../utils/messageFormat";
+import { sendMessagePushNotifications } from "./pushNotificationService";
 
 export type SendMessageInput = {
     conversationId: string;
@@ -162,6 +163,9 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     }
 
     conversation.lastMessage = message._id as any;
+    if ((conversation as any).deletedFor?.length) {
+        (conversation as any).deletedFor = [];
+    }
     await conversation.save();
 
     const payload = formatMessagePayload(message, { sender, replyTo: replyToData });
@@ -186,6 +190,14 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
             conversationId,
             unreadCount: unreadEntry?.count || 0,
         });
+    });
+
+    sendMessagePushNotifications({
+        conversation: conversation as any,
+        sender,
+        message: payload as any,
+    }).catch((err) => {
+        console.error("Message push notification error:", err instanceof Error ? err.message : err);
     });
 
     return payload;

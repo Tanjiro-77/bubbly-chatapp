@@ -34,12 +34,13 @@ const HighlightText = ({
         );
     }
 
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    const escapedQuery = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
 
     return (
         <Typo size={size} color={color} fontWeight={fontWeight} textProps={{ numberOfLines }}>
             {parts.map((part, i) =>
-                part.toLowerCase() === query.toLowerCase() ? (
+                part.toLowerCase() === query.trim().toLowerCase() ? (
                     <Typo
                         key={i}
                         size={size}
@@ -82,15 +83,26 @@ const ConversationItem = ({
 
     const unreadCount = item.unreadCount || 0;
     const hasUnread = unreadCount > 0;
-    const isMyLastMessage = lastMessage?.sender?._id === currentUser?.id || lastMessage?.sender?.id === currentUser?.id;
+    const isMyLastMessage =
+        lastMessage?.senderId === currentUser?.id ||
+        lastMessage?.senderId?._id === currentUser?.id ||
+        lastMessage?.sender?._id === currentUser?.id ||
+        lastMessage?.sender?.id === currentUser?.id;
 
-    const isVoice = !!lastMessage?.voiceUrl;
-    const isImage = !!lastMessage?.attachement && !lastMessage?.isViewOnce;
+    const isVoice = !!lastMessage?.voiceUrl || lastMessage?.type === 'voice';
+    const isImage = (!!lastMessage?.attachement || lastMessage?.type === 'image') && !lastMessage?.isViewOnce && lastMessage?.type !== 'video' && lastMessage?.type !== 'file';
 
     const getLastMessageContent = () => {
         if (!lastMessage) return "Tap to start chatting 👋";
+        if (lastMessage.isDeleted) return "This message was deleted";
+        if (lastMessage.isViewOnce) return "View-once photo";
         if (isVoice) return "Voice note";
-        if (isImage) return "Photo";
+        if (lastMessage.type === "video") return lastMessage.content || "Video";
+        if (lastMessage.type === "location") return lastMessage.location?.label || "Location";
+        if (lastMessage.type === "poll") return lastMessage.content ? `Poll: ${lastMessage.content}` : "Poll";
+        if (lastMessage.type === "call") return lastMessage.callMeta?.kind === "video" ? "Video call" : "Voice call";
+        if (lastMessage.type === "file") return lastMessage.attachmentMeta?.name || "Document";
+        if (isImage) return lastMessage.content || "Photo";
         return lastMessage.content || "Attachment";
     };
 
@@ -111,7 +123,10 @@ const ConversationItem = ({
                 name: item.name,
                 avatar: item.avatar,
                 type: item.type,
-                participants: JSON.stringify(item.participants)
+                participants: JSON.stringify(item.participants),
+                admins: JSON.stringify(item.admins || []),
+                createdBy: item.createdBy || "",
+                disappearingSeconds: String(item.disappearingSeconds || 0),
             }
         });
     };

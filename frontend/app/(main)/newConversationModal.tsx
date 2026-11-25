@@ -1,5 +1,5 @@
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
@@ -10,9 +10,9 @@ import Typo from "../../components/Typo";
 import { useAuth } from "../../contexts/authContext";
 import Button from "../../components/Button";
 import { scale, verticalScale } from "../../utils/styling";
-import { getContacts, newConversation } from "../../socket/socketEvents";
+import { getContacts, newConversation, isSocketConnected } from "../../socket/socketEvents";
 import { uploadFileToCloudinary } from "../../services/imageService";
-import { fetchDevicePhoneContacts, syncContactsWithBackend, PhoneContactItem, MatchedContactItem } from "../../services/contactService";
+import { fetchDevicePhoneContacts, syncContactsWithBackend, findUserByPhoneNumber, PhoneContactItem, MatchedContactItem } from "../../services/contactService";
 import * as Icons from 'phosphor-react-native';
 import Animated, { FadeInDown, FadeInUp, FadeIn, FadeOut } from 'react-native-reanimated';
 
@@ -34,6 +34,9 @@ const NewConversationModal = () => {
     const [isSyncingPhone, setIsSyncingPhone] = useState(false);
     const [hasSyncedPhone, setHasSyncedPhone] = useState(false);
     const [contactsTab, setContactsTab] = useState<'all' | 'phone'>('all');
+    const [lookupPhone, setLookupPhone] = useState('');
+    const [isLookingUpPhone, setIsLookingUpPhone] = useState(false);
+    const awaitingCreateRef = useRef(false);
 
     useEffect(() => {
         getContacts(processGetContacts);
@@ -51,6 +54,8 @@ const NewConversationModal = () => {
     };
 
     const processNewConversation = (res: any) => {
+        if (!awaitingCreateRef.current) return;
+        awaitingCreateRef.current = false;
         setIsLoading(false);
         if (res.success) {
             router.back();
@@ -62,6 +67,8 @@ const NewConversationModal = () => {
                     avatar: res.data.avatar,
                     type: res.data.type,
                     participants: JSON.stringify(res.data.participants),
+                    admins: JSON.stringify(res.data.admins || []),
+                    createdBy: res.data.createdBy || "",
                 }
             });
         } else {
@@ -94,6 +101,12 @@ const NewConversationModal = () => {
         if (isGroupMode) {
             toggleParticipant(user);
         } else {
+            if (!isSocketConnected()) {
+                Alert.alert("Offline", "Connect to the internet to start a chat.");
+                return;
+            }
+            awaitingCreateRef.current = true;
+            setIsLoading(true);
             newConversation({
                 type: "direct",
                 participants: [currentUser.id, user.id]
@@ -103,6 +116,10 @@ const NewConversationModal = () => {
 
     const createGroup = async () => {
         if (!groupName.trim() || !currentUser || selectedParticipants.length < 2) return;
+        if (!isSocketConnected()) {
+            Alert.alert("Offline", "Connect to the internet to create a group.");
+            return;
+        }
         setIsLoading(true);
         try {
             let avatar = null;
@@ -110,6 +127,7 @@ const NewConversationModal = () => {
                 const uploadResult = await uploadFileToCloudinary(groupAvatar, "group-avatars");
                 if (uploadResult.success) avatar = uploadResult.data;
             }
+            awaitingCreateRef.current = true;
             newConversation({
                 type: "group",
                 participants: [currentUser.id, ...selectedParticipants],
@@ -117,9 +135,27 @@ const NewConversationModal = () => {
                 avatar,
             });
         } catch (error: any) {
-            Alert.alert("Error", error.message);
-        } finally {
+            awaitingCreateRef.current = false;
             setIsLoading(false);
+            Alert.alert("Error", error.message);
+        }
+    };
+
+    const handleLookupByNumber = async () => {
+        if (!token || !currentUser) return;
+        const cleaned = lookupPhone.trim();
+        if (!cleaned) return;
+        setIsLookingUpPhone(true);
+        try {
+            const res = await findUserByPhoneNumber(cleaned, token);
+            if (res.success && res.user) {
+                setLookupPhone('');
+                onSelectUser(res.user);
+            }
+        } catch (err: any) {
+            Alert.alert("User Not Found", err.message || "No registered user has that phone number.");
+        } finally {
+            setIsLookingUpPhone(false);
         }
     };
 
@@ -202,10 +238,13 @@ const NewConversationModal = () => {
         );
     }, [phoneContacts, searchQuery]);
 
-    // Selected user objects for horizontal chips carousel
+    // Selected user objects for horizontal chips carousel (checks both All and Matched Phone users)
     const selectedUsers = useMemo(() => {
-        return contacts.filter((c: any) => selectedParticipants.includes(c.id));
-    }, [contacts, selectedParticipants]);
+        const map = new Map<string, any>();
+        contacts.forEach((c: any) => { if (selectedParticipants.includes(c.id)) map.set(c.id, c); });
+        matchedPhoneContacts.forEach((c: any) => { if (selectedParticipants.includes(c.id) && !map.has(c.id)) map.set(c.id, c); });
+        return Array.from(map.values());
+    }, [contacts, matchedPhoneContacts, selectedParticipants]);
 
     return (
         <ScreenWrapper isModal={true}>
@@ -333,6 +372,35 @@ const NewConversationModal = () => {
                     </Animated.View>
                 )}
 
+                {/* ── Start Chat by Exact Phone Number (Private Discovery) ── */}
+                {!isGroupMode && (
+                    <View style={styles.lookupRow}>
+                        <Icons.Phone size={17} color={colors.neutral500} weight="bold" />
+                        <TextInput
+                            style={styles.lookupInput}
+                            placeholder="Message a phone number (e.g. +919876543210)"
+                            placeholderTextColor={colors.neutral400}
+                            keyboardType="phone-pad"
+                            value={lookupPhone}
+                            onChangeText={setLookupPhone}
+                            returnKeyType="search"
+                            onSubmitEditing={handleLookupByNumber}
+                        />
+                        <TouchableOpacity
+                            style={[styles.lookupBtn, !lookupPhone.trim() && { opacity: 0.45 }]}
+                            onPress={handleLookupByNumber}
+                            disabled={isLookingUpPhone || !lookupPhone.trim()}
+                            activeOpacity={0.8}
+                        >
+                            {isLookingUpPhone ? (
+                                <ActivityIndicator size="small" color={colors.neutral900} />
+                            ) : (
+                                <Typo size={12} fontWeight="800" color={colors.neutral900}>Chat</Typo>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 {/* ── Device Contacts Sync Banner ── */}
                 <TouchableOpacity
                     style={styles.syncCard}
@@ -373,7 +441,7 @@ const NewConversationModal = () => {
                             activeOpacity={0.7}
                         >
                             <Typo size={12.5} fontWeight={contactsTab === 'all' ? "700" : "500"} color={contactsTab === 'all' ? colors.neutral900 : colors.neutral400}>
-                                All Users ({filteredContacts.length})
+                                My Contacts ({filteredContacts.length})
                             </Typo>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -403,7 +471,7 @@ const NewConversationModal = () => {
                             ? "SELECT MEMBERS"
                             : contactsTab === 'phone'
                             ? "PHONE ADDRESS BOOK"
-                            : "ALL CONTACTS"}
+                            : "SAVED CHATS & CONTACTS"}
                     </Typo>
                     <Typo size={11} color={colors.neutral400} fontWeight="600">
                         {contactsTab === 'phone' ? `${phoneContacts.length} phone contacts` : `${filteredContacts.length} available`}
@@ -453,9 +521,15 @@ const NewConversationModal = () => {
                                                         {user.phoneNumber || user.email}
                                                     </Typo>
                                                 </View>
-                                                <View style={styles.directArrowWrap}>
-                                                    <Icons.ChatCircleDots size={18} color={colors.primaryDark} weight="fill" />
-                                                </View>
+                                                {isGroupMode ? (
+                                                    <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
+                                                        {isSelected && <Icons.Check size={12} color={colors.white} weight="bold" />}
+                                                    </View>
+                                                ) : (
+                                                    <View style={styles.directArrowWrap}>
+                                                        <Icons.ChatCircleDots size={18} color={colors.primaryDark} weight="fill" />
+                                                    </View>
+                                                )}
                                             </TouchableOpacity>
                                             {index < matchedPhoneContacts.length - 1 && <View style={styles.divider} />}
                                         </View>
@@ -831,6 +905,30 @@ const styles = StyleSheet.create({
         height: verticalScale(52),
         borderRadius: radius.full,
         backgroundColor: colors.primary,
+    },
+    lookupRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacingX._8,
+        backgroundColor: colors.neutral50,
+        borderWidth: 1,
+        borderColor: colors.neutral200,
+        borderRadius: radius._15,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: verticalScale(6),
+        marginTop: spacingY._10,
+    },
+    lookupInput: {
+        flex: 1,
+        fontSize: verticalScale(13.5),
+        color: colors.neutral900,
+        paddingVertical: verticalScale(4),
+    },
+    lookupBtn: {
+        backgroundColor: colors.primary,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: verticalScale(7),
+        borderRadius: radius.full,
     },
     syncCard: {
         flexDirection: 'row',

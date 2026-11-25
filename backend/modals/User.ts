@@ -4,8 +4,9 @@ import { UserProps } from "../types";
 const userSchema = new Schema<UserProps>({
     email: {
         type: String,
-        required: true,
+        required: false,
         unique: true,
+        sparse: true,
         lowercase: true,
         trim: true,
         index: true,
@@ -23,12 +24,13 @@ const userSchema = new Schema<UserProps>({
     phoneNumber: {
         type: String,
         sparse: true,
+        unique: true,
         index: true,
         trim: true,
     },
     authProvider: {
         type: String,
-        enum: ["local", "google"],
+        enum: ["local", "google", "phone"],
         default: "local",
     },
     name: {
@@ -62,6 +64,8 @@ const userSchema = new Schema<UserProps>({
     },
     isModerator: { type: Boolean, default: false },
     recentSearches: { type: [String], default: [] },
+    pushTokens: { type: [String], default: [] },
+    notificationsEnabled: { type: Boolean, default: true },
     theme: {
         mode: { type: String, enum: ["light", "dark", "system"], default: "system" },
         accent: { type: String, default: "#facc15" },

@@ -474,8 +474,6 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
         } catch (_) {}
     };
 
-    useEffect(() => { return () => { clearProgressInterval(); }; }, []);
-
     const activeColor = isMe ? colors.neutral700 : colors.primary;
     const inactiveColor = isMe ? "rgba(0,0,0,0.2)" : colors.neutral300;
 
@@ -1990,23 +1988,33 @@ const MessageItem = ({
     const [showEmojiGrid, setShowEmojiGrid] = useState(false);
     const [showToast, setShowToast] = useState(false);
     const [showImageViewer, setShowImageViewer] = useState(false);
+    const [isViewOnceSessionOpen, setIsViewOnceSessionOpen] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [translatedText, setTranslatedText] = useState<string | null>(null);
     const [selectedTargetLang, setSelectedTargetLang] = useState<{ code: string; label: string }>({ code: "es", label: "Spanish 🇪🇸" });
     const [isTranslating, setIsTranslating] = useState(false);
     const [showOriginal, setShowOriginal] = useState(false);
+    const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        };
+    }, []);
 
     const reactions = item.reactions || [];
     const currentUserReaction = reactions.find(r => r.userId === currentUser?.id)?.emoji;
     const isVoiceMessage = !!item.voiceUrl;
     const isDeleted = !!item.isDeleted;
     const isFileMessage = !!item.attachmentMeta && item.type === "file";
+    const isVideoMessage = item.type === "video" && !!(item.attachmentMeta?.url || item.attachement);
+    const isLocationMessage = item.type === "location" && !!item.location;
     const isViewOnce = !!item.isViewOnce;
     const isViewOnceOpened = isViewOnce && (
         (item.viewOnceOpenedBy || []).includes(currentUser?.id || "") ||
         (!isMe && (item.viewOnceOpenedBy || []).length > 0)
     );
-    const isImageMessage = !!item.attachement && !isFileMessage && !isViewOnce;
+    const isImageMessage = !!item.attachement && !isFileMessage && !isVideoMessage && !isViewOnce;
     const isPollMessage =
         item.type === "poll" ||
         (
@@ -2120,7 +2128,8 @@ const MessageItem = ({
         if (item.content) await Clipboard.setStringAsync(item.content);
         setShowActions(false);
         setShowToast(true);
-        setTimeout(() => setShowToast(false), 1800);
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => setShowToast(false), 1800);
     };
 
     const handleTranslate = () => {
@@ -2154,27 +2163,35 @@ const MessageItem = ({
     const handleForward = () => { setShowActions(false); onForward?.(item); };
     const handleToggleStar = () => {
         setShowActions(false);
-        toggleStarMessage({ messageId: item.id, conversationId: item.conversationId });
-        onToggleStar?.(item.id);
+        if (onToggleStar) {
+            onToggleStar(item.id);
+        } else {
+            toggleStarMessage({ messageId: item.id, conversationId: item.conversationId });
+        }
     };
     const handlePinToggle = () => {
         setShowActions(false);
         if (item.isPinned) {
-            unpinMessage({ conversationId: item.conversationId, messageId: item.id });
-            onUnpin?.(item.id);
+            if (onUnpin) onUnpin(item.id);
+            else unpinMessage({ conversationId: item.conversationId, messageId: item.id });
         } else {
-            pinMessage({ conversationId: item.conversationId, messageId: item.id });
-            onPin?.(item.id);
+            if (onPin) onPin(item.id);
+            else pinMessage({ conversationId: item.conversationId, messageId: item.id });
         }
     };
     const handleViewOncePress = () => {
-        if (isViewOnceOpened) return;
+        if (isViewOnceOpened && !isViewOnceSessionOpen) return;
+        setIsViewOnceSessionOpen(true);
         setShowImageViewer(true);
         if (!isMe && item.conversationId) {
             openViewOnce({ messageId: item.id, conversationId: item.conversationId });
         }
     };
-    const handleOpenEmojiGrid = () => { setShowActions(false); setTimeout(() => setShowEmojiGrid(true), 150); };
+    const handleOpenEmojiGrid = () => {
+        setShowActions(false);
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => setShowEmojiGrid(true), 150);
+    };
     const handleEmojiSelect = (emoji: string) => { setShowEmojiGrid(false); onReact(item.id, emoji); };
     const handleQuickEmoji = (emoji: string) => { setShowActions(false); onReact(item.id, emoji); };
     const handleReactionPill = (emoji: string) => { if (isDeleted) return; onReact(item.id, emoji); };
@@ -2192,7 +2209,11 @@ const MessageItem = ({
         );
     };
 
-    const handleEdit = () => { setShowActions(false); setTimeout(() => setShowEditModal(true), 150); };
+    const handleEdit = () => {
+        setShowActions(false);
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => setShowEditModal(true), 150);
+    };
     const handleEditSave = (newContent: string) => { setShowEditModal(false); editMessage({ messageId: item.id, conversationId: item.conversationId, content: newContent }); };
     const handleOpenFile = async () => {
         if (!item.attachmentMeta?.url) return;
@@ -2406,6 +2427,64 @@ const MessageItem = ({
                                 </TouchableOpacity>
                             )}
 
+                            {/* ── Video bubble ── */}
+                            {isVideoMessage && (
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        const url = item.attachmentMeta?.url || item.attachement;
+                                        if (url) Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open video"));
+                                    }}
+                                    activeOpacity={0.85}
+                                    style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        gap: spacingX._10,
+                                        backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral100,
+                                        borderRadius: radius._12,
+                                        padding: spacingX._12,
+                                    }}
+                                >
+                                    <Icons.PlayCircle size={verticalScale(28)} color={colors.primaryDark} weight="fill" />
+                                    <View style={{ flex: 1 }}>
+                                        <Typo size={13.5} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                            {item.attachmentMeta?.name || "Video Clip"}
+                                        </Typo>
+                                        <Typo size={11} color={colors.neutral500}>
+                                            {item.attachmentMeta?.size ? formatFileSize(item.attachmentMeta.size) : "Tap to watch"}
+                                        </Typo>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+
+                            {/* ── Location bubble ── */}
+                            {isLocationMessage && item.location && (
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        const { latitude, longitude } = item.location!;
+                                        Linking.openURL(`https://maps.google.com/?q=${latitude},${longitude}`).catch(() => {});
+                                    }}
+                                    activeOpacity={0.85}
+                                    style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        gap: spacingX._10,
+                                        backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral100,
+                                        borderRadius: radius._12,
+                                        padding: spacingX._12,
+                                    }}
+                                >
+                                    <Icons.MapPin size={verticalScale(24)} color={colors.rose} weight="fill" />
+                                    <View style={{ flex: 1 }}>
+                                        <Typo size={13.5} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                            {item.location.label || "Shared Location"}
+                                        </Typo>
+                                        <Typo size={11} color={colors.neutral500}>
+                                            {item.location.latitude.toFixed(4)}, {item.location.longitude.toFixed(4)} • Open Maps
+                                        </Typo>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+
                             {/* ── File bubble ── */}
                             {isFileMessage && item.attachmentMeta && (
                                 <FileBubble
@@ -2497,13 +2576,16 @@ const MessageItem = ({
             </RNAnimated.View>
         </View>
 
-            {/* ── Image Viewer ── */}
-            {isImageMessage && (
+            {/* ── Image Viewer (Regular + View Once) ── */}
+            {(isImageMessage || (isViewOnce && (!isViewOnceOpened || isViewOnceSessionOpen))) && !!(item.attachement || item.attachmentMeta?.url) && (
                 <ImageViewing
-                    images={[{ uri: item.attachement! }]}
+                    images={[{ uri: (item.attachement || item.attachmentMeta?.url)! }]}
                     imageIndex={0}
                     visible={showImageViewer}
-                    onRequestClose={() => setShowImageViewer(false)}
+                    onRequestClose={() => {
+                        setShowImageViewer(false);
+                        setIsViewOnceSessionOpen(false);
+                    }}
                     swipeToCloseEnabled
                     doubleTapToZoomEnabled
                     FooterComponent={() => (
@@ -2524,7 +2606,8 @@ const MessageItem = ({
                     <TouchableWithoutFeedback onPress={handleDismiss}>
                         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={styles.modalOverlay}>
                             <TouchableWithoutFeedback>
-                                <Animated.View entering={FadeInUp.duration(250).springify()} exiting={FadeOutDown.duration(150)} style={styles.actionSheet}>
+                                <Animated.View entering={FadeInUp.duration(250).springify()} exiting={FadeOutDown.duration(150)} style={[styles.actionSheet, { maxHeight: "75%" }]}>
+                                    <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                                     {/* ── Quick Reactions ── */}
                                     <View style={styles.quickReactWrap}>
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickReactScroll}>
@@ -2623,9 +2706,17 @@ const MessageItem = ({
                                         </TouchableOpacity>
                                     ) : null}
 
-                                    {/* ── Save Image ── */}
+                                    {/* ── Save / Open Image ── */}
                                     {isImageMessage ? (
-                                        <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={handleDismiss}>
+                                        <TouchableOpacity
+                                            style={styles.actionRow}
+                                            activeOpacity={0.7}
+                                            onPress={() => {
+                                                handleDismiss();
+                                                const url = item.attachement || item.attachmentMeta?.url;
+                                                if (url) Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open image for saving."));
+                                            }}
+                                        >
                                             <View style={styles.actionIconWrap}><Icons.DownloadSimple size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>
                                             <Typo size={15} fontWeight="500" color={colors.neutral800}>Save Image</Typo>
                                         </TouchableOpacity>
@@ -2655,6 +2746,7 @@ const MessageItem = ({
                                     <TouchableOpacity style={styles.cancelRow} onPress={handleDismiss} activeOpacity={0.7}>
                                         <Typo size={15} fontWeight="600" color={colors.neutral400}>Cancel</Typo>
                                     </TouchableOpacity>
+                                    </ScrollView>
                                 </Animated.View>
                             </TouchableWithoutFeedback>
                         </Animated.View>
@@ -2696,6 +2788,7 @@ export default React.memo(MessageItem, (prev, next) => {
         prev.item.viewOnceOpenedBy?.length === next.item.viewOnceOpenedBy?.length &&
         prev.deliveryStatus === next.deliveryStatus &&
         prev.searchHighlight === next.searchHighlight &&
+        prev.isTargetHighlight === next.isTargetHighlight &&
         prev.customBubbleMine === next.customBubbleMine &&
         prev.customBubbleOther === next.customBubbleOther &&
         prev.isDirect === next.isDirect

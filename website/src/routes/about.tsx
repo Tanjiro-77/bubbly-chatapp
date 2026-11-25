@@ -6,16 +6,12 @@ import {
   Wand2,
   Lightbulb,
   Gauge,
-  HelpCircle,
   Github,
   Mail,
   Send,
   CheckCircle2,
   Code2,
   Server,
-  Smartphone,
-  Layers,
-  ArrowRight,
 } from "lucide-react";
 import {
   PageHero,
@@ -79,8 +75,8 @@ export function AboutPage() {
     },
     {
       chapter: "04",
-      title: "v3.0 Release: Translation & Speeds",
-      text: "The v3.0 milestone introduced real-time Spanish message translation, variable audio playback speeds (1.0x, 1.5x, 2.0x), group shared galleries, and Expo Application Services (EAS) cloud compilation for direct Android APK distribution.",
+      title: "v3.4 Release: Background Calls & Vault",
+      text: "The v3.4 milestone brings closed-app incoming call alerts, WhatsApp-style background message notifications, biometric App Lock, PIN-protected Vault, View-Once media, and PhonePe Indus Appstore compliance.",
       emoji: "🚀",
       tag: "Production Release",
     },
@@ -116,30 +112,37 @@ export function AboutPage() {
 
         <div className="relative mx-auto max-w-6xl">
           <div className="grid gap-12 lg:grid-cols-2 items-center">
-            {/* Visual Art */}
+            {/* Creator Portrait */}
             <div className="relative mx-auto w-full max-w-md">
               <div
-                className="absolute inset-0 -z-10 scale-95 rounded-3xl opacity-50 blur-3xl float-soft"
+                className="absolute -inset-4 -z-10 rounded-[3rem] opacity-45 blur-3xl float-soft"
                 style={{ background: "var(--gradient-warm)" }}
               />
-              <div className="relative overflow-hidden rounded-[2.5rem] border border-border bg-card p-4 shadow-2xl">
-                <img
-                  src="/welcome.png"
-                  alt="Bubbly Journey"
-                  className="w-full rounded-2xl object-cover"
-                />
-                <div className="mt-4 flex items-center justify-between px-2">
-                  <div>
-                    <p className="font-display text-sm font-bold text-foreground">
-                      {DEVELOPER_NAME}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Creator & Full-Stack Architect
-                    </p>
+              <div className="spotlight-card rounded-[2.5rem] p-3.5">
+                <div className="relative aspect-4/5 overflow-hidden rounded-3xl bg-surface">
+                  <img
+                    src="/developer-photo.png"
+                    alt={`${DEVELOPER_NAME} — Creator of Bubbly`}
+                    className="h-full w-full object-cover object-top transition-transform duration-700 hover:scale-103"
+                  />
+                  {/* Subtle bottom gradient scrim for legibility */}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/75 via-black/30 to-transparent" />
+
+                  {/* Floating glass badge inside photo */}
+                  <div className="absolute inset-x-3.5 bottom-3.5 flex items-center justify-between gap-2 rounded-2xl border border-white/15 bg-black/55 px-3.5 py-2.5 backdrop-blur-xl">
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-sm font-bold text-white">
+                        {DEVELOPER_NAME}
+                      </p>
+                      <p className="truncate text-[11px] text-white/75">
+                        Creator & Full-Stack Architect
+                      </p>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2.5 py-1 font-mono text-[10px] font-bold text-emerald-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Active Dev
+                    </span>
                   </div>
-                  <span className="rounded-full bg-emerald-500/15 px-3 py-1 font-mono text-[11px] font-bold text-emerald-500">
-                    Active Development
-                  </span>
                 </div>
               </div>
             </div>
@@ -203,17 +206,13 @@ export function AboutPage() {
               <Sparkles className="h-3.5 w-3.5 text-primary" /> Progression
             </span>
             <h2 className="font-display text-3xl font-extrabold sm:text-5xl">
-              From First Socket to v3.0 Release.
+              From First Socket to v3.4 Release.
             </h2>
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {journeyChapters.map((ch) => (
-              <div
-                key={ch.chapter}
-                data-reveal
-                className="reveal rounded-3xl border border-border bg-card p-6 shadow-sm hover:border-primary/50 transition-all duration-300"
-              >
+              <div key={ch.chapter} data-reveal className="reveal spotlight-card rounded-3xl p-6">
                 <div className="flex items-center justify-between mb-4">
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-2xl">
                     {ch.emoji}
@@ -239,7 +238,7 @@ export function AboutPage() {
       {/* ── Interactive Feedback & Bug Submission Hub ── */}
       <section className="relative overflow-hidden px-5 py-24">
         <div className="relative mx-auto max-w-3xl">
-          <div className="rounded-[2.5rem] border border-border bg-card p-8 sm:p-12 shadow-2xl">
+          <div className="spotlight-card rounded-[2.5rem] p-8 sm:p-12">
             <div className="text-center mb-8">
               <span className="chip mx-auto mb-3 inline-flex">
                 <Sparkles className="h-3.5 w-3.5 text-primary" /> Community & Feedback

@@ -964,6 +964,16 @@ export default function OnboardingScreen() {
                 onScroll={scrollHandler}
                 onMomentumScrollEnd={handleMomentumEnd}
                 scrollEventThrottle={16}
+                getItemLayout={(_, index) => ({
+                    length: SCREEN_WIDTH,
+                    offset: SCREEN_WIDTH * index,
+                    index,
+                })}
+                onScrollToIndexFailed={({ index }) => {
+                    setTimeout(() => {
+                        flatListRef.current?.scrollToIndex({ index, animated: false });
+                    }, 100);
+                }}
                 bounces={false}
                 style={styles.flatList}
             />

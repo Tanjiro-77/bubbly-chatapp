@@ -17,20 +17,40 @@ import { useAuth } from "../../contexts/authContext"
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
 import GoogleIcon from "../../components/GoogleIcon"
 import { useGoogleAuth } from "../../hooks/useGoogleAuth"
+import AuthLegalFooter from "../../components/AuthLegalFooter"
 
 const Login = () => {
 
     const emailRef = useRef("");
+    const phoneRef = useRef("");
     const passwordRef = useRef("");
+    const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
-    const { signIn } = useAuth();
+    const { signIn, signInWithPhone } = useAuth();
     const { triggerGoogleSignIn, isLoading: isGoogleLoading } = useGoogleAuth();
 
     const handleSubmit = async () => {
-        const cleanEmail = emailRef.current.trim().toLowerCase();
         const cleanPassword = passwordRef.current;
 
+        if (loginMethod === 'phone') {
+            const cleanPhone = phoneRef.current.trim();
+            if (!cleanPhone || !cleanPassword) {
+                Alert.alert('Log In', "Please enter your phone number and password");
+                return;
+            }
+            try {
+                setIsLoading(true);
+                await signInWithPhone(cleanPhone, cleanPassword);
+            } catch (error: any) {
+                Alert.alert("Login Error", error.message);
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
+        const cleanEmail = emailRef.current.trim().toLowerCase();
         if (!cleanEmail || !cleanPassword) {
             Alert.alert('Log In', "Please fill all the fields");
             return;
@@ -48,7 +68,7 @@ const Login = () => {
     return (
         <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? "padding" : undefined}
+            behavior={Platform.OS === 'ios' ? "padding" : "height"}
         >
             <ScreenWrapper showPattern={true}>
                 <View style={styles.container}>
@@ -82,24 +102,72 @@ const Login = () => {
                                 </Typo>
                             </View>
 
+                            {/* Method Switcher (Phone Number | Email) */}
+                            <View style={styles.methodTabs}>
+                                <TouchableOpacity
+                                    style={[styles.methodTab, loginMethod === 'phone' && styles.methodTabActive]}
+                                    onPress={() => setLoginMethod('phone')}
+                                    activeOpacity={0.8}
+                                >
+                                    <Icons.Phone size={15} color={loginMethod === 'phone' ? colors.neutral900 : colors.neutral500} weight="bold" />
+                                    <Typo size={13} fontWeight={loginMethod === 'phone' ? "700" : "600"} color={loginMethod === 'phone' ? colors.neutral900 : colors.neutral500}>
+                                        Phone Number
+                                    </Typo>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.methodTab, loginMethod === 'email' && styles.methodTabActive]}
+                                    onPress={() => setLoginMethod('email')}
+                                    activeOpacity={0.8}
+                                >
+                                    <Icons.At size={15} color={loginMethod === 'email' ? colors.neutral900 : colors.neutral500} weight="bold" />
+                                    <Typo size={13} fontWeight={loginMethod === 'email' ? "700" : "600"} color={loginMethod === 'email' ? colors.neutral900 : colors.neutral500}>
+                                        Email
+                                    </Typo>
+                                </TouchableOpacity>
+                            </View>
+
                             {/* Fields */}
                             <View style={styles.fields}>
-                                <View style={styles.fieldGroup}>
-                                    <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                        EMAIL
-                                    </Typo>
-                                    <Input
-                                        placeholder="you@email.com"
-                                        onChangeText={(value: string) => emailRef.current = value}
-                                        icon={
-                                            <Icons.At
-                                                size={verticalScale(20)}
-                                                color={colors.neutral400}
-                                                weight="regular"
-                                            />
-                                        }
-                                    />
-                                </View>
+                                {loginMethod === 'phone' ? (
+                                    <View style={styles.fieldGroup}>
+                                        <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                            PHONE NUMBER
+                                        </Typo>
+                                        <Input
+                                            placeholder="+91 98765 43210"
+                                            keyboardType="phone-pad"
+                                            autoCapitalize="none"
+                                            onChangeText={(value: string) => phoneRef.current = value}
+                                            icon={
+                                                <Icons.Phone
+                                                    size={verticalScale(20)}
+                                                    color={colors.neutral400}
+                                                    weight="regular"
+                                                />
+                                            }
+                                        />
+                                    </View>
+                                ) : (
+                                    <View style={styles.fieldGroup}>
+                                        <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                            EMAIL
+                                        </Typo>
+                                        <Input
+                                            placeholder="you@email.com"
+                                            keyboardType="email-address"
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                            onChangeText={(value: string) => emailRef.current = value}
+                                            icon={
+                                                <Icons.At
+                                                    size={verticalScale(20)}
+                                                    color={colors.neutral400}
+                                                    weight="regular"
+                                                />
+                                            }
+                                        />
+                                    </View>
+                                )}
 
                                 <View style={styles.fieldGroup}>
                                     {/* Label row with forgot password inline */}
@@ -108,6 +176,10 @@ const Login = () => {
                                             PASSWORD
                                         </Typo>
                                         <Pressable
+                                            onPress={() => Alert.alert(
+                                                "Reset Password",
+                                                "You can sign in instantly with Google using the button below, or contact support at arnavkhari.77@gmail.com to reset your password."
+                                            )}
                                             style={({ pressed }) => pressed && { opacity: 0.5 }}
                                         >
                                             <Typo size={12} fontWeight="600" color={colors.neutral400}>
@@ -182,6 +254,9 @@ const Login = () => {
                                         </Typo>
                                     </Pressable>
                                 </View>
+
+                                {/* Privacy Policy & Security */}
+                                <AuthLegalFooter actionLabel="By signing in, you agree to our" />
                             </View>
 
                         </ScrollView>
@@ -229,6 +304,32 @@ const styles = StyleSheet.create({
     // Title
     titleBlock: {
         gap: spacingY._5,
+    },
+
+    // Method Tabs
+    methodTabs: {
+        flexDirection: "row",
+        backgroundColor: colors.neutral100,
+        borderRadius: radius._15,
+        padding: 4,
+        gap: 4,
+    },
+    methodTab: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        paddingVertical: verticalScale(10),
+        borderRadius: radius._12,
+    },
+    methodTabActive: {
+        backgroundColor: colors.white,
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
     },
 
     // Fields

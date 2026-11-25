@@ -5,26 +5,16 @@ import {
   ArrowRight,
   Github,
   Zap,
-  Phone,
-  Video,
   ShieldCheck,
-  MessageSquare,
-  BarChart3,
-  Heart,
-  Palette,
-  Mic,
-  Languages,
   CheckCircle2,
-  Layers,
-  Clock,
-  Radio,
+  BellRing,
+  Lock,
 } from "lucide-react";
 import {
   DownloadButton,
   GITHUB_URL,
   APP_VERSION,
   allFeatures,
-  techStack,
   useReveal,
   CtaBand,
 } from "@/components/site/shared";
@@ -37,17 +27,17 @@ import { sounds } from "@/lib/sound";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Bubbly v3.0 — Connect Beyond Messages | Real-Time Chat & Calls" },
+      { title: "Bubbly v3.4 — Connect Beyond Messages | Real-Time Chat & Calls" },
       {
         name: "description",
         content:
-          "Bubbly is a full-stack, real-time messaging application with instant chat, Agora voice & video calls, Story Studio, and Spanish translation.",
+          "Bubbly is a full-stack, real-time messaging application with instant chat, background push & call alerts, Agora voice & video calls, Story Studio, and Biometric Vault.",
       },
-      { property: "og:title", content: "Bubbly v3.0 — Connect Beyond Messages" },
+      { property: "og:title", content: "Bubbly v3.4 — Connect Beyond Messages" },
       {
         property: "og:description",
         content:
-          "Experience real-time messaging, Agora HD voice/video calls, and Story Studio. Download the v3.0 APK directly.",
+          "Experience real-time messaging, background calls, Agora HD voice/video, and Story Studio. Zero ads or trackers.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -125,9 +115,9 @@ function IndexPage() {
             {/* Metric counters */}
             <div className="mt-12 grid grid-cols-3 gap-6 border-t border-border/70 pt-8">
               {[
-                ["35+", "Features Built"],
+                [`${allFeatures.length}+`, "Features Built"],
                 ["< 50ms", "Socket Latency"],
-                ["v3.0.0", "Latest Release"],
+                [APP_VERSION, "Latest Release"],
               ].map(([n, l]) => (
                 <div key={l}>
                   <p className="font-display text-3xl font-extrabold text-gradient">{n}</p>
@@ -141,13 +131,13 @@ function IndexPage() {
             {/* Quick feature tick badges */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Background Call Alerts
+              </span>
+              <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora HD Calling
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 7 Story Themes
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Spanish Translation
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Biometric PIN Vault
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Zero Ads
@@ -196,72 +186,67 @@ function IndexPage() {
               onClick={() => sounds.playTap()}
               className="btn-base btn-ghost-outline"
             >
-              Explore all 35+ features <ArrowRight className="h-4 w-4" />
+              Explore all {allFeatures.length}+ features <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Bento Card 1: Real-Time Engine (Large) */}
-            <div
-              data-reveal
-              className="reveal lg:col-span-2 group relative overflow-hidden rounded-3xl border border-border bg-card p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50"
-            >
-              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-amber-400 via-orange-500 to-yellow-500 opacity-80" />
+            <div data-reveal className="reveal spotlight-card lg:col-span-2 group rounded-3xl p-8">
+              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-amber-400 via-orange-500 to-yellow-500 opacity-85" />
               <div className="flex items-center gap-3">
                 <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-2xl border border-amber-500/20">
                   ⚡
                 </span>
                 <div>
                   <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-primary">
-                    Socket.IO Gateway
+                    Socket.IO & Push Engine
                   </span>
                   <h3 className="font-display text-2xl font-extrabold text-foreground">
-                    Instant Messaging & Receipts
+                    Instant Messaging & Background Alerts
                   </h3>
                 </div>
               </div>
               <p className="mt-4 text-muted-foreground text-sm leading-relaxed max-w-lg">
-                Messages transmit in sub-50ms with instant single-tick, double-tick and blue-read
-                status. Features swipe-to-reply, pinned chats, message scheduling, and double-tap
-                heart reactions.
+                Messages transmit in sub-50ms with single, double, and blue read receipts — plus
+                WhatsApp-style high-priority push notifications even when your screen is locked.
               </p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  Delivery Ack
+                  Delivery & Read Acks
                 </span>
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  Typing Indicators
+                  Push Deep-Links
                 </span>
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  Auto-Reconnect
+                  Scheduled Messages
                 </span>
               </div>
             </div>
 
             {/* Bento Card 2: Agora RTC HD Calls */}
-            <div
-              data-reveal
-              className="reveal group relative overflow-hidden rounded-3xl border border-border bg-card p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/50"
-            >
-              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-purple-500 to-indigo-500 opacity-80" />
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/10 text-2xl border border-purple-500/20">
-                📞
-              </span>
+            <div data-reveal className="reveal spotlight-card group rounded-3xl p-8">
+              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-purple-500 to-indigo-500 opacity-85" />
+              <div className="flex items-center justify-between">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <BellRing className="h-6 w-6" />
+                </span>
+                <span className="rounded-full bg-purple-500/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-purple-400">
+                  Wake-On-Call
+                </span>
+              </div>
               <h3 className="mt-5 font-display text-2xl font-extrabold text-foreground">
-                Agora Voice & Video
+                Closed-App Voice & Video
               </h3>
               <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
-                Crystal clear voice calls and full-screen HD video calling with floating preview,
-                elapsed call timer, and active avatar pulse animation.
+                Receive incoming Agora HD voice & video calls with Accept/Decline actions even when
+                Bubbly is closed.
               </p>
             </div>
 
             {/* Bento Card 3: Story Studio */}
-            <div
-              data-reveal
-              className="reveal group relative overflow-hidden rounded-3xl border border-border bg-card p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-pink-500/50"
-            >
-              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-pink-500 to-rose-500 opacity-80" />
+            <div data-reveal className="reveal spotlight-card group rounded-3xl p-8">
+              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-pink-500 to-rose-500 opacity-85" />
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pink-500/10 text-2xl border border-pink-500/20">
                 🎨
               </span>
@@ -269,17 +254,14 @@ function IndexPage() {
                 Story Studio
               </h3>
               <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
-                7 custom background presets (Sunset Amber, Midnight Neon, etc.), text alignment,
-                segmented progress viewer, and live viewer reactions.
+                7 custom background presets (Sunset Amber, Midnight Neon, etc.), segmented progress
+                viewer, and live emoji reactions.
               </p>
             </div>
 
             {/* Bento Card 4: Translation & Audio (Large) */}
-            <div
-              data-reveal
-              className="reveal lg:col-span-2 group relative overflow-hidden rounded-3xl border border-border bg-card p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/50"
-            >
-              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-emerald-500 via-teal-500 to-cyan-500 opacity-80" />
+            <div data-reveal className="reveal spotlight-card lg:col-span-2 group rounded-3xl p-8">
+              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-emerald-500 via-teal-500 to-cyan-500 opacity-85" />
               <div className="flex items-center gap-3">
                 <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl border border-emerald-500/20">
                   🌐
@@ -308,6 +290,47 @@ function IndexPage() {
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
                   Group Polls & Media
                 </span>
+              </div>
+            </div>
+
+            {/* Bento Card 5: Biometric Vault & Security */}
+            <div data-reveal className="reveal spotlight-card lg:col-span-3 group rounded-3xl p-8">
+              <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-amber-500 via-emerald-500 to-teal-500 opacity-80" />
+              <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                <div className="max-w-2xl">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                      <Lock className="h-5 w-5" />
+                    </span>
+                    <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-emerald-500">
+                      Privacy-First Architecture
+                    </span>
+                  </div>
+                  <h3 className="mt-3 font-display text-2xl font-extrabold text-foreground">
+                    Biometric Lock, PIN Vault & PhonePe Indus Compliant
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Protect private notes in an encrypted PIN Vault, lock chats behind biometrics,
+                    send View-Once media or Disappearing Messages, and inspect every security
+                    control openly.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2.5 shrink-0">
+                  <Link
+                    to="/security"
+                    onClick={() => sounds.playTap()}
+                    className="btn-base btn-primary px-4! py-2.5! text-xs!"
+                  >
+                    <ShieldCheck className="h-4 w-4" /> Security & Data Safety
+                  </Link>
+                  <Link
+                    to="/privacy-policy"
+                    onClick={() => sounds.playTap()}
+                    className="btn-base btn-ghost-outline px-4! py-2.5! text-xs!"
+                  >
+                    Privacy Policy
+                  </Link>
+                </div>
               </div>
             </div>
           </div>

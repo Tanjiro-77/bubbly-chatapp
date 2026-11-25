@@ -9,38 +9,58 @@ export const login = async (email: string, password: string): Promise<{ token: s
         })
         return response.data;
     } catch (error: any) {
-        console.log("STATUS:", error?.response?.status);
-        console.log("BASE URL:", error?.config?.baseURL);
-        console.log("REQUEST URL:", error?.config?.url);
-        console.log("METHOD:", error?.config?.method);
-        console.log("RESPONSE:", error?.response?.data);
         const msg = error?.response?.data?.msg || "Login failed";
         throw new Error(msg);
     }
 }
 
-export const register = async (email: string, password: string, name: string, avatar?: string | null): Promise<{ token: string }> => {
+export const loginWithPhone = async (phoneNumber: string, password: string): Promise<{ token: string }> => {
+    try {
+        const response = await axios.post(`${API_URL}/auth/phone/login`, {
+            phoneNumber,
+            password,
+        });
+        return response.data;
+    } catch (error: any) {
+        const msg = error?.response?.data?.msg || "Phone login failed";
+        throw new Error(msg);
+    }
+};
+
+export const register = async (email: string, password: string, name: string, avatar?: string | null, phoneNumber?: string): Promise<{ token: string }> => {
     try {
         const response = await axios.post(`${API_URL}/auth/register`, {
             email,
             password,
             name,
             avatar,
+            ...(phoneNumber ? { phoneNumber } : {}),
         });
         return response.data;
     } catch (error: any) {
-        console.log("STATUS:", error?.response?.status);
-        console.log("BASE URL:", error?.config?.baseURL);
-        console.log("REQUEST URL:", error?.config?.url);
-        console.log("METHOD:", error?.config?.method);
-        console.log("RESPONSE:", error?.response?.data);
         const msg = error?.response?.data?.msg || "Registration failed";
+        throw new Error(msg);
+    }
+};
+
+export const registerWithPhone = async (phoneNumber: string, password: string, name: string, avatar?: string | null): Promise<{ token: string }> => {
+    try {
+        const response = await axios.post(`${API_URL}/auth/phone/register`, {
+            phoneNumber,
+            password,
+            name,
+            avatar,
+        });
+        return response.data;
+    } catch (error: any) {
+        const msg = error?.response?.data?.msg || "Phone registration failed";
         throw new Error(msg);
     }
 };
 
 export const googleLogin = async (payload: {
     idToken?: string;
+    accessToken?: string;
     email?: string;
     name?: string;
     avatar?: string;

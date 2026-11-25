@@ -15,7 +15,7 @@ import { useAuth } from "../../contexts/authContext";
 import { UserDataProps } from "../../types";
 import Button from "../../components/Button";
 import { useRouter } from "expo-router";
-import { updateProfile } from "../../socket/socketEvents";
+import { updateProfile, isSocketConnected } from "../../socket/socketEvents";
 import * as ImagePicker from 'expo-image-picker';
 import { uploadFileToCloudinary } from "../../services/imageService";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
@@ -85,9 +85,13 @@ const ProfileModal = () => {
             Alert.alert('Profile', "Please enter your name");
             return;
         }
+        if (!isSocketConnected()) {
+            Alert.alert("Connection Lost", "Please wait until you are connected to update your profile.");
+            return;
+        }
+        setLoading(true);
         let data: any = { name: name.trim(), avatar };
         if (avatar && avatar?.uri) {
-            setLoading(true);
             const res = await uploadFileToCloudinary(avatar, "profiles");
             if (res.success) {
                 data.avatar = res.data;
@@ -102,7 +106,9 @@ const ProfileModal = () => {
             try {
                 await updateUserPhone(phoneNumber.trim());
             } catch (err: any) {
-                console.log("Phone update warning:", err.message);
+                setLoading(false);
+                Alert.alert("Phone Number Error", err.message || "Could not update phone number");
+                return;
             }
         }
 
@@ -124,7 +130,7 @@ const ProfileModal = () => {
                             Account & Profile
                         </Typo>
                         <Typo size={11} color={colors.neutral400} fontWeight="500">
-                            Bubbly v3.0 Profile
+                            Bubbly v3.4.0 Profile
                         </Typo>
                     </View>
                     <View style={{ width: 22 }} />

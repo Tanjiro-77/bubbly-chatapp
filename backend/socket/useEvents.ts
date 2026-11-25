@@ -1,5 +1,6 @@
 import { Socket, Server as SocketIOServer } from "socket.io";
 import User from "../modals/User";
+import Conversation from "../modals/Conversation";
 import { generateToken } from "../utils/token";
 
 export function registerUserEvents(io: SocketIOServer, socket: Socket) {
@@ -74,16 +75,44 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            const user = await User.find(
-                { _id: { $ne: currentUserId } },
-                { password: 0 }
-            ).limit(100).sort({ name: 1 }).lean();
+            // WhatsApp-style Contact Privacy:
+            // Only return users the requester already shares a conversation with
+            // (never expose unrelated strangers who don't share a chat/synced number).
+            const myConversations = await Conversation.find({
+                participants: currentUserId,
+            })
+                .select("participants")
+                .lean();
 
-            const contacts = user.map((user) => ({
-                id: user._id.toString(),
-                name: user.name,
-                email: user.email,
-                avatar: user.avatar || "",
+            const knownUserIds = new Set<string>();
+            for (const conv of myConversations) {
+                for (const p of conv.participants || []) {
+                    const pStr = p.toString();
+                    if (pStr !== currentUserId.toString()) {
+                        knownUserIds.add(pStr);
+                    }
+                }
+            }
+
+            if (knownUserIds.size === 0) {
+                socket.emit("getContacts", {
+                    success: true,
+                    data: [],
+                });
+                return;
+            }
+
+            const users = await User.find(
+                { _id: { $in: Array.from(knownUserIds) } },
+                { password: 0 }
+            ).sort({ name: 1 }).lean();
+
+            const contacts = users.map((u) => ({
+                id: u._id.toString(),
+                name: u.name,
+                email: u.email || "",
+                phoneNumber: u.phoneNumber || "",
+                avatar: u.avatar || "",
             }));
 
             socket.emit("getContacts", {

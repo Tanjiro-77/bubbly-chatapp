@@ -1,15 +1,6 @@
-import { useState } from "react";
-import { appScreenshots } from "./shared";
-import {
-  Sparkles,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  Shield,
-  Radio,
-  Layers,
-  Smartphone,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { appScreenshots, APP_VERSION } from "./shared";
+import { Sparkles, ChevronLeft, ChevronRight, CheckCircle2, Smartphone } from "lucide-react";
 import { sounds } from "@/lib/sound";
 
 export function ScreenshotsTour() {
@@ -24,6 +15,16 @@ export function ScreenshotsTour() {
     sounds.playTap();
     setCurrent((c) => (c === appScreenshots.length - 1 ? 0 : c + 1));
   };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "ArrowLeft") setCurrent((c) => (c === 0 ? appScreenshots.length - 1 : c - 1));
+      if (e.key === "ArrowRight") setCurrent((c) => (c === appScreenshots.length - 1 ? 0 : c + 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const currentItem = appScreenshots[current] ?? appScreenshots[0]!;
 
@@ -47,37 +48,35 @@ export function ScreenshotsTour() {
             See Bubbly in action.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-muted-foreground sm:text-lg">
-            Real captured screenshots from our latest v3.0 Android build.
+            Real captured screens from our {APP_VERSION} Android production build.
           </p>
         </div>
 
         {/* Main Showcase Grid */}
-        <div className="grid items-center gap-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_1fr]">
           {/* Left: Device Mockup Spotlight */}
           <div className="relative mx-auto w-full max-w-xs sm:max-w-sm">
-            {/* Glow blob */}
             <div
               className="absolute -inset-8 -z-10 rounded-full opacity-40 blur-3xl float-soft"
               style={{ background: "var(--gradient-warm)" }}
             />
 
-            {/* Device frame */}
             <div className="phone-bezel relative overflow-hidden rounded-[2.8rem] border-4 border-zinc-800 bg-zinc-950 p-2 shadow-2xl">
               <div className="relative overflow-hidden rounded-[2.3rem] bg-black">
                 <img
+                  key={currentItem.src}
                   src={currentItem.src}
                   alt={currentItem.title}
-                  className="w-full object-cover transition-all duration-300 hover:scale-102"
+                  className="pop-in w-full object-cover transition-transform duration-500 hover:scale-102"
                   style={{ maxHeight: "560px" }}
                 />
 
-                {/* Shimmer gradient line */}
-                <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/50 to-transparent" />
+                <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
               </div>
             </div>
 
-            {/* Prev / Next floating arrows */}
-            <div className="mt-4 flex items-center justify-between px-4">
+            {/* Prev / Next controls */}
+            <div className="mt-5 flex items-center justify-between px-4">
               <button
                 type="button"
                 onClick={prev}
@@ -91,12 +90,13 @@ export function ScreenshotsTour() {
                   <button
                     key={i}
                     type="button"
+                    aria-label={`View screenshot ${i + 1}`}
                     onClick={() => {
                       sounds.playTap();
                       setCurrent(i);
                     }}
                     className={`h-2 rounded-full transition-all ${
-                      current === i ? "w-6 bg-primary" : "w-2 bg-muted-foreground/30"
+                      current === i ? "w-7 bg-primary" : "w-2 bg-muted-foreground/30"
                     }`}
                   />
                 ))}
@@ -117,7 +117,7 @@ export function ScreenshotsTour() {
             <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1 text-xs font-bold text-primary">
               <Sparkles className="h-3 w-3" />
               <span>
-                {currentItem.tag} Screen · Step {current + 1} of 5
+                {currentItem.tag} · Screen {current + 1} of {appScreenshots.length}
               </span>
             </div>
 
@@ -130,7 +130,7 @@ export function ScreenshotsTour() {
             </p>
 
             {/* Feature Checklist */}
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div className="spotlight-card rounded-3xl p-6">
               <p className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
                 Screen Highlights & Engineering
               </p>
@@ -138,26 +138,26 @@ export function ScreenshotsTour() {
                 <div className="flex items-start gap-2.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                   <span className="text-foreground">
-                    Native Android & iOS gesture support with 60 FPS fluid rendering.
+                    Native Android & iOS Reanimated gestures with fluid 60 FPS transitions.
                   </span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                   <span className="text-foreground">
-                    Honey Amber theme system with automatic Dark and Light mode transitions.
+                    Honey Amber identity with automatic Dark and Light mode adaptation.
                   </span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                   <span className="text-foreground">
-                    Zero third-party trackers or ads — private and responsive.
+                    Zero ad networks or tracking SDKs — fast, clean, and private.
                   </span>
                 </div>
               </div>
             </div>
 
             {/* Quick Screen Selectors */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {appScreenshots.map((item, i) => (
                 <button
                   key={item.title}
@@ -166,10 +166,10 @@ export function ScreenshotsTour() {
                     sounds.playTap();
                     setCurrent(i);
                   }}
-                  className={`rounded-2xl border p-3 text-left transition-all ${
+                  className={`rounded-2xl border p-3.5 text-left transition-all ${
                     current === i
-                      ? "border-primary bg-primary/15 shadow-sm scale-102"
-                      : "border-border bg-card/60 hover:bg-muted/60"
+                      ? "border-primary bg-primary/15 shadow-sm -translate-y-0.5"
+                      : "border-border bg-card/70 hover:bg-muted/70 hover:border-primary/40"
                   }`}
                 >
                   <p className="font-mono text-[10px] font-bold text-primary">0{i + 1}</p>

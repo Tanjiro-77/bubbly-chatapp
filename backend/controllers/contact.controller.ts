@@ -9,7 +9,11 @@ import { generateToken } from "../utils/token";
  */
 export const normalizePhone = (raw: string): string => {
     if (!raw || typeof raw !== "string") return "";
-    return raw.replace(/[^\d+]/g, "").trim();
+    const trimmed = raw.trim();
+    const hasPlus = trimmed.startsWith("+");
+    const digits = trimmed.replace(/\D/g, "");
+    if (!digits) return "";
+    return hasPlus ? `+${digits}` : digits;
 };
 
 /**
@@ -157,5 +161,60 @@ export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promis
     } catch (error) {
         console.error("updatePhoneNumber error:", error instanceof Error ? error.message : error);
         res.status(500).json({ success: false, msg: "Failed to update phone number" });
+    }
+};
+
+/**
+ * Find a registered Bubbly user by exact phone number (WhatsApp-style direct lookup).
+ * POST /api/contacts/find
+ */
+export const findUserByPhone = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { phoneNumber } = req.body;
+        if (typeof phoneNumber !== "string" || !phoneNumber.trim()) {
+            res.status(400).json({ success: false, msg: "Phone number is required" });
+            return;
+        }
+
+        const cleaned = normalizePhone(phoneNumber);
+        if (cleaned.length < 7 || cleaned.length > 18) {
+            res.status(400).json({ success: false, msg: "Enter a valid phone number (7-18 digits)" });
+            return;
+        }
+
+        const l10 = getLast10Digits(cleaned);
+        const conditions: any[] = [{ phoneNumber: { $eq: cleaned } }];
+        if (l10.length >= 10) {
+            conditions.push({ phoneNumber: { $regex: `${l10}$` } });
+        }
+
+        const user = await User.findOne({
+            _id: { $ne: req.userId },
+            $or: conditions,
+        })
+            .select("_id name avatar email phoneNumber isOnline lastSeen")
+            .lean();
+
+        if (!user) {
+            res.status(404).json({ success: false, msg: "No Bubbly account found with this phone number" });
+            return;
+        }
+
+        res.json({
+            success: true,
+            user: {
+                id: user._id.toString(),
+                _id: user._id.toString(),
+                name: user.name,
+                avatar: user.avatar || null,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                isOnline: !!user.isOnline,
+                lastSeen: user.lastSeen || null,
+            },
+        });
+    } catch (error) {
+        console.error("findUserByPhone error:", error instanceof Error ? error.message : error);
+        res.status(500).json({ success: false, msg: "Failed to look up phone number" });
     }
 };

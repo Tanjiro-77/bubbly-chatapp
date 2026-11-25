@@ -437,8 +437,93 @@ export const toggleMuteConversation = (payload: { conversationId: string; durati
 export const onConversationMuted = (payload: any, off: boolean = false) => {
     const socket = getSocket();
     if (!socket) return;
-    if (off) { socket.off("conversationMuted", payload); }
-    else { socket.on("conversationMuted", payload); }
+    if (off) { socket.off("toggleMuteConversation", payload); }
+    else { socket.on("toggleMuteConversation", payload); }
+};
+
+export const togglePinConversation = (payload: { conversationId: string; pin: boolean } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("togglePinConversation", payload as any); }
+    else if (typeof payload === 'function') { socket.on("togglePinConversation", payload); }
+    else { socket.emit("togglePinConversation", payload); }
+};
+
+export const markAsUnread = (conversationId: string) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit("markAsUnread", { conversationId });
+};
+
+export const deleteConversation = (payload: { conversationId: string } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("deleteConversation", payload as any); }
+    else if (typeof payload === 'function') { socket.on("deleteConversation", payload); }
+    else { socket.emit("deleteConversation", payload); }
+};
+
+export const setDisappearingTimer = (payload: { conversationId: string; seconds: number } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("setDisappearingTimer", payload as any); }
+    else if (typeof payload === 'function') { socket.on("setDisappearingTimer", payload); }
+    else { socket.emit("setDisappearingTimer", payload); }
+};
+
+export const onMessageAck = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("messageAck", payload); }
+    else { socket.on("messageAck", payload); }
+};
+
+export const scheduleMessage = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("scheduleMessage", payload); }
+    else if (typeof payload === 'function') { socket.on("scheduleMessage", payload); }
+    else { socket.emit("scheduleMessage", payload); }
+};
+
+export const getScheduledMessages = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("getScheduledMessages", payload); }
+    else if (typeof payload === 'function') { socket.on("getScheduledMessages", payload); }
+    else { socket.emit("getScheduledMessages", payload); }
+};
+
+export const cancelScheduledMessage = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("cancelScheduledMessage", payload); }
+    else if (typeof payload === 'function') { socket.on("cancelScheduledMessage", payload); }
+    else { socket.emit("cancelScheduledMessage", payload); }
+};
+
+export const getGroupMedia = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("getGroupMedia", payload); }
+    else if (typeof payload === 'function') { socket.on("getGroupMedia", payload); }
+    else { socket.emit("getGroupMedia", payload); }
+};
+
+export const blockUser = (payload: { targetUserId: string; block: boolean } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("blockUser", payload as any); }
+    else if (typeof payload === 'function') { socket.on("blockUser", payload); }
+    else { socket.emit("blockUser", payload); }
+};
+
+export const getBlockedUsers = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("getBlockedUsers", payload); }
+    else if (typeof payload === 'function') { socket.on("getBlockedUsers", payload); }
+    else { socket.emit("getBlockedUsers", payload); }
 };
 
 // ── GROUP ADMIN MANAGEMENT (Feature 10) ──

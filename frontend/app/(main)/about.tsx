@@ -28,7 +28,7 @@ const FEEDBACK_EMAIL =
     "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20Feedback&body=Hi%20Arnav%2C%0A%0A";
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION: string = Constants.expoConfig?.version ?? "1.2.5";
+const APP_VERSION: string = Constants.expoConfig?.version ?? "3.4.0";
 
 interface TechItem {
     label: string;
@@ -100,7 +100,8 @@ const SectionCard: React.FC<SectionCardProps> = ({ children, isDark }) => (
 interface LinkRowProps {
     icon?: React.ReactNode;
     label: string;
-    url: string;
+    url?: string;
+    onPress?: () => void;
     isDark: boolean;
     isLast?: boolean;
 }
@@ -109,12 +110,13 @@ const LinkRow: React.FC<LinkRowProps> = ({
     icon,
     label,
     url,
+    onPress,
     isDark,
     isLast = false,
 }) => (
     <TouchableOpacity
         activeOpacity={0.6}
-        onPress={() => openLink(url)}
+        onPress={onPress ?? (() => url && openLink(url))}
         style={[
             styles.linkRow,
             !isLast && {
@@ -174,7 +176,7 @@ export default function AboutScreen() {
                     },
                 ]}
             >
-                <BackButton color={colors.black} />
+                <BackButton color={isDark ? colors.white : colors.black} />
                 <Typo
                     size={16}
                     fontWeight="600"
@@ -364,6 +366,32 @@ export default function AboutScreen() {
                         }
                         label="Send Feedback"
                         url={FEEDBACK_EMAIL}
+                        isDark={isDark}
+                        isLast
+                    />
+                </SectionCard>
+
+                {/* ── Legal & Trust ── */}
+                <SectionLabel label="Legal & Trust" isDark={isDark} />
+                <SectionCard isDark={isDark}>
+                    <LinkRow
+                        icon={
+                            <Typo size={15} color={isDark ? colors.neutral200 : colors.neutral700}>
+                                📄
+                            </Typo>
+                        }
+                        label="Privacy Policy"
+                        onPress={() => router.push("/(legal)/privacyPolicy" as any)}
+                        isDark={isDark}
+                    />
+                    <LinkRow
+                        icon={
+                            <Typo size={15} color={isDark ? colors.neutral200 : colors.neutral700}>
+                                🛡️
+                            </Typo>
+                        }
+                        label="Security & Data Safety"
+                        onPress={() => router.push("/(legal)/security" as any)}
                         isDark={isDark}
                         isLast
                     />

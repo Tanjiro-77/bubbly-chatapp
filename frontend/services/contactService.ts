@@ -123,3 +123,26 @@ export const updateUserPhoneNumber = async (
         throw new Error(error?.response?.data?.msg || "Failed to update phone number");
     }
 };
+
+/**
+ * Find a single registered Bubbly user by exact phone number (WhatsApp-style).
+ */
+export const findUserByPhoneNumber = async (
+    phoneNumber: string,
+    token: string
+): Promise<{ success: boolean; user?: MatchedContactItem; msg?: string }> => {
+    try {
+        const response = await axios.post(
+            `${API_URL}/api/contacts/find`,
+            { phoneNumber },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            }
+        );
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error?.response?.data?.msg || "No account found for this phone number");
+    }
+};

@@ -30,6 +30,7 @@ import {
     toggleMuteConversation,
     getUserStatus,
     onUserStatus,
+    deleteConversation,
 } from "../../socket/socketEvents";
 import { useAuth } from "../../contexts/authContext";
 
@@ -46,10 +47,12 @@ const ContactProfileScreen = () => {
     const displayName = (name as string) || "Contact";
     const isDirectChat = isDirect !== "false";
 
+    const lockedStorageKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : "@bubbly_locked_chats";
+
     // ── Check Vault Lock Status ──
     useEffect(() => {
         if (!conversationId) return;
-        AsyncStorage.getItem("@bubbly_locked_chats")
+        AsyncStorage.getItem(lockedStorageKey)
             .then((stored) => {
                 if (stored) {
                     try {
@@ -61,24 +64,34 @@ const ContactProfileScreen = () => {
                 }
             })
             .catch(() => {});
-    }, [conversationId]);
+    }, [conversationId, lockedStorageKey]);
 
     // ── Listen for User Online Status ──
     useEffect(() => {
-        if (!userId || !isDirectChat) return;
+        const uidStr = Array.isArray(userId) ? userId[0] : userId;
+        if (!uidStr || !isDirectChat) return;
 
-        const handler = (data: { userId: string; isOnline: boolean; lastSeen?: string }) => {
-            if (data.userId === userId) {
+        const liveHandler = (data: { userId: string; isOnline: boolean; lastSeen?: string }) => {
+            if (data.userId === uidStr) {
                 setIsOnline(data.isOnline);
                 if (data.lastSeen) setLastSeen(data.lastSeen);
             }
         };
 
-        onUserStatus(handler);
-        getUserStatus({ userId: userId as string });
+        const initialHandler = (res: any) => {
+            if (res?.success && res.data && res.data.userId === uidStr) {
+                setIsOnline(!!res.data.isOnline);
+                if (res.data.lastSeen) setLastSeen(res.data.lastSeen);
+            }
+        };
+
+        onUserStatus(liveHandler);
+        getUserStatus(initialHandler);
+        getUserStatus({ userId: uidStr });
 
         return () => {
-            onUserStatus(handler, true);
+            onUserStatus(liveHandler, true);
+            getUserStatus(initialHandler, true);
         };
     }, [userId, isDirectChat]);
 
@@ -100,7 +113,7 @@ const ContactProfileScreen = () => {
     const handleToggleVault = async () => {
         if (!conversationId) return;
         try {
-            const stored = await AsyncStorage.getItem("@bubbly_locked_chats");
+            const stored = await AsyncStorage.getItem(lockedStorageKey);
             let list: string[] = [];
             if (stored) {
                 try {
@@ -110,14 +123,14 @@ const ContactProfileScreen = () => {
 
             if (isLocked) {
                 list = list.filter((id) => id !== (conversationId as string));
-                await AsyncStorage.setItem("@bubbly_locked_chats", JSON.stringify(list));
+                await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
                 setIsLocked(false);
                 Alert.alert("Chat Unlocked", "Conversation removed from your Secret Vault.");
             } else {
                 if (!list.includes(conversationId as string)) {
                     list.push(conversationId as string);
                 }
-                await AsyncStorage.setItem("@bubbly_locked_chats", JSON.stringify(list));
+                await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
                 setIsLocked(true);
                 Alert.alert("Chat Locked 🔒", "Conversation is now hidden in your Secret Vault.");
             }
@@ -378,7 +391,19 @@ const ContactProfileScreen = () => {
                                     "Are you sure you want to clear message history from this conversation?",
                                     [
                                         { text: "Cancel", style: "cancel" },
-                                        { text: "Clear", style: "destructive", onPress: () => router.back() },
+                                        {
+                                            text: "Clear & Hide",
+                                            style: "destructive",
+                                            onPress: async () => {
+                                                const cid = Array.isArray(conversationId) ? conversationId[0] : conversationId;
+                                                if (cid) {
+                                                    deleteConversation({ conversationId: cid });
+                                                    await AsyncStorage.removeItem(`@bubbly_draft_${cid}`).catch(() => {});
+                                                    await AsyncStorage.removeItem(`@bubbly_outbox_${cid}`).catch(() => {});
+                                                }
+                                                router.replace("/(main)/home");
+                                            },
+                                        },
                                     ]
                                 );
                             }}

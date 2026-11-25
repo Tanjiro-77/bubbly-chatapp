@@ -14,6 +14,8 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as DownloadRouteImport } from './routes/download'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as FeaturesRouteImport } from './routes/features'
+import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
+import { Route as SecurityRouteImport } from './routes/security'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +42,16 @@ const FeaturesRoute = FeaturesRouteImport.update({
   path: '/features',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyPolicyRoute = PrivacyPolicyRouteImport.update({
+  id: '/privacy-policy',
+  path: '/privacy-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +59,8 @@ export interface FileRoutesByFullPath {
   '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
+  '/security': typeof SecurityRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +68,8 @@ export interface FileRoutesByTo {
   '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
+  '/security': typeof SecurityRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +78,37 @@ export interface FileRoutesById {
   '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/features': typeof FeaturesRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
+  '/security': typeof SecurityRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/download' | '/faq' | '/features'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/download'
+    | '/faq'
+    | '/features'
+    | '/privacy-policy'
+    | '/security'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/download' | '/faq' | '/features'
-  id: '__root__' | '/' | '/about' | '/download' | '/faq' | '/features'
+  to:
+    | '/'
+    | '/about'
+    | '/download'
+    | '/faq'
+    | '/features'
+    | '/privacy-policy'
+    | '/security'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/download'
+    | '/faq'
+    | '/features'
+    | '/privacy-policy'
+    | '/security'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +117,8 @@ export interface RootRouteChildren {
   DownloadRoute: typeof DownloadRoute
   FaqRoute: typeof FaqRoute
   FeaturesRoute: typeof FeaturesRoute
+  PrivacyPolicyRoute: typeof PrivacyPolicyRoute
+  SecurityRoute: typeof SecurityRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +158,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeaturesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy-policy': {
+      id: '/privacy-policy'
+      path: '/privacy-policy'
+      fullPath: '/privacy-policy'
+      preLoaderRoute: typeof PrivacyPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +181,8 @@ const rootRouteChildren: RootRouteChildren = {
   DownloadRoute: DownloadRoute,
   FaqRoute: FaqRoute,
   FeaturesRoute: FeaturesRoute,
+  PrivacyPolicyRoute: PrivacyPolicyRoute,
+  SecurityRoute: SecurityRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

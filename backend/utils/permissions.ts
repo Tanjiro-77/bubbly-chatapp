@@ -1,8 +1,11 @@
 import Conversation from "../modals/Conversation";
 import User from "../modals/User";
-import { Types } from "mongoose";
+import { isValidObjectId, Types } from "mongoose";
 
 export async function getMembership(conversationId: string, userId: string) {
+    if (!conversationId || !isValidObjectId(conversationId) || !userId || !isValidObjectId(userId)) {
+        return { conversation: null, isMember: false, isAdmin: false };
+    }
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) return { conversation: null, isMember: false, isAdmin: false };
     const isMember = conversation.participants.some((p) => p.toString() === userId.toString());

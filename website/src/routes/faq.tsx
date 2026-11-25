@@ -1,14 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
-import {
-  ChevronDown,
-  MessageSquare,
-  Github,
-  Mail,
-  Search,
-  Sparkles,
-  HelpCircle,
-} from "lucide-react";
+import { ChevronDown, Github, Mail, Search, HelpCircle, ShieldCheck, FileText } from "lucide-react";
 import {
   PageHero,
   CtaBand,
@@ -93,6 +85,18 @@ const faqs = [
     a: "Bubbly is built with React Native and Expo, meaning the codebase is cross-platform. While direct .apk sideloading is specific to Android, developers can run Bubbly on iOS using Expo Go or by generating an iOS development profile with EAS.",
     category: "General",
     emoji: "🍎",
+  },
+  {
+    q: "Can I receive calls and messages when Bubbly is closed?",
+    a: "Yes! v3.4.0 supports WhatsApp-style high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline action buttons, even when the app is closed or running in the background.",
+    category: "Calls & Voice",
+    emoji: "🔔",
+  },
+  {
+    q: "Where can I read Bubbly's Privacy Policy and Security disclosure?",
+    a: "You can inspect our full Privacy Policy (/privacy-policy) and Security & Data Safety disclosure (/security), including exact Android permissions, encryption details, and PhonePe Indus Appstore compliance information.",
+    category: "Privacy & Security",
+    emoji: "🛡️",
   },
   {
     q: "How do I report a bug or suggest a feature?",
@@ -225,6 +229,20 @@ export function FaqPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2.5 shrink-0">
+                <Link
+                  to="/privacy-policy"
+                  onClick={() => sounds.playTap()}
+                  className="btn-base btn-ghost-outline text-xs!"
+                >
+                  <FileText className="h-4 w-4" /> Privacy Policy
+                </Link>
+                <Link
+                  to="/security"
+                  onClick={() => sounds.playTap()}
+                  className="btn-base btn-ghost-outline text-xs!"
+                >
+                  <ShieldCheck className="h-4 w-4" /> Security
+                </Link>
                 <a
                   href={FEEDBACK_EMAIL}
                   onClick={() => sounds.playPop()}

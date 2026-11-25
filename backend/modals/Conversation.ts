@@ -63,6 +63,18 @@ const ConversationSchema = new Schema<ConversationProps>({
             ref: "Message",
         },
     ],
+    pinnedBy: [
+        {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+        },
+    ],
+    deletedFor: [
+        {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+        },
+    ],
     mutedBy: [
         {
             userId: {

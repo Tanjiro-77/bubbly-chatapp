@@ -1,34 +1,30 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
-import { featureGroups, PageHero, CtaBand, useReveal } from "@/components/site/shared";
 import {
-  Search,
-  Sparkles,
-  Check,
-  Languages,
-  Mic,
-  Play,
-  Pause,
-  Palette,
-  CheckCircle2,
-  Filter,
-} from "lucide-react";
+  featureGroups,
+  allFeatures,
+  APP_VERSION,
+  PageHero,
+  CtaBand,
+  useReveal,
+} from "@/components/site/shared";
+import { Search, Languages, Mic, Play, Pause, Palette, RotateCcw } from "lucide-react";
 import { sounds } from "@/lib/sound";
 
 export const Route = createFileRoute("/features")({
   head: () => ({
     meta: [
-      { title: "Features Catalog — Bubbly v3.0 Messaging App" },
+      { title: `Features Catalog — Bubbly ${APP_VERSION} Messaging App` },
       {
         name: "description",
         content:
-          "Explore all 35+ features built into Bubbly: Agora HD calling, real-time Socket.IO chat, Story Studio with 7 presets, Spanish translation, and group polls.",
+          "Explore all features built into Bubbly: background push & call alerts, Agora HD calling, Biometric Vault, Story Studio with 7 presets, Spanish translation, and group polls.",
       },
-      { property: "og:title", content: "Features Catalog — Bubbly v3.0" },
+      { property: "og:title", content: `Features Catalog — Bubbly ${APP_VERSION}` },
       {
         property: "og:description",
         content:
-          "Discover real-time messaging, Agora HD voice/video calls, Story Studio presets, and more.",
+          "Discover real-time messaging, background calls, Agora HD voice/video, Story Studio presets, and more.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -80,8 +76,8 @@ export function FeaturesPage() {
       <PageHero
         eyebrow="Capabilities & Architecture"
         title="Complete Feature Matrix."
-        text="Everything built and shipped inside Bubbly v3.0 — real-time messaging, RTC calls, creative stories and group collaboration."
-        badge="35+ Shipped Features"
+        text={`Everything built and shipped inside Bubbly ${APP_VERSION} — real-time messaging, background calls, Biometric Vault, creative stories, and group collaboration.`}
+        badge={`${allFeatures.length}+ Shipped Features`}
       />
 
       <section className="relative overflow-hidden px-5 pb-28 pt-6">
@@ -136,7 +132,7 @@ export function FeaturesPage() {
           {/* ── Interactive Feature Playground Banners ── */}
           <div className="grid gap-6 md:grid-cols-3 mb-16">
             {/* Widget 1: Live Translation Preview */}
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div className="spotlight-card rounded-3xl p-6">
               <div className="flex items-center justify-between mb-3">
                 <span className="font-mono text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-1.5">
                   <Languages className="h-3.5 w-3.5" /> Live Translation
@@ -155,15 +151,15 @@ export function FeaturesPage() {
               <div className="rounded-2xl bg-surface p-3 border border-border/60 text-xs">
                 <p className="font-semibold text-foreground">
                   {translated
-                    ? "¡Hola! ¿Probaste la última versión de Bubbly v3.0 con videollamadas?"
-                    : "Hello! Have you tested the latest Bubbly v3.0 release with video calls?"}
+                    ? "¡Hola! ¿Probaste la última versión de Bubbly v3.4 con videollamadas?"
+                    : "Hello! Have you tested the latest Bubbly v3.4 release with video calls?"}
                 </p>
                 <p className="mt-1 text-[10px] text-muted-foreground">Tap switch above to test</p>
               </div>
             </div>
 
             {/* Widget 2: Voice Note Speed Preview */}
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div className="spotlight-card rounded-3xl p-6">
               <div className="flex items-center justify-between mb-3">
                 <span className="font-mono text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
                   <Mic className="h-3.5 w-3.5" /> Voice Speeds
@@ -206,7 +202,7 @@ export function FeaturesPage() {
             </div>
 
             {/* Widget 3: Story Presets Preview */}
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div className="spotlight-card rounded-3xl p-6">
               <div className="flex items-center justify-between mb-3">
                 <span className="font-mono text-xs font-bold text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
                   <Palette className="h-3.5 w-3.5" /> Story Presets
@@ -239,54 +235,76 @@ export function FeaturesPage() {
           </div>
 
           {/* ── Feature Groups & Grid ── */}
-          <div className="space-y-20">
-            {filteredGroups.map((g, gi) => (
-              <div key={g.name} className="grid gap-10 lg:grid-cols-[280px_1fr]">
-                {/* Sticky Left Category Title */}
-                <div data-reveal className="reveal lg:sticky lg:top-24 lg:self-start">
-                  <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-mono text-xs font-bold uppercase tracking-wider text-primary">
-                        Group 0{gi + 1}
-                      </span>
-                      <span className="rounded-full bg-primary/15 px-2.5 py-0.5 font-mono text-[10px] font-bold text-foreground">
-                        {g.badge}
-                      </span>
-                    </div>
-
-                    <h2 className="font-display text-2xl font-extrabold text-foreground">
-                      {g.name}
-                    </h2>
-
-                    <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                      {g.items.length} verified production features
-                    </p>
-                  </div>
-                </div>
-
-                {/* Feature Cards Grid */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {g.items.map(({ icon: Icon, title, text }, i) => (
-                    <div
-                      key={title}
-                      data-reveal
-                      className="reveal group relative overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50"
-                    >
-                      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary transition-transform group-hover:scale-110">
-                        <Icon className="h-6 w-6" />
+          {filteredGroups.length === 0 ? (
+            <div className="spotlight-card rounded-3xl p-12 text-center">
+              <p className="font-display text-xl font-bold text-foreground">
+                No matching features found
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Try another keyword or clear your active filter.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playTap();
+                  setSearchQuery("");
+                  setSelectedCategory("All");
+                }}
+                className="btn-base btn-primary mt-5 px-5! py-2.5! text-xs!"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Reset Filters
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-20">
+              {filteredGroups.map((g, gi) => (
+                <div key={g.name} className="grid gap-10 lg:grid-cols-[280px_1fr]">
+                  {/* Sticky Left Category Title */}
+                  <div data-reveal className="reveal lg:sticky lg:top-24 lg:self-start">
+                    <div className="spotlight-card rounded-3xl p-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-primary">
+                          Group 0{gi + 1}
+                        </span>
+                        <span className="rounded-full bg-primary/15 px-2.5 py-0.5 font-mono text-[10px] font-bold text-foreground">
+                          {g.badge}
+                        </span>
                       </div>
 
-                      <h3 className="font-display text-lg font-bold text-foreground leading-snug">
-                        {title}
-                      </h3>
+                      <h2 className="font-display text-2xl font-extrabold text-foreground">
+                        {g.name}
+                      </h2>
 
-                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{text}</p>
+                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                        {g.items.length} verified production features
+                      </p>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Feature Cards Grid */}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {g.items.map(({ icon: Icon, title, text }) => (
+                      <div
+                        key={title}
+                        data-reveal
+                        className="reveal spotlight-card group rounded-3xl p-6"
+                      >
+                        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary transition-transform group-hover:scale-110">
+                          <Icon className="h-6 w-6" />
+                        </div>
+
+                        <h3 className="font-display text-lg font-bold text-foreground leading-snug">
+                          {title}
+                        </h3>
+
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{text}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

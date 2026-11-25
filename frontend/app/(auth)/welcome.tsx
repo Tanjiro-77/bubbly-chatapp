@@ -9,6 +9,7 @@ import Button from "../../components/Button";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import AuthLegalFooter from "../../components/AuthLegalFooter";
 
 const { width } = Dimensions.get('window');
 
@@ -132,6 +133,8 @@ const Welcome = () => {
                 </Typo>
               </Typo>
             </TouchableOpacity>
+
+            <AuthLegalFooter variant="dark" actionLabel="Review our" />
           </View>
 
         </Animated.View>

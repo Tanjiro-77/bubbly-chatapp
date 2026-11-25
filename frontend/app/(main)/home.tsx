@@ -14,6 +14,9 @@ import {
     onTyping,
     onStopTyping,
     toggleMuteConversation,
+    togglePinConversation,
+    markAsUnread,
+    deleteConversation,
     markAsRead,
 } from "../../socket/socketEvents";
 import { verticalScale, scale } from "../../utils/styling";
@@ -52,9 +55,11 @@ const Home = () => {
     const [actionConv, setActionConv] = useState<ConversationProps | null>(null);
     const [actionModalVisible, setActionModalVisible] = useState(false);
 
+    const lockedStorageKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : '@bubbly_locked_chats';
+
     const loadDraftsAndLocked = useCallback(async () => {
         try {
-            const storedLocked = await AsyncStorage.getItem('@bubbly_locked_chats');
+            const storedLocked = await AsyncStorage.getItem(lockedStorageKey);
             if (storedLocked) {
                 try {
                     setLockedChatIds(JSON.parse(storedLocked));
@@ -79,7 +84,7 @@ const Home = () => {
                 setDraftMap({});
             }
         } catch (_) {}
-    }, []);
+    }, [lockedStorageKey]);
 
     useFocusEffect(
         useCallback(() => {
@@ -165,8 +170,14 @@ const Home = () => {
     };
 
     const newConversationHandler = (res: ResponseProps) => {
-        if (res.success && res.data?.isNew) {
-            setConversations((prev) => [res.data, ...prev]);
+        if (res.success && res.data?._id) {
+            setConversations((prev) => {
+                const exists = prev.some((c) => c._id === res.data._id);
+                if (exists) {
+                    return prev.map((c) => (c._id === res.data._id ? { ...c, ...res.data } : c));
+                }
+                return res.data?.isNew ? [res.data, ...prev] : prev;
+            });
         }
     };
 
@@ -267,6 +278,7 @@ const Home = () => {
         if (!actionConv) return;
         const convId = actionConv._id;
         const willPin = !(actionConv as any).isPinned && (!actionConv.pinnedMessages || actionConv.pinnedMessages.length === 0);
+        togglePinConversation({ conversationId: convId, pin: willPin });
         setConversations(prev => prev.map(c => c._id === convId ? ({ ...c, isPinned: willPin } as any) : c));
         handleCloseActionModal();
     };
@@ -287,6 +299,7 @@ const Home = () => {
             markAsRead(convId);
             setConversations(prev => prev.map(c => c._id === convId ? { ...c, unreadCount: 0 } : c));
         } else {
+            markAsUnread(convId);
             setConversations(prev => prev.map(c => c._id === convId ? { ...c, unreadCount: 1 } : c));
         }
         handleCloseActionModal();
@@ -299,7 +312,7 @@ const Home = () => {
         handleCloseActionModal();
         try {
             const nextLocked = [...lockedChatIds, convId];
-            await AsyncStorage.setItem('@bubbly_locked_chats', JSON.stringify(nextLocked));
+            await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(nextLocked));
             setLockedChatIds(nextLocked);
             Alert.alert("Locked to Vault 🔒", `"${convName}" has been moved to your Secret Chat Vault.`);
         } catch (_) {}
@@ -319,6 +332,7 @@ const Home = () => {
                     text: "Delete",
                     style: "destructive",
                     onPress: () => {
+                        deleteConversation({ conversationId: convId });
                         setConversations(prev => prev.filter(c => c._id !== convId));
                     }
                 }

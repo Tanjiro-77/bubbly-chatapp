@@ -154,10 +154,11 @@ const CallScreen = () => {
             if (!currentCallId) throw new Error("Missing callId");
 
             const tokenRes = await getAgoraToken(currentCallId, currentCallId);
+            if (hasCleanedUp.current) return;
             if (!tokenRes.success || !tokenRes.data) {
                 console.error("Agora token error:", tokenRes.msg);
                 Alert.alert("Call Error", tokenRes.msg || "Could not get Agora token");
-                router.back();
+                if (router.canGoBack()) router.back();
                 return;
             }
 
@@ -165,11 +166,15 @@ const CallScreen = () => {
             if (!token || !appId || !channelName || typeof uid !== "number") {
                 console.error("Invalid Agora response:", tokenRes.data);
                 Alert.alert("Call Error", "Invalid Agora configuration received from server");
-                router.back();
+                if (router.canGoBack()) router.back();
                 return;
             }
 
             const engine = createAgoraRtcEngine();
+            if (hasCleanedUp.current) {
+                try { engine.release(); } catch {}
+                return;
+            }
             engineRef.current = engine;
 
             engine.initialize({
@@ -240,13 +245,20 @@ const CallScreen = () => {
                 autoSubscribeVideo: true,
             });
 
+            if (hasCleanedUp.current) {
+                try { engine.leaveChannel(); engine.release(); } catch {}
+                engineRef.current = null;
+                return;
+            }
+
             engine.setEnableSpeakerphone(true);
             setIsSpeakerOn(true);
         } catch (error) {
+            if (hasCleanedUp.current) return;
             console.error("initAgora error:", error);
             Alert.alert("Call Error", "Could not initialize the call");
             cleanup();
-            router.back();
+            if (router.canGoBack()) router.back();
         }
     };
 

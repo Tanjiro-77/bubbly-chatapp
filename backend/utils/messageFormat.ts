@@ -43,8 +43,8 @@ export function formatMessagePayload(message: any, extras?: {
         id: message._id || message.id,
         content: message.content || "",
         sender,
-        attachement: (message.type === "image" || message.type === "text")
-            ? (message.attachement || null)
+        attachement: (message.type === "image" || message.type === "video" || message.type === "text")
+            ? (message.attachement || message.attachmentMeta?.url || null)
             : null,
         createdAt: message.createdAt instanceof Date
             ? message.createdAt.toISOString()

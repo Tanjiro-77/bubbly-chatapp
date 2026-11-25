@@ -2,9 +2,19 @@ import * as Sentry from "@sentry/react-native";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { API_URL, SENTRY_DSN } from "../constants";
 import { uploadFileToCloudinary } from "./imageService";
+
+const getAuthHeaders = async () => {
+    try {
+        const token = await AsyncStorage.getItem("token");
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+        return {};
+    }
+};
 
 let isSentryInitialized = false;
 
@@ -130,6 +140,7 @@ export const captureAppException = async (
         const title = context?.message || error?.message || "Unhandled App Exception";
         const stackTrace = error?.stack || (typeof error === "string" ? error : JSON.stringify(error));
 
+        const headers = await getAuthHeaders();
         await axios.post(
             `${API_URL}/api/errors/report`,
             {
@@ -140,7 +151,7 @@ export const captureAppException = async (
                 stackTrace,
                 deviceInfo: diagnostics,
             },
-            { timeout: 8000 }
+            { headers, timeout: 8000 }
         );
     } catch (dispatchErr) {
         // Silently catch so telemetry failure never creates a crash loop
@@ -192,7 +203,9 @@ export const submitUserBugReport = async (input: BugReportInput): Promise<{ succ
             deviceInfo: diagnostics,
         };
 
+        const headers = await getAuthHeaders();
         const response = await axios.post(`${API_URL}/api/errors/report`, payload, {
+            headers,
             timeout: 15000,
         });
 

@@ -1,7 +1,29 @@
-import { Response } from "express";
+import { NextFunction, Response } from "express";
+import { isValidObjectId } from "mongoose";
 import { AuthRequest } from "../middleware/auth";
 import AppErrorReport from "../modals/AppErrorReport";
+import User from "../modals/User";
 import { uploadImageToCloudinary } from "../services/cloudinary.service";
+
+/**
+ * Middleware ensuring only moderators can inspect or triage global bug reports
+ */
+export async function requireModerator(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+        if (!req.userId) {
+            res.status(401).json({ success: false, msg: "Unauthorized" });
+            return;
+        }
+        const user = await User.findById(req.userId).select("isModerator").lean();
+        if (!user?.isModerator) {
+            res.status(403).json({ success: false, msg: "Forbidden: Moderator access required" });
+            return;
+        }
+        next();
+    } catch {
+        res.status(500).json({ success: false, msg: "Failed to verify permissions" });
+    }
+}
 
 /**
  * Submit a bug report or error report from the client
@@ -124,6 +146,11 @@ export async function updateReportStatus(req: AuthRequest, res: Response): Promi
                 success: false,
                 msg: "Valid status ('open', 'investigating', 'resolved', 'dismissed') is required.",
             });
+            return;
+        }
+
+        if (!id || !isValidObjectId(id)) {
+            res.status(400).json({ success: false, msg: "Invalid report id." });
             return;
         }
 

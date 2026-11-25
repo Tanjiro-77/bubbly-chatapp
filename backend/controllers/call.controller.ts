@@ -3,6 +3,8 @@ import { createHash } from "crypto";
 import { RtcTokenBuilder, RtcRole } from "agora-token";
 import { isValidObjectId } from "mongoose";
 import Call from "../modals/Call";
+import { getIO } from "../socket/io";
+import { acceptCallById, rejectCallById } from "../socket/callEvents";
 
 const getAgoraUid = (userId: string): number => {
     const hash = createHash("sha256")
@@ -147,5 +149,91 @@ export const getCallHistory = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error("getCallHistory error:", error?.message || error);
         return res.status(500).json({ success: false, msg: "Failed to fetch call history" });
+    }
+};
+
+export const getCallStatus = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const callId = req.params.callId as string;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: "Unauthorized" });
+        }
+        if (!callId || !isValidObjectId(callId)) {
+            return res.status(400).json({ success: false, msg: "Invalid callId" });
+        }
+
+        const call = await Call.findById(callId).select("status kind callerId calleeId conversationId").lean();
+        if (!call) {
+            return res.status(404).json({ success: false, msg: "Call not found" });
+        }
+        if (call.callerId.toString() !== userId && call.calleeId.toString() !== userId) {
+            return res.status(403).json({ success: false, msg: "Not authorized" });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                callId: call._id.toString(),
+                status: call.status,
+                kind: call.kind,
+                conversationId: call.conversationId.toString(),
+            },
+        });
+    } catch (error: any) {
+        console.error("getCallStatus error:", error?.message || error);
+        return res.status(500).json({ success: false, msg: "Failed to get call status" });
+    }
+};
+
+export const acceptCallHttp = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const callId = req.params.callId as string;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: "Unauthorized" });
+        }
+        if (!callId || !isValidObjectId(callId)) {
+            return res.status(400).json({ success: false, msg: "Invalid callId" });
+        }
+
+        const io = getIO();
+        const call = await acceptCallById(io, callId, userId);
+
+        return res.status(200).json({
+            success: true,
+            data: { callId: call._id.toString(), status: call.status },
+        });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, msg: error?.message || "Could not accept call" });
+    }
+};
+
+export const rejectCallHttp = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const callId = req.params.callId as string;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: "Unauthorized" });
+        }
+        if (!callId || !isValidObjectId(callId)) {
+            return res.status(400).json({ success: false, msg: "Invalid callId" });
+        }
+
+        const io = getIO();
+        const call = await rejectCallById(io, callId, userId);
+        if (!call) {
+            return res.status(404).json({ success: false, msg: "Call not found" });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: { callId: call._id.toString(), status: call.status },
+        });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, msg: error?.message || "Could not reject call" });
     }
 };

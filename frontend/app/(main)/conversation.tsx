@@ -40,7 +40,9 @@ import {
     openViewOnce, onViewOnceOpened,
     toggleStarMessage, onMessageStarred,
     forwardMessage, toggleMuteConversation,
-    setGroupAdmin, getConversations,
+    setGroupAdmin, getConversations, onGroupUpdated,
+    setDisappearingTimer, scheduleMessage, getScheduledMessages, cancelScheduledMessage,
+    onMessageAck,
     isSocketConnected, onSocketConnectionChange,
 } from "../../socket/socketEvents"
 import {
@@ -54,6 +56,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import moment from 'moment'
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
+import { setActiveConversationId, getActiveConversationId } from "../../services/notificationService"
 
 // ── Types ──
 type SeparatorItem = {
@@ -1184,10 +1187,21 @@ const attachStyles = StyleSheet.create({
 const Conversation = () => {
     const { user: currentUser } = useAuth();
     const router = useRouter();
-    const { id: conversationId, name, participants: stringifiedParticipants, avatar, type, highlightMessageId } = useLocalSearchParams();
+    const rawParams = useLocalSearchParams();
+    const conversationId = Array.isArray(rawParams.id) ? rawParams.id[0] : rawParams.id;
+    const initialName = Array.isArray(rawParams.name) ? rawParams.name[0] : rawParams.name;
+    const stringifiedParticipants = Array.isArray(rawParams.participants) ? rawParams.participants[0] : rawParams.participants;
+    const initialAvatar = Array.isArray(rawParams.avatar) ? rawParams.avatar[0] : rawParams.avatar;
+    const type = Array.isArray(rawParams.type) ? rawParams.type[0] : rawParams.type;
+    const highlightMessageId = Array.isArray(rawParams.highlightMessageId) ? rawParams.highlightMessageId[0] : rawParams.highlightMessageId;
+    const stringifiedAdmins = Array.isArray(rawParams.admins) ? rawParams.admins[0] : rawParams.admins;
+    const initialCreatedBy = Array.isArray(rawParams.createdBy) ? rawParams.createdBy[0] : rawParams.createdBy;
+    const initialDisappearing = Array.isArray(rawParams.disappearingSeconds) ? rawParams.disappearingSeconds[0] : rawParams.disappearingSeconds;
 
+    const [name, setName] = useState(initialName || "");
+    const [avatar, setAvatar] = useState(initialAvatar || "");
     const [message, setMessage] = useState('');
-    const participants: any[] = (() => {
+    const [participants, setParticipants] = useState<any[]>(() => {
         try {
             if (typeof stringifiedParticipants === "string" && stringifiedParticipants.trim()) {
                 const parsed = JSON.parse(stringifiedParticipants);
@@ -1197,7 +1211,19 @@ const Conversation = () => {
         } catch {
             return [];
         }
-    })();
+    });
+    const [groupAdmins, setGroupAdmins] = useState<any[]>(() => {
+        try {
+            if (typeof stringifiedAdmins === "string" && stringifiedAdmins.trim()) {
+                const parsed = JSON.parse(stringifiedAdmins);
+                return Array.isArray(parsed) ? parsed : [];
+            }
+            return [];
+        } catch {
+            return [];
+        }
+    });
+    const [groupCreatedBy, setGroupCreatedBy] = useState<string | undefined>(initialCreatedBy || undefined);
     const [selectedFile, setSelectedFile] = useState<SelectedFileProps | null>(null);
     const [loading, setLoading] = useState(false);
     const [messages, setMessages] = useState<MessageProps[]>([]);
@@ -1229,6 +1255,7 @@ const Conversation = () => {
     // ── Voice recording ──
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
+    const recordingDurationRef = useRef(0);
     const [isUploadingVoice, setIsUploadingVoice] = useState(false);
     const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
     const recordingRef = useRef<ReturnType<typeof useAudioRecorder> | null>(null);
@@ -1275,6 +1302,18 @@ const Conversation = () => {
     const [groupInfoVisible, setGroupInfoVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
 
+    // ── Track active conversation for foreground notification suppression ──
+    useEffect(() => {
+        const idStr = typeof conversationId === 'string' ? conversationId : null;
+        setActiveConversationId(idStr);
+        return () => {
+            if (getActiveConversationId() === idStr) {
+                setActiveConversationId(null);
+            }
+            if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+        };
+    }, [conversationId]);
+
     // ── Draft Restoration (V3.1.2) ──
     useEffect(() => {
         if (!conversationId) return;
@@ -1285,12 +1324,30 @@ const Conversation = () => {
         }).catch(() => {});
     }, [conversationId]);
 
-    // ── Scheduled Messages (Feature 3) ──
+    // ── Scheduled Messages (Feature 3: Backend Worker + Local Notes Fallback) ──
     const [scheduledMessages, setScheduledMessages] = useState<{ id: string; conversationId: string; content: string; sendAt: number; label: string }[]>([]);
     const [showScheduleModal, setShowScheduleModal] = useState(false);
 
     useEffect(() => {
         if (!conversationId) return;
+        if (!isNotesToSelf && isSocketConnected()) {
+            const onSchedList = (res: any) => {
+                if (res?.success && Array.isArray(res.data)) {
+                    setScheduledMessages(res.data.map((s: any) => ({
+                        id: s._id || s.id,
+                        conversationId: s.conversationId,
+                        content: s.content,
+                        sendAt: new Date(s.sendAt).getTime(),
+                        label: new Date(s.sendAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    })));
+                }
+            };
+            getScheduledMessages(onSchedList);
+            getScheduledMessages({ conversationId });
+            return () => {
+                getScheduledMessages(onSchedList, true);
+            };
+        }
         AsyncStorage.getItem(`@bubbly_scheduled_${conversationId}`).then((raw) => {
             if (raw) {
                 try {
@@ -1299,7 +1356,7 @@ const Conversation = () => {
                 } catch (_) {}
             }
         }).catch(() => {});
-    }, [conversationId]);
+    }, [conversationId, isNotesToSelf]);
 
     const saveScheduled = useCallback(async (list: { id: string; conversationId: string; content: string; sendAt: number; label: string }[]) => {
         setScheduledMessages(list);
@@ -1309,7 +1366,7 @@ const Conversation = () => {
     }, [conversationId]);
 
     useEffect(() => {
-        if (!conversationId || scheduledMessages.length === 0) return;
+        if (!conversationId || scheduledMessages.length === 0 || (!isNotesToSelf && isSocketConnected())) return;
         const interval = setInterval(() => {
             const now = Date.now();
             const due = scheduledMessages.filter(m => m.sendAt <= now);
@@ -1330,7 +1387,7 @@ const Conversation = () => {
             }
         }, 5000);
         return () => clearInterval(interval);
-    }, [scheduledMessages, conversationId, currentUser, saveScheduled]);
+    }, [scheduledMessages, conversationId, currentUser, saveScheduled, isNotesToSelf]);
 
     const handleConfirmSchedule = (delayMs: number, label: string) => {
         if (!message.trim()) {
@@ -1338,11 +1395,39 @@ const Conversation = () => {
             setShowScheduleModal(false);
             return;
         }
+        const safeDelay = Math.max(delayMs, 20_000);
+        if (!isNotesToSelf && isSocketConnected()) {
+            const sendAtIso = new Date(Date.now() + safeDelay).toISOString();
+            const onSchedAck = (res: any) => {
+                scheduleMessage(onSchedAck, true);
+                if (res?.success && res.data) {
+                    setScheduledMessages(prev => [...prev, {
+                        id: res.data._id || `sched_${Date.now()}`,
+                        conversationId: conversationId as string,
+                        content: res.data.content,
+                        sendAt: new Date(res.data.sendAt).getTime(),
+                        label,
+                    }]);
+                } else {
+                    Alert.alert("Schedule Error", res?.msg || "Could not schedule message.");
+                }
+            };
+            scheduleMessage(onSchedAck);
+            scheduleMessage({
+                conversationId,
+                content: message.trim(),
+                sendAt: sendAtIso,
+            });
+            setMessage("");
+            setShowScheduleModal(false);
+            Alert.alert("Message Scheduled ⏱️", `Your message will be automatically delivered in ${label.toLowerCase()}.`);
+            return;
+        }
         const item = {
             id: `sched_${Date.now()}`,
             conversationId: conversationId as string,
             content: message.trim(),
-            sendAt: Date.now() + delayMs,
+            sendAt: Date.now() + safeDelay,
             label,
         };
         const updated = [...scheduledMessages, item];
@@ -1353,6 +1438,11 @@ const Conversation = () => {
     };
 
     const handleCancelScheduled = (id: string) => {
+        if (!isNotesToSelf && isSocketConnected()) {
+            cancelScheduledMessage({ id });
+            setScheduledMessages(prev => prev.filter(m => m.id !== id));
+            return;
+        }
         const updated = scheduledMessages.filter(m => m.id !== id);
         saveScheduled(updated);
     };
@@ -1406,7 +1496,10 @@ const Conversation = () => {
     };
 
     // ── Disappearing Messages State (Feature 8) ──
-    const [disappearingSeconds, setDisappearingSeconds] = useState<number>(0);
+    const [disappearingSeconds, setDisappearingSeconds] = useState<number>(() => {
+        const parsed = parseInt(String(initialDisappearing || "0"), 10);
+        return isNaN(parsed) ? 0 : parsed;
+    });
     const [showDisappearingModal, setShowDisappearingModal] = useState<boolean>(false);
 
     useEffect(() => {
@@ -1424,6 +1517,9 @@ const Conversation = () => {
         setShowDisappearingModal(false);
         if (conversationId) {
             await AsyncStorage.setItem(`@bubbly_disappearing_${conversationId}`, seconds.toString()).catch(() => {});
+            if (!isNotesToSelf && isSocketConnected()) {
+                setDisappearingTimer({ conversationId, seconds });
+            }
         }
         Alert.alert(
             "Disappearing Messages",
@@ -1459,18 +1555,25 @@ const Conversation = () => {
     // ── Network status & Auto-scroll pill (Features 17 & 18) ──
     const [isOnlineNetwork, setIsOnlineNetwork] = useState(isSocketConnected());
     const [isScrolledUp, setIsScrolledUp] = useState(false);
+    const isScrolledUpRef = useRef(false);
+    isScrolledUpRef.current = isScrolledUp;
+    const otherParticipantRef = useRef(otherParticipant);
+    otherParticipantRef.current = otherParticipant;
+    const nameRef = useRef(name);
+    nameRef.current = name;
+    const avatarRef = useRef(avatar);
+    avatarRef.current = avatar;
     const [newMessagesBelow, setNewMessagesBelow] = useState(0);
 
     // ── Offline Message Outbox & Auto-Sync (Feature 1) ──
     const flushOutbox = useCallback(async () => {
-        if (!conversationId || !isSocketConnected()) return;
+        if (!conversationId || isNotesToSelf || !isSocketConnected()) return;
         try {
             const key = `@bubbly_outbox_${conversationId}`;
             const raw = await AsyncStorage.getItem(key);
             if (!raw) return;
             const queue: any[] = JSON.parse(raw);
             if (!Array.isArray(queue) || queue.length === 0) return;
-            await AsyncStorage.removeItem(key);
 
             for (const item of queue) {
                 newMessage({
@@ -1481,6 +1584,7 @@ const Conversation = () => {
                     attachmentMeta: item.attachmentMeta,
                     type: item.type,
                     replyTo: item.replyTo,
+                    clientId: item.tempId,
                 });
                 if (item.tempId) {
                     setMessageStatuses(prev => ({
@@ -1492,7 +1596,7 @@ const Conversation = () => {
         } catch (err) {
             console.log("flushOutbox error:", err);
         }
-    }, [conversationId]);
+    }, [conversationId, isNotesToSelf]);
 
     useEffect(() => {
         if (isSocketConnected()) {
@@ -1539,7 +1643,7 @@ const Conversation = () => {
             return false;
         });
         return () => backHandler.remove();
-    }, [isSearching, showThemeModal, showDisappearingModal, showPollModal, groupInfoVisible, forwardModalVisible, showAttachOptions]);
+    }, [isSearching, showThemeModal, showDisappearingModal, showPollModal, groupInfoVisible, forwardModalVisible, showScheduleModal, showAttachOptions]);
 
     // ── Connection Status Listener ──
     useEffect(() => {
@@ -1567,9 +1671,71 @@ const Conversation = () => {
     };
 
     // ─────────────────────────────────────────────
-    // SOCKET SETUP
+    // SOCKET SETUP (or Local Notes to Self load)
     // ─────────────────────────────────────────────
     useEffect(() => {
+        if (isNotesToSelf) {
+            setHasMore(false);
+            AsyncStorage.getItem(`@bubbly_notes_${conversationId}`).then((raw) => {
+                if (raw) {
+                    try {
+                        const saved = JSON.parse(raw);
+                        if (Array.isArray(saved)) setMessages(saved);
+                    } catch (_) {}
+                }
+            }).catch(() => {});
+            return () => {
+                if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                stopRecording(true);
+                try { reviewPlayer.pause(); } catch (_) {}
+            };
+        }
+
+        const groupUpdatedHandler = (res: any) => {
+            if (res?.success && res.data?._id === conversationId) {
+                if (res.data.name) setName(res.data.name);
+                if (res.data.avatar !== undefined) setAvatar(res.data.avatar || "");
+                if (Array.isArray(res.data.participants)) setParticipants(res.data.participants);
+                if (Array.isArray(res.data.admins)) setGroupAdmins(res.data.admins);
+                if (res.data.createdBy) setGroupCreatedBy(res.data.createdBy);
+                if (typeof res.data.disappearingSeconds === "number") setDisappearingSeconds(res.data.disappearingSeconds);
+            }
+        };
+
+        const disappearingHandler = (res: any) => {
+            if (res?.success && res.data?.conversationId === conversationId) {
+                setDisappearingSeconds(res.data.disappearingSeconds || 0);
+            }
+        };
+
+        const messageAckHandler = async (ack: any) => {
+            if (!ack?.success || !ack.clientId || !ack.data?.id) return;
+            setMessages(prev => {
+                const hasTemp = prev.some(m => m.id === ack.clientId);
+                if (!hasTemp) return prev;
+                const deduped = prev.filter(m => m.id !== ack.data.id);
+                return deduped.map(m => m.id === ack.clientId ? { ...ack.data, conversationId: conversationId as string } : m);
+            });
+            setMessageStatuses(prev => {
+                const next = { ...prev };
+                delete next[ack.clientId];
+                next[ack.data.id] = "sent";
+                return next;
+            });
+            try {
+                const key = `@bubbly_outbox_${conversationId}`;
+                const raw = await AsyncStorage.getItem(key);
+                if (raw) {
+                    const queue = JSON.parse(raw);
+                    if (Array.isArray(queue)) {
+                        const remaining = queue.filter((q: any) => q.tempId !== ack.clientId);
+                        if (remaining.length === 0) await AsyncStorage.removeItem(key);
+                        else await AsyncStorage.setItem(key, JSON.stringify(remaining));
+                    }
+                }
+            } catch (_) {}
+        };
+
         newMessage(newMessageHandler);
         getMessages(messagesHandler);
         onTyping(typingHandler);
@@ -1587,6 +1753,9 @@ const Conversation = () => {
         onPinnedMessageUpdated(pinnedMessageHandler);
         onViewOnceOpened(viewOnceOpenedHandler);
         onMessageStarred(starMessageHandler);
+        onGroupUpdated(groupUpdatedHandler);
+        setDisappearingTimer(disappearingHandler);
+        onMessageAck(messageAckHandler);
 
         getMessages({ conversationId, page: 0, limit: 30 });
         markAsRead(conversationId as string);
@@ -1609,11 +1778,14 @@ const Conversation = () => {
             onPinnedMessageUpdated(pinnedMessageHandler, true);
             onViewOnceOpened(viewOnceOpenedHandler, true);
             onMessageStarred(starMessageHandler, true);
+            onGroupUpdated(groupUpdatedHandler, true);
+            setDisappearingTimer(disappearingHandler, true);
+            onMessageAck(messageAckHandler, true);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
             stopRecording(true);
             try { reviewPlayer.pause(); } catch (_) {}
         };
-    }, []);
+    }, [conversationId, isNotesToSelf]);
 
     useEffect(() => {
         if (isDirect && otherParticipant?._id) {
@@ -1673,12 +1845,12 @@ const Conversation = () => {
             params: {
                 callId: data.callId, kind: data.kind,
                 conversationId: data.conversationId,
-                remoteUserName: isDirect ? otherParticipant?.name : name,
-                remoteUserAvatar: isDirect ? otherParticipant?.avatar : avatar,
+                remoteUserName: isDirect ? otherParticipantRef.current?.name : nameRef.current,
+                remoteUserAvatar: isDirect ? otherParticipantRef.current?.avatar : avatarRef.current,
                 isOutgoing: 'true',
             },
         });
-    }, [otherParticipant, isDirect, name, avatar]);
+    }, [isDirect]);
 
     const callFailedHandler = useCallback((data: any) => {
         Alert.alert(data.reason === 'busy' ? '🔴 User Busy' : '❌ Call Failed', data.msg || 'Could not connect the call');
@@ -1791,7 +1963,7 @@ const Conversation = () => {
                 messageId: normalizedMessage.id,
                 conversationId: conversationId as string,
             });
-            if (isScrolledUp) {
+            if (isScrolledUpRef.current) {
                 setNewMessagesBelow(prev => prev + 1);
             }
         }
@@ -1903,11 +2075,12 @@ const Conversation = () => {
     }, []);
 
     const userStatusHandler = useCallback((data: UserStatusPayload) => {
-        if (!isDirect || !otherParticipant) return;
-        if (data.userId !== otherParticipant._id) return;
+        const currentOther = otherParticipantRef.current;
+        if (!isDirect || !currentOther) return;
+        if (data.userId !== currentOther._id) return;
         setContactIsOnline(data.isOnline);
         setContactLastSeen(data.lastSeen);
-    }, [isDirect, otherParticipant]);
+    }, [isDirect]);
 
     const getUserStatusHandler = useCallback((res: ResponseProps) => {
         if (res.success) { setContactIsOnline(res.data.isOnline); setContactLastSeen(res.data.lastSeen); }
@@ -1928,8 +2101,24 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     const handleReaction = useCallback((messageId: string, emoji: string) => {
         if (!currentUser) return;
+        if (isNotesToSelf) {
+            setMessages(prev => {
+                const updated = prev.map(m => {
+                    if (m.id !== messageId) return m;
+                    const existing = (m.reactions || []).filter(r => r.userId !== currentUser.id);
+                    const hadSame = (m.reactions || []).some(r => r.userId === currentUser.id && r.emoji === emoji);
+                    return {
+                        ...m,
+                        reactions: hadSame ? existing : [...existing, { emoji, userId: currentUser.id!, userName: currentUser.name || "You" }],
+                    };
+                });
+                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                return updated;
+            });
+            return;
+        }
         reactToMessage({ messageId, conversationId, emoji, userId: currentUser.id, userName: currentUser.name });
-    }, [currentUser, conversationId]);
+    }, [currentUser, conversationId, isNotesToSelf]);
 
     // ─────────────────────────────────────────────
     // TYPING & DRAFTS (V3.1.2)
@@ -1976,10 +2165,16 @@ const Conversation = () => {
             audioRecorder.record();
             recordingRef.current = audioRecorder;
             setIsRecording(true);
+            recordingDurationRef.current = 0;
             setRecordingDuration(0);
             micScale.value = withSpring(1.3);
             recordingTimerRef.current = setInterval(() => {
-                setRecordingDuration(prev => { if (prev >= 120) { stopRecording(); return prev; } return prev + 1; });
+                const next = recordingDurationRef.current + 1;
+                recordingDurationRef.current = next;
+                setRecordingDuration(next);
+                if (next >= 120) {
+                    stopRecording(false);
+                }
             }, 1000);
         } catch (error) {
             console.log("startRecording error:", error);
@@ -1997,15 +2192,17 @@ const Conversation = () => {
             await recording.stop();
             await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
             setIsRecording(false);
-            if (recordingDuration < 1 || !recording.uri) {
-                setRecordingDuration(0);
+            const finalDuration = recordingDurationRef.current;
+            recordingDurationRef.current = 0;
+            setRecordingDuration(0);
+            if (finalDuration < 1 || !recording.uri) {
                 return;
             }
-            setVoiceReview({ uri: recording.uri, duration: recordingDuration });
-            setRecordingDuration(0);
+            setVoiceReview({ uri: recording.uri, duration: finalDuration });
         } catch (error) {
             console.log("pauseForReview error:", error);
             setIsRecording(false);
+            recordingDurationRef.current = 0;
             setRecordingDuration(0);
         }
     };
@@ -2020,15 +2217,17 @@ const Conversation = () => {
             await recording.stop();
             await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
             setIsRecording(false);
-            if (cancel || recordingDuration < 1) { setRecordingDuration(0); return; }
+            const duration = recordingDurationRef.current;
+            recordingDurationRef.current = 0;
+            setRecordingDuration(0);
+            if (cancel || duration < 1) { return; }
             const uri = recording.uri;
             if (!uri) return;
-            const duration = recordingDuration;
-            setRecordingDuration(0);
             await sendVoiceMessage(uri, duration);
         } catch (error) {
             console.log("stopRecording error:", error);
             setIsRecording(false);
+            recordingDurationRef.current = 0;
             setRecordingDuration(0);
         }
     };
@@ -2068,9 +2267,39 @@ const Conversation = () => {
             const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
-                if (asset.size && asset.size > 50 * 1024 * 1024) { Alert.alert("File too large", "Please select a file smaller than 50MB."); return; }
-                const mimeType = asset.mimeType || 'application/octet-stream';
-                setSelectedFile({ uri: asset.uri, name: asset.name || 'file', mimeType, size: asset.size || 0, isImage: mimeType.startsWith('image/') });
+                if (asset.size && asset.size > 25 * 1024 * 1024) {
+                    Alert.alert("File too large", "Please select a file smaller than 25MB.");
+                    return;
+                }
+                const fileName = asset.name || 'file';
+                const ext = fileName.split('.').pop()?.toLowerCase() || '';
+                const extMimeMap: Record<string, string> = {
+                    pdf: 'application/pdf',
+                    doc: 'application/msword',
+                    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    xls: 'application/vnd.ms-excel',
+                    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    ppt: 'application/vnd.ms-powerpoint',
+                    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    txt: 'text/plain',
+                    zip: 'application/zip',
+                    mp4: 'video/mp4',
+                    mov: 'video/quicktime',
+                    webm: 'video/webm',
+                    jpg: 'image/jpeg',
+                    jpeg: 'image/jpeg',
+                    png: 'image/png',
+                    gif: 'image/gif',
+                    webp: 'image/webp',
+                };
+                const mimeType = (asset.mimeType && asset.mimeType !== 'application/octet-stream')
+                    ? asset.mimeType
+                    : (extMimeMap[ext] || '');
+                if (!mimeType) {
+                    Alert.alert("Unsupported File Type", "Supported formats: PDF, Word, Excel, PowerPoint, TXT, ZIP, Images, and Videos.");
+                    return;
+                }
+                setSelectedFile({ uri: asset.uri, name: fileName, mimeType, size: asset.size || 0, isImage: mimeType.startsWith('image/') });
             }
         } catch { Alert.alert("Error", "Could not pick file"); }
     };
@@ -2086,6 +2315,31 @@ const Conversation = () => {
         if (isTypingRef.current) {
             isTypingRef.current = false;
             emitStopTyping({ conversationId: conversationId as string, senderId: currentUser.id as string });
+        }
+
+        // ── Notes to Self (Local Encrypted/Persistent Notebook) ──
+        if (isNotesToSelf) {
+            const noteMsg: MessageProps = {
+                id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: message.trim(),
+                attachement: selectedFile?.uri || null,
+                attachmentMeta: null,
+                type: selectedFile ? (selectedFile.isImage ? 'image' : 'file') : 'text',
+                replyTo: replyTo || null,
+                reactions: [],
+                createdAt: new Date().toISOString(),
+            };
+            setMessages(prev => {
+                const updated = [noteMsg, ...prev];
+                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                return updated;
+            });
+            setMessage("");
+            setSelectedFile(null);
+            setReplyTo(null);
+            return;
         }
 
         // ── Offline Message Outbox (Feature 1) ──
@@ -2234,11 +2488,16 @@ const Conversation = () => {
 
     const handleOpenForward = (msg: MessageProps) => {
         setForwardingMessage(msg);
-        getConversations((res: any) => {
-            if (res?.success && Array.isArray(res.data)) {
-                setRecentConversations(res.data.filter((c: any) => c._id !== conversationId));
-            }
-        });
+        if (isSocketConnected()) {
+            const onForwardList = (res: any) => {
+                getConversations(onForwardList, true);
+                if (res?.success && Array.isArray(res.data)) {
+                    setRecentConversations(res.data.filter((c: any) => c._id !== conversationId));
+                }
+            };
+            getConversations(onForwardList);
+            getConversations(null);
+        }
         setForwardModalVisible(true);
     };
 
@@ -2335,15 +2594,16 @@ const Conversation = () => {
     };
 
     const handleLockCurrentChat = async () => {
+        const lockedKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : '@bubbly_locked_chats';
         try {
-            const stored = await AsyncStorage.getItem('@bubbly_locked_chats');
+            const stored = await AsyncStorage.getItem(lockedKey);
             let list: string[] = [];
             if (stored) {
                 try { list = JSON.parse(stored); } catch (_) {}
             }
             if (!list.includes(conversationId as string)) {
                 list.push(conversationId as string);
-                await AsyncStorage.setItem('@bubbly_locked_chats', JSON.stringify(list));
+                await AsyncStorage.setItem(lockedKey, JSON.stringify(list));
             }
             Alert.alert(
                 "Chat Locked",
@@ -2508,13 +2768,14 @@ const Conversation = () => {
                     const t = incomingToast;
                     setIncomingToast(null);
                     if (t) {
-                        router.push({
+                        router.replace({
                             pathname: "/(main)/conversation",
                             params: {
                                 id: t.convId,
                                 name: t.senderName,
-                                avatar: t.avatar,
-                                type: "direct"
+                                avatar: t.avatar || "",
+                                type: "direct",
+                                participants: "[]",
                             }
                         });
                     }
@@ -2522,7 +2783,7 @@ const Conversation = () => {
                 onDismiss={() => setIncomingToast(null)}
             />
 
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : undefined} style={styles.container}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : "height"} style={styles.container}>
 
                 {/* ── Header ── */}
                 <Animated.View entering={FadeInDown.duration(400).springify()} style={styles.header}>
@@ -2661,7 +2922,6 @@ const Conversation = () => {
                         initialNumToRender={15}
                         maxToRenderPerBatch={10}
                         windowSize={7}
-                        removeClippedSubviews={Platform.OS === 'android'}
                         keyboardShouldPersistTaps="handled"
                         onScroll={handleScroll}
                         scrollEventThrottle={32}
@@ -2770,10 +3030,13 @@ const Conversation = () => {
 
                                     <TouchableOpacity
                                         style={styles.playReviewBtn}
-                                        onPress={() => {
+                                        onPress={async () => {
                                             if (reviewPlayerStatus.playing) {
                                                 reviewPlayer.pause();
                                             } else {
+                                                if (reviewPlayerStatus.didJustFinish) {
+                                                    try { await (reviewPlayer as any).seekTo?.(0); } catch {}
+                                                }
                                                 reviewPlayer.play();
                                             }
                                         }}
@@ -2976,8 +3239,8 @@ const Conversation = () => {
                 conversationName={conversationName}
                 conversationAvatar={conversationAvatar as string}
                 participants={participants}
-                admins={[]}
-                createdBy={undefined}
+                admins={groupAdmins}
+                createdBy={groupCreatedBy}
                 currentUserId={currentUser?.id || ''}
                 mediaItems={mediaMessages}
                 onPromote={handlePromoteAdmin}

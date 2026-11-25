@@ -113,6 +113,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("addGroupMembers", { success: false, msg: "Group participant limit reached (max 500)" });
                 return;
             }
+            const addedUserIds: string[] = [];
             for (const id of ids) {
                 if (!isValidObjectId(id)) continue;
                 if (conversation.participants.some((p) => p.toString() === id.toString())) continue;
@@ -120,6 +121,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 if (!user) continue; // Ensure user exists before adding
                 conversation.participants.push(id as any);
                 conversation.unreadCounts.push({ userId: id as any, count: 0 });
+                addedUserIds.push(id.toString());
                 await createSystemMessage(data.conversationId, userId, "member_added", {
                     targetId: id,
                     content: `${socket.data.name} added ${user.name || "a member"}`,
@@ -134,7 +136,9 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 .populate({ path: "admins", select: "name avatar" })
                 .lean();
             emitGroupUpdate(io, populated);
-            io.to(data.conversationId).emit("newConversation", { success: true, data: { ...populated, isNew: true, unreadCount: 0 } });
+            for (const addedId of addedUserIds) {
+                io.to(userRoom(addedId)).emit("newConversation", { success: true, data: { ...populated, isNew: true, unreadCount: 0 } });
+            }
             socket.emit("addGroupMembers", { success: true, data: populated });
         } catch (error: any) {
             socket.emit("addGroupMembers", { success: false, msg: error.message || "Failed to add members" });
@@ -296,7 +300,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 .populate({ path: "admins", select: "name avatar" })
                 .lean();
             emitGroupUpdate(io, populated);
-            io.to(conversation._id.toString()).emit("newConversation", {
+            socket.emit("newConversation", {
                 success: true,
                 data: { ...populated, isNew: true, unreadCount: 0 },
             });

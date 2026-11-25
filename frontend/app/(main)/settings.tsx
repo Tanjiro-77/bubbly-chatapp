@@ -28,6 +28,8 @@ import ScreenWrapper from "../../components/ScreenWrapper";
 import BackButton from "../../components/BackButton";
 import { scale, verticalScale } from "../../utils/styling";
 import { useAuth } from "../../contexts/authContext";
+import { syncNotificationPreference } from "../../services/notificationService";
+import { getBlockedUsers, blockUser, isSocketConnected } from "../../socket/socketEvents";
 import {
     checkAllPermissions,
     requestPermissionByKey,
@@ -311,6 +313,7 @@ export default function SettingsScreen() {
         setNotificationsEnabled(value);
         try {
             await AsyncStorage.setItem(NOTIF_KEY, String(value));
+            syncNotificationPreference(value).catch(() => {});
         } catch (_) { }
     }, []);
 
@@ -382,9 +385,9 @@ export default function SettingsScreen() {
     }, []);
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper style={{ backgroundColor: colors.neutral100 }}>
             <View style={styles.header}>
-                <BackButton />
+                <BackButton color={colors.neutral900} />
                 <Typo
                     size={16}
                     fontWeight="600"
@@ -609,9 +612,39 @@ export default function SettingsScreen() {
                         iconBg="#16a34a1F"
                         label="Blocked Contacts"
                         subtitle="Manage people you've blocked"
-                        onPress={() =>
-                            Alert.alert("Blocked Contacts", "You have not blocked any contacts yet.")
-                        }
+                        onPress={() => {
+                            if (!isSocketConnected()) {
+                                Alert.alert("Offline", "Connect to the internet to check blocked contacts.");
+                                return;
+                            }
+                            const handler = (res: any) => {
+                                getBlockedUsers(handler, true);
+                                if (res?.success && Array.isArray(res.data)) {
+                                    if (res.data.length === 0) {
+                                        Alert.alert("Blocked Contacts", "You have not blocked any contacts yet.");
+                                    } else {
+                                        const names = res.data.map((u: any) => u.name || u.email).join("\n• ");
+                                        Alert.alert(
+                                            `Blocked Contacts (${res.data.length})`,
+                                            `• ${names}`,
+                                            [
+                                                {
+                                                    text: "Unblock All",
+                                                    style: "destructive",
+                                                    onPress: () => {
+                                                        res.data.forEach((u: any) => blockUser({ targetUserId: u._id, block: false }));
+                                                        Alert.alert("Done", "All contacts unblocked.");
+                                                    },
+                                                },
+                                                { text: "Close", style: "cancel" },
+                                            ]
+                                        );
+                                    }
+                                }
+                            };
+                            getBlockedUsers(handler);
+                            getBlockedUsers(null);
+                        }}
                     />
                     <Row
                         icon="lock"
@@ -621,6 +654,22 @@ export default function SettingsScreen() {
                         onPress={() =>
                             Alert.alert("Change Password", "Password updates can be requested through account settings.")
                         }
+                    />
+                    <Row
+                        icon="policy"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "66"}
+                        label="Privacy Policy"
+                        subtitle="Data collection, permissions, and your rights"
+                        onPress={() => router.push("/(legal)/privacyPolicy" as any)}
+                    />
+                    <Row
+                        icon="verified-user"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Security & Data Safety"
+                        subtitle="Encryption, Vault PIN, and Play Store safety"
+                        onPress={() => router.push("/(legal)/security" as any)}
                         isLast
                     />
                 </SectionCard>

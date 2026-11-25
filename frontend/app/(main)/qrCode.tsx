@@ -29,6 +29,7 @@ import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { useAuth } from "../../contexts/authContext";
+import { newConversation, isSocketConnected } from "../../socket/socketEvents";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const QR_SIZE = Math.min(SCREEN_WIDTH - scale(90), scale(240));
@@ -128,11 +129,19 @@ export default function QRCodeScreen() {
 
     const qrMatrix = useMemo(() => generateQRMatrix(userId + inviteLink), [userId, inviteLink]);
 
+    const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        return () => {
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        };
+    }, []);
+
     const handleCopyLink = async () => {
         try {
             await Clipboard.setStringAsync(inviteLink);
             setCopiedToast(true);
-            setTimeout(() => setCopiedToast(false), 2000);
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+            toastTimerRef.current = setTimeout(() => setCopiedToast(false), 2000);
         } catch (_) {}
     };
 
@@ -154,10 +163,42 @@ export default function QRCodeScreen() {
     };
 
     const handleConnectManual = () => {
-        if (!manualIdInput.trim()) {
+        const raw = manualIdInput.trim();
+        if (!raw) {
             Alert.alert("Input Required", "Please enter a valid Bubbly user ID or paste an invite link.");
             return;
         }
+        // Extract target userId if pasted an invite URL like https://bubbly.app/u/<userId>
+        const urlMatch = raw.match(/\/u\/([a-fA-F0-9]{24})/);
+        const targetId = urlMatch ? urlMatch[1] : raw;
+
+        if (/^[a-fA-F0-9]{24}$/.test(targetId) && currentUser?.id && isSocketConnected()) {
+            if (targetId === currentUser.id) {
+                Alert.alert("That's You", "You cannot start a chat with your own QR ID.");
+                return;
+            }
+            const onRes = (res: any) => {
+                newConversation(onRes, true);
+                if (res?.success && res.data?._id) {
+                    router.replace({
+                        pathname: "/(main)/conversation",
+                        params: {
+                            id: res.data._id,
+                            name: res.data.name,
+                            avatar: res.data.avatar,
+                            type: res.data.type,
+                            participants: JSON.stringify(res.data.participants),
+                        },
+                    });
+                } else {
+                    Alert.alert("User Not Found", res?.msg || "Could not connect with that ID.");
+                }
+            };
+            newConversation(onRes);
+            newConversation({ type: "direct", participants: [currentUser.id, targetId] });
+            return;
+        }
+
         router.push({
             pathname: "/(main)/newConversationModal",
             params: { isGroup: 0 },

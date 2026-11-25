@@ -14,6 +14,7 @@ import { verticalScale, scale } from '../../utils/styling';
 import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
 import { callAccept, callReject, onCallEnded } from '../../socket/socketEvents';
+import { acceptCallHttp, getCallStatus, rejectCallHttp } from '../../services/callService';
 
 // ── Multi-Layer Pulsing Rings ──
 const IncomingPulsingRings = ({ size, color }: { size: number; color: string }) => {
@@ -122,6 +123,18 @@ const IncomingCall = () => {
 
         onCallEnded(handleCallEndedByOther);
 
+        // Verify call is still ringing (guards against stale notification cold-starts)
+        if (callId) {
+            getCallStatus(callId as string).then((res) => {
+                const status = res?.data?.status;
+                if (status && !['ringing', 'connecting'].includes(status)) {
+                    vibrationRef.current = false;
+                    Vibration.cancel();
+                    router.back();
+                }
+            }).catch(() => {});
+        }
+
         return () => {
             vibrationRef.current = false;
             if (timerId) clearTimeout(timerId);
@@ -146,10 +159,17 @@ const IncomingCall = () => {
         opacity: fadeIn.value,
     }));
 
-    const handleAccept = () => {
+    const handleAccept = async () => {
         vibrationRef.current = false;
         Vibration.cancel();
         callAccept(callId as string);
+        try {
+            const res = await acceptCallHttp(callId as string);
+            if (res && res.success === false) {
+                if (router.canGoBack()) router.back();
+                return;
+            }
+        } catch {}
         router.replace({
             pathname: '/(main)/callScreen',
             params: {
@@ -167,19 +187,28 @@ const IncomingCall = () => {
         vibrationRef.current = false;
         Vibration.cancel();
         callReject(callId as string);
-        router.back();
+        rejectCallHttp(callId as string).catch(() => {});
+        if (router.canGoBack()) router.back();
     };
 
     const handleDeclineWithMessage = () => {
         vibrationRef.current = false;
         Vibration.cancel();
         callReject(callId as string);
-        router.back();
+        rejectCallHttp(callId as string).catch(() => {});
         if (conversationId) {
-            router.push({
+            router.replace({
                 pathname: '/(main)/conversation',
-                params: { id: conversationId as string, name: callerName as string },
+                params: {
+                    id: conversationId as string,
+                    name: callerName as string,
+                    avatar: (callerAvatar as string) || '',
+                    type: 'direct',
+                    participants: JSON.stringify([]),
+                },
             });
+        } else if (router.canGoBack()) {
+            router.back();
         }
     };
 

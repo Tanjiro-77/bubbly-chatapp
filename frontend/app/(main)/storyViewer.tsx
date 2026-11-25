@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, Dimensions,
     TextInput, KeyboardAvoidingView, Platform, Alert,
@@ -35,10 +35,19 @@ const StoryViewer = () => {
     const { user: currentUser } = useAuth();
     const { groupIndex: groupIndexParam, storiesData } = useLocalSearchParams();
 
-    const allGroups: StoryGroupProps[] = JSON.parse(storiesData as string);
-    const [currentGroupIndex, setCurrentGroupIndex] = useState(
-        parseInt(groupIndexParam as string) || 0
-    );
+    const allGroups: StoryGroupProps[] = useMemo(() => {
+        try {
+            const raw = Array.isArray(storiesData) ? storiesData[0] : storiesData;
+            if (!raw || typeof raw !== 'string') return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }, [storiesData]);
+
+    const parsedGroupIdx = parseInt(Array.isArray(groupIndexParam) ? groupIndexParam[0] : (groupIndexParam as string), 10) || 0;
+    const [currentGroupIndex, setCurrentGroupIndex] = useState(parsedGroupIdx);
     const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
     const [showReplyInput, setShowReplyInput] = useState(false);
@@ -47,19 +56,44 @@ const StoryViewer = () => {
     const [showViewers, setShowViewers] = useState(false);
 
     const progress = useSharedValue(0);
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const startTimeRef = useRef<number>(0);
     const elapsedRef = useRef<number>(0);
 
     const currentGroup = allGroups[currentGroupIndex];
-    const currentStory = currentGroup?.stories[currentStoryIndex];
-    const isMyStory = currentStory && currentUser?.id === currentGroup.user.id;
+    const currentStory = currentGroup?.stories?.[currentStoryIndex];
+    const isMyStory = currentStory && currentUser?.id === currentGroup?.user?.id;
+
+    const safeBack = useCallback(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace('/(main)/home');
+    }, [router]);
+
+    useEffect(() => {
+        if (!currentGroup || !currentStory) {
+            safeBack();
+        }
+    }, [currentGroup, currentStory, safeBack]);
 
     // ─────────────────────────────────────────────
     // PROGRESS & TIMER
     // ─────────────────────────────────────────────
+    const goToNext = useCallback(() => {
+        cancelAnimation(progress);
+        const group = allGroups[currentGroupIndex];
+        if (!group) { safeBack(); return; }
+
+        if (currentStoryIndex < group.stories.length - 1) {
+            setCurrentStoryIndex(prev => prev + 1);
+        } else if (currentGroupIndex < allGroups.length - 1) {
+            setCurrentGroupIndex(prev => prev + 1);
+            setCurrentStoryIndex(0);
+        } else {
+            safeBack();
+        }
+    }, [currentGroupIndex, currentStoryIndex, allGroups, safeBack, progress]);
+
     const startProgress = useCallback((fromElapsed = 0) => {
-        const remaining = STORY_DURATION - fromElapsed;
+        const remaining = Math.max(100, STORY_DURATION - fromElapsed);
         startTimeRef.current = Date.now();
         elapsedRef.current = fromElapsed;
 
@@ -69,14 +103,9 @@ const StoryViewer = () => {
                 runOnJS(goToNext)();
             }
         });
-
-        timerRef.current = setTimeout(() => {
-            goToNext();
-        }, remaining);
-    }, [currentGroupIndex, currentStoryIndex]);
+    }, [goToNext, progress]);
 
     const pauseProgress = () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
         const elapsed = Date.now() - startTimeRef.current + elapsedRef.current;
         elapsedRef.current = elapsed;
         cancelAnimation(progress);
@@ -97,37 +126,22 @@ const StoryViewer = () => {
         viewStory({ storyId: currentStory._id });
 
         return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
+            cancelAnimation(progress);
         };
-    }, [currentGroupIndex, currentStoryIndex]);
+    }, [currentGroupIndex, currentStoryIndex, currentStory?._id]);
 
     // ─────────────────────────────────────────────
     // NAVIGATION
     // ─────────────────────────────────────────────
-    const goToNext = useCallback(() => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-        const group = allGroups[currentGroupIndex];
-        if (!group) { router.back(); return; }
-
-        if (currentStoryIndex < group.stories.length - 1) {
-            setCurrentStoryIndex(prev => prev + 1);
-        } else if (currentGroupIndex < allGroups.length - 1) {
-            setCurrentGroupIndex(prev => prev + 1);
-            setCurrentStoryIndex(0);
-        } else {
-            router.back();
-        }
-    }, [currentGroupIndex, currentStoryIndex, allGroups]);
-
     const goToPrev = useCallback(() => {
-        if (timerRef.current) clearTimeout(timerRef.current);
+        cancelAnimation(progress);
         if (currentStoryIndex > 0) {
             setCurrentStoryIndex(prev => prev - 1);
         } else if (currentGroupIndex > 0) {
             setCurrentGroupIndex(prev => prev - 1);
             setCurrentStoryIndex(allGroups[currentGroupIndex - 1].stories.length - 1);
         }
-    }, [currentGroupIndex, currentStoryIndex, allGroups]);
+    }, [currentGroupIndex, currentStoryIndex, allGroups, progress]);
 
     const progressStyle = useAnimatedStyle(() => ({
         width: `${progress.value * 100}%`,
@@ -183,7 +197,6 @@ const StoryViewer = () => {
     };
 
     if (!currentGroup || !currentStory) {
-        router.back();
         return null;
     }
 

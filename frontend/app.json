@@ -5,7 +5,10 @@
     "version": "3.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bubbly",
+    "scheme": [
+      "bubbly",
+      "com.arnav5569.chat"
+    ],
     "userInterfaceStyle": "automatic",
     "android": {
       "adaptiveIcon": {
@@ -21,6 +24,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
         "android.permission.CAMERA",
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_CONNECT",
@@ -28,19 +32,11 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_CONTACTS",
         "android.permission.VIBRATE",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.CAMERA",
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.READ_PHONE_STATE",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.VIBRATE"
+        "android.permission.WAKE_LOCK",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.USE_FULL_SCREEN_INTENT"
       ],
       "package": "com.arnav5569.chat"
     },
@@ -53,19 +49,12 @@
         "NSMicrophoneUsageDescription": "Bubbly needs access to your microphone to record voice messages and make audio/video calls.",
         "NSPhotoLibraryUsageDescription": "Bubbly needs access to your photos to send images, videos, and custom avatars.",
         "NSPhotoLibraryAddUsageDescription": "Bubbly needs access to save photos and media from chats to your photo library.",
+        "NSContactsUsageDescription": "Bubbly needs access to your contacts so you can find friends already using Bubbly.",
         "UIBackgroundModes": [
           "audio",
           "voip",
           "fetch",
-          "audio",
-          "voip",
-          "fetch",
-          "audio",
-          "voip",
-          "fetch",
-          "audio",
-          "voip",
-          "fetch"
+          "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -93,6 +82,13 @@
       "expo-web-browser",
       "expo-audio",
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#facc15"
+        }
+      ],
       "@sentry/react-native/expo"
     ],
     "experiments": {

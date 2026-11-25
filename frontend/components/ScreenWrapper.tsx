@@ -23,11 +23,11 @@ const ScreenWrapper = ({
 
     const insets = useSafeAreaInsets();
 
-    let paddingTop = Platform.OS === "ios" ? height * 0.06 : 40;
+    let paddingTop = Math.max(insets.top, Platform.OS === "ios" ? 44 : 24);
     let paddingBottom = insets.bottom;
 
     if (isModal) {
-        paddingTop = Platform.OS === "ios" ? height * 0.02 : 45;
+        paddingTop = Platform.OS === "ios" ? Math.max(insets.top * 0.4, 16) : Math.max(insets.top, 20);
         paddingBottom = insets.bottom + height * 0.02;
     }
 

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Download,
@@ -8,23 +8,22 @@ import {
   CheckCircle2,
   Zap,
   Shield,
-  ShieldAlert,
   QrCode,
   FileCheck,
   Copy,
   ExternalLink,
-  Github,
-  Layers,
   Terminal,
+  ShieldAlert,
+  ArrowRight,
 } from "lucide-react";
 import {
   DownloadButton,
   PageHero,
   useReveal,
-  APK_DOWNLOAD_LINK,
   APK_BACKUP_DOWNLOAD_LINK,
   GITHUB_URL,
   APP_VERSION,
+  PACKAGE_ID,
 } from "@/components/site/shared";
 import { sounds } from "@/lib/sound";
 
@@ -48,7 +47,7 @@ export const Route = createFileRoute("/download")({
   component: DownloadPage,
 });
 
-const OFFICIAL_SHA256 = "bubbly-v3.0.0-sha256-verified-release-build-apk";
+const OFFICIAL_SHA256 = "bubbly-v3.4.0-sha256-verified-release-build-apk";
 
 export function DownloadPage() {
   useReveal();
@@ -150,7 +149,11 @@ export function DownloadPage() {
             </h2>
 
             <p className="mt-2 text-sm text-muted-foreground">
-              Version {APP_VERSION} · Direct APK Package · Android 8.0+
+              Version {APP_VERSION} · Package{" "}
+              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-foreground">
+                {PACKAGE_ID}
+              </code>{" "}
+              · Android 8.0+
             </p>
 
             {/* Key trust chips */}
@@ -283,10 +286,12 @@ export function DownloadPage() {
             <div className="mt-10 grid gap-3 sm:grid-cols-4 border-t border-border/70 pt-8 text-left">
               <div className="rounded-2xl border border-border bg-surface p-4">
                 <p className="font-mono text-[10px] uppercase font-bold text-muted-foreground">
-                  File Size
+                  Package ID
                 </p>
-                <p className="mt-1 font-display text-base font-bold text-foreground">~361 MB</p>
-                <p className="text-[10px] text-muted-foreground">Production APK</p>
+                <p className="mt-1 font-mono text-xs font-bold text-foreground break-all">
+                  {PACKAGE_ID}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Android & Indus Ready</p>
               </div>
               <div className="rounded-2xl border border-border bg-surface p-4">
                 <p className="font-mono text-[10px] uppercase font-bold text-muted-foreground">
@@ -295,7 +300,7 @@ export function DownloadPage() {
                 <p className="mt-1 font-display text-base font-bold text-foreground">
                   Android 8.0+
                 </p>
-                <p className="text-[10px] text-muted-foreground">Oreo up to Android 15</p>
+                <p className="text-[10px] text-muted-foreground">Oreo up to Android 16</p>
               </div>
               <div className="rounded-2xl border border-border bg-surface p-4">
                 <p className="font-mono text-[10px] uppercase font-bold text-muted-foreground">
@@ -304,14 +309,14 @@ export function DownloadPage() {
                 <p className="mt-1 font-display text-base font-bold text-foreground">
                   {APP_VERSION}
                 </p>
-                <p className="text-[10px] text-muted-foreground">Build #3</p>
+                <p className="text-[10px] text-muted-foreground">Build #6 · EAS Signed</p>
               </div>
               <div className="rounded-2xl border border-border bg-surface p-4">
                 <p className="font-mono text-[10px] uppercase font-bold text-muted-foreground">
                   License
                 </p>
                 <p className="mt-1 font-display text-base font-bold text-foreground">Open Source</p>
-                <p className="text-[10px] text-muted-foreground">Free for personal use</p>
+                <p className="text-[10px] text-muted-foreground">Zero Ads · Zero Trackers</p>
               </div>
             </div>
           </div>
@@ -461,16 +466,19 @@ export function DownloadPage() {
                   behavior for all independent developer builds. You can safely tap{" "}
                   <strong>Download anyway</strong> and proceed with installation.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+                <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-semibold text-muted-foreground">
                   <span className="flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> No hidden analytics
                   </span>
                   <span className="flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> No ad trackers
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Full source on GitHub
-                  </span>
+                  <Link
+                    to="/security"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    Security & Data Safety <ArrowRight className="h-3 w-3" />
+                  </Link>
                 </div>
               </div>
             </div>

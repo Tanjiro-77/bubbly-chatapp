@@ -25,7 +25,7 @@ import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
-import { getStarredMessages, toggleStarMessage } from "../../socket/socketEvents";
+import { getStarredMessages, toggleStarMessage, isSocketConnected } from "../../socket/socketEvents";
 import moment from "moment";
 
 interface StarredItem {
@@ -100,7 +100,13 @@ const StarredMessagesScreen = () => {
     const [isSearching, setIsSearching] = useState(false);
 
     useEffect(() => {
+        if (!isSocketConnected()) {
+            setLoading(false);
+            return;
+        }
+        const timer = setTimeout(() => setLoading(false), 6000);
         const handler = (res: any) => {
+            clearTimeout(timer);
             setLoading(false);
             if (res?.success && Array.isArray(res.data)) {
                 setStarredList(res.data);
@@ -111,6 +117,7 @@ const StarredMessagesScreen = () => {
         getStarredMessages({ page: 1, limit: 50 });
 
         return () => {
+            clearTimeout(timer);
             getStarredMessages(handler, true);
         };
     }, []);
@@ -260,10 +267,11 @@ const StarredMessagesScreen = () => {
     }, [handleJumpToChat, handleUnstar]);
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+            <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
-                <BackButton />
+                <BackButton color={colors.neutral900} />
                 {isSearching ? (
                     <View style={styles.searchBox}>
                         <Icons.MagnifyingGlass size={verticalScale(16)} color={colors.neutral400} />
@@ -324,12 +332,13 @@ const StarredMessagesScreen = () => {
             ) : (
                 <FlatList
                     data={filteredList}
-                    keyExtractor={item => item.savedId || item._id || (item.message?.id || item.messageId?.id || Math.random().toString())}
+                    keyExtractor={(item, idx) => item.savedId || item._id || item.message?.id || item.messageId?.id || `star-${idx}`}
                     renderItem={renderItem}
                     contentContainerStyle={styles.listContent}
                     showsVerticalScrollIndicator={false}
                 />
             )}
+            </View>
         </ScreenWrapper>
     );
 };

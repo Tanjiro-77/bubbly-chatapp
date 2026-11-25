@@ -1,12 +1,16 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { AuthContextProps, DecodedTokenProps, UserProps } from "../types";
 import { useRouter } from "expo-router";
-import { login, register, googleLogin } from "../services/authService";
+import { login, loginWithPhone, register, registerWithPhone, googleLogin } from "../services/authService";
 import { updateUserPhoneNumber } from "../services/contactService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode } from 'jwt-decode';
 import { connectSocket, disconnectSocket } from "../socket/socket";
 import { markOnboardingCompleted } from "../hooks/useOnboarding";
+import {
+    registerForPushNotificationsAsync,
+    unregisterPushTokenAsync,
+} from "../services/notificationService";
 
 
 export const AuthContext = createContext<AuthContextProps>({
@@ -14,8 +18,10 @@ export const AuthContext = createContext<AuthContextProps>({
     user: null,
     isLoading: true,
     signIn: async () => { },
+    signInWithPhone: async () => { },
     signInWithGoogle: async () => { },
     signUp: async () => { },
+    signUpWithPhone: async () => { },
     signOut: async () => { },
     updateToken: async () => { },
     updateUserPhone: async () => { },
@@ -44,6 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     setToken(storedToken);
                     await connectSocket();
                     setUser(decoded.user);
+                    registerForPushNotificationsAsync(storedToken).catch(() => {});
                 }
             }
         } catch (error) {
@@ -72,11 +79,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await updateToken(response.token);
         await connectSocket();
         await markOnboardingCompleted();
+        registerForPushNotificationsAsync(response.token).catch(() => {});
+        router.replace("/(main)/home");
+    };
+
+    const signInWithPhone = async (phoneNumber: string, password: string) => {
+        const response = await loginWithPhone(phoneNumber, password);
+        await updateToken(response.token);
+        await connectSocket();
+        await markOnboardingCompleted();
+        registerForPushNotificationsAsync(response.token).catch(() => {});
         router.replace("/(main)/home");
     };
 
     const signInWithGoogle = async (payload: {
         idToken?: string;
+        accessToken?: string;
         email?: string;
         name?: string;
         avatar?: string;
@@ -86,6 +104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await updateToken(response.token);
         await connectSocket();
         await markOnboardingCompleted();
+        registerForPushNotificationsAsync(response.token).catch(() => {});
         router.replace("/(main)/home");
     };
 
@@ -106,19 +125,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await updateToken(response.token);
         await connectSocket();
         await markOnboardingCompleted();
+        registerForPushNotificationsAsync(response.token).catch(() => {});
+        router.replace("/(main)/home");
+    };
+
+    const signUpWithPhone = async (phoneNumber: string, password: string, name: string, avatar?: string | null) => {
+        const response = await registerWithPhone(phoneNumber, password, name, avatar);
+        await updateToken(response.token);
+        await connectSocket();
+        await markOnboardingCompleted();
+        registerForPushNotificationsAsync(response.token).catch(() => {});
         router.replace("/(main)/home");
     };
 
     const signOut = async () => {
+        const currentToken = token;
         setToken(null);
         setUser(null);
+        await unregisterPushTokenAsync(currentToken).catch(() => {});
         await AsyncStorage.removeItem('token');
+        // Clear transient drafts/outbox/scheduled caches so a second number on the same phone starts clean
+        try {
+            const keys = await AsyncStorage.getAllKeys();
+            const sessionKeys = keys.filter(k =>
+                k.startsWith('@bubbly_draft_') ||
+                k.startsWith('@bubbly_outbox_') ||
+                k.startsWith('@bubbly_scheduled_')
+            );
+            if (sessionKeys.length > 0) {
+                await AsyncStorage.multiRemove(sessionKeys);
+            }
+        } catch {}
         disconnectSocket();
         router.replace("/(auth)/welcome");
     };
 
     return (
-        <AuthContext.Provider value={{ token, user, isLoading, signIn, signInWithGoogle, signUp, signOut, updateToken, updateUserPhone }}>
+        <AuthContext.Provider value={{ token, user, isLoading, signIn, signInWithPhone, signInWithGoogle, signUp, signUpWithPhone, signOut, updateToken, updateUserPhone }}>
             {children}
         </AuthContext.Provider>
     );

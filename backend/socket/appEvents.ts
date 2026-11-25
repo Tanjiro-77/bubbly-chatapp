@@ -1,4 +1,5 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
+import { isValidObjectId } from "mongoose";
 import User from "../modals/User";
 import Story from "../modals/Story";
 import SavedMessage from "../modals/SavedMessage";
@@ -57,8 +58,28 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
         }
     });
 
+    socket.on("setDisappearingTimer", async (data: { conversationId: string; seconds: number }) => {
+        try {
+            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            if (!conversation || !isMember) throw new Error("Not a member");
+            if (conversation.type === "group" && !isAdmin) {
+                throw new Error("Only group admins can change disappearing timer");
+            }
+            const cleanSeconds = Math.max(0, Number(data.seconds) || 0);
+            conversation.disappearingSeconds = cleanSeconds;
+            await conversation.save();
+            io.to(data.conversationId).emit("setDisappearingTimer", {
+                success: true,
+                data: { conversationId: data.conversationId, disappearingSeconds: cleanSeconds },
+            });
+        } catch (error: any) {
+            socket.emit("setDisappearingTimer", { success: false, msg: error.message || "Failed to update disappearing timer" });
+        }
+    });
+
     socket.on("blockUser", async (data: { targetUserId: string; block: boolean }) => {
         try {
+            if (!data?.targetUserId || !isValidObjectId(data.targetUserId)) throw new Error("Invalid user");
             if (data.targetUserId === userId) throw new Error("You cannot block yourself");
             if (data.block) {
                 await User.findByIdAndUpdate(userId, { $addToSet: { blockedUsers: data.targetUserId } });
@@ -120,15 +141,19 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
     });
 
     socket.on("moderator:listReports", async () => {
-        const me = await User.findById(userId).select("isModerator").lean();
-        if (!me?.isModerator) {
-            socket.emit("moderator:listReports", { success: false, msg: "Forbidden" });
-            return;
+        try {
+            const me = await User.findById(userId).select("isModerator").lean();
+            if (!me?.isModerator) {
+                socket.emit("moderator:listReports", { success: false, msg: "Forbidden" });
+                return;
+            }
+            const reports = await Report.find().sort({ createdAt: -1 }).limit(100)
+                .populate("reporterId", "name email")
+                .lean();
+            socket.emit("moderator:listReports", { success: true, data: reports });
+        } catch {
+            socket.emit("moderator:listReports", { success: false, msg: "Failed to load reports" });
         }
-        const reports = await Report.find().sort({ createdAt: -1 }).limit(100)
-            .populate("reporterId", "name email")
-            .lean();
-        socket.emit("moderator:listReports", { success: true, data: reports });
     });
 
     socket.on("saveMessage", async (data: { messageId: string; save: boolean }) => {
@@ -217,21 +242,39 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
     });
 
     socket.on("getScheduledMessages", async (data: { conversationId?: string }) => {
-        const query: any = { senderId: userId, status: "pending" };
-        if (data?.conversationId) query.conversationId = data.conversationId;
-        const items = await ScheduledMessage.find(query).sort({ sendAt: 1 }).lean();
-        socket.emit("getScheduledMessages", { success: true, data: items });
+        try {
+            const query: any = { senderId: userId, status: "pending" };
+            if (data?.conversationId) {
+                if (!isValidObjectId(data.conversationId)) {
+                    socket.emit("getScheduledMessages", { success: true, data: [] });
+                    return;
+                }
+                query.conversationId = data.conversationId;
+            }
+            const items = await ScheduledMessage.find(query).sort({ sendAt: 1 }).lean();
+            socket.emit("getScheduledMessages", { success: true, data: items });
+        } catch {
+            socket.emit("getScheduledMessages", { success: false, msg: "Failed to load scheduled messages" });
+        }
     });
 
     socket.on("cancelScheduledMessage", async (data: { id: string }) => {
-        const item = await ScheduledMessage.findOne({ _id: data.id, senderId: userId, status: "pending" });
-        if (!item) {
-            socket.emit("cancelScheduledMessage", { success: false, msg: "Not found" });
-            return;
+        try {
+            if (!data?.id || !isValidObjectId(data.id)) {
+                socket.emit("cancelScheduledMessage", { success: false, msg: "Invalid scheduled message id" });
+                return;
+            }
+            const item = await ScheduledMessage.findOne({ _id: data.id, senderId: userId, status: "pending" });
+            if (!item) {
+                socket.emit("cancelScheduledMessage", { success: false, msg: "Not found" });
+                return;
+            }
+            item.status = "cancelled";
+            await item.save();
+            socket.emit("cancelScheduledMessage", { success: true, data: { id: item._id } });
+        } catch {
+            socket.emit("cancelScheduledMessage", { success: false, msg: "Failed to cancel scheduled message" });
         }
-        item.status = "cancelled";
-        await item.save();
-        socket.emit("cancelScheduledMessage", { success: true, data: { id: item._id } });
     });
 
     socket.on("createStory", async (data: {
@@ -298,33 +341,49 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
     });
 
     socket.on("viewStory", async (data: { storyId: string }) => {
-        const story = await Story.findById(data.storyId);
-        if (!story) {
-            socket.emit("viewStory", { success: false, msg: "Status expired" });
-            return;
+        try {
+            if (!data?.storyId || !isValidObjectId(data.storyId)) {
+                socket.emit("viewStory", { success: false, msg: "Invalid status" });
+                return;
+            }
+            const story = await Story.findById(data.storyId);
+            if (!story) {
+                socket.emit("viewStory", { success: false, msg: "Status expired" });
+                return;
+            }
+            if (story.userId.toString() !== userId && !(story.viewers || []).some((v: any) => v.userId.toString() === userId)) {
+                story.viewers.push({ userId, viewedAt: new Date() });
+                await story.save();
+            }
+            socket.emit("viewStory", { success: true, data: { viewers: story.viewers, reactions: story.reactions } });
+        } catch {
+            socket.emit("viewStory", { success: false, msg: "Failed to view story" });
         }
-        if (story.userId.toString() !== userId && !(story.viewers || []).some((v: any) => v.userId.toString() === userId)) {
-            story.viewers.push({ userId, viewedAt: new Date() });
-            await story.save();
-        }
-        socket.emit("viewStory", { success: true, data: { viewers: story.viewers, reactions: story.reactions } });
     });
 
     socket.on("reactToStory", async (data: { storyId: string; emoji: string }) => {
-        const story = await Story.findById(data.storyId);
-        if (!story) {
-            socket.emit("reactToStory", { success: false, msg: "Status expired" });
-            return;
+        try {
+            if (!data?.storyId || !isValidObjectId(data.storyId) || typeof data?.emoji !== "string" || !data.emoji.trim()) {
+                socket.emit("reactToStory", { success: false, msg: "Invalid story reaction" });
+                return;
+            }
+            const story = await Story.findById(data.storyId);
+            if (!story) {
+                socket.emit("reactToStory", { success: false, msg: "Status expired" });
+                return;
+            }
+            const idx = story.reactions.findIndex((r: any) => r.userId.toString() === userId);
+            if (idx >= 0) story.reactions.splice(idx, 1);
+            story.reactions.push({ emoji: data.emoji.trim().slice(0, 16), userId, userName: socket.data.name });
+            await story.save();
+            io.to(userRoom(story.userId.toString())).emit("storyReaction", {
+                storyId: story._id,
+                reactions: story.reactions,
+            });
+            socket.emit("reactToStory", { success: true, data: { reactions: story.reactions } });
+        } catch {
+            socket.emit("reactToStory", { success: false, msg: "Failed to react to story" });
         }
-        const idx = story.reactions.findIndex((r: any) => r.userId.toString() === userId);
-        if (idx >= 0) story.reactions.splice(idx, 1);
-        story.reactions.push({ emoji: data.emoji, userId, userName: socket.data.name });
-        await story.save();
-        io.to(userRoom(story.userId.toString())).emit("storyReaction", {
-            storyId: story._id,
-            reactions: story.reactions,
-        });
-        socket.emit("reactToStory", { success: true, data: { reactions: story.reactions } });
     });
 
     socket.on("replyToStory", async (data: { storyId: string; content: string }) => {
@@ -380,33 +439,53 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
     });
 
     socket.on("deleteStory", async (data: { storyId: string }) => {
-        const story = await Story.findOneAndDelete({ _id: data.storyId, userId });
-        if (!story) {
-            socket.emit("deleteStory", { success: false, msg: "Not found" });
-            return;
+        try {
+            if (!data?.storyId || !isValidObjectId(data.storyId)) {
+                socket.emit("deleteStory", { success: false, msg: "Not found" });
+                return;
+            }
+            const story = await Story.findOneAndDelete({ _id: data.storyId, userId });
+            if (!story) {
+                socket.emit("deleteStory", { success: false, msg: "Not found" });
+                return;
+            }
+            socket.emit("deleteStory", { success: true });
+            io.emit("storyFeedUpdated", { userId });
+        } catch {
+            socket.emit("deleteStory", { success: false, msg: "Failed to delete story" });
         }
-        socket.emit("deleteStory", { success: true });
-        io.emit("storyFeedUpdated", { userId });
     });
 
     socket.on("saveRecentSearch", async (data: { query: string }) => {
-        const q = (data.query || "").trim().slice(0, 80);
-        if (!q) return;
-        await User.findByIdAndUpdate(userId, {
-            $pull: { recentSearches: q },
-        });
-        await User.findByIdAndUpdate(userId, {
-            $push: { recentSearches: { $each: [q], $position: 0, $slice: 12 } },
-        });
+        try {
+            const q = (data?.query || "").trim().slice(0, 80);
+            if (!q) return;
+            await User.findByIdAndUpdate(userId, {
+                $pull: { recentSearches: q },
+            });
+            await User.findByIdAndUpdate(userId, {
+                $push: { recentSearches: { $each: [q], $position: 0, $slice: 12 } },
+            });
+        } catch (err) {
+            console.error("saveRecentSearch error:", err);
+        }
     });
 
     socket.on("getRecentSearches", async () => {
-        const me = await User.findById(userId).select("recentSearches").lean();
-        socket.emit("getRecentSearches", { success: true, data: me?.recentSearches || [] });
+        try {
+            const me = await User.findById(userId).select("recentSearches").lean();
+            socket.emit("getRecentSearches", { success: true, data: me?.recentSearches || [] });
+        } catch {
+            socket.emit("getRecentSearches", { success: false, data: [] });
+        }
     });
 
     socket.on("clearRecentSearches", async () => {
-        await User.findByIdAndUpdate(userId, { recentSearches: [] });
-        socket.emit("getRecentSearches", { success: true, data: [] });
+        try {
+            await User.findByIdAndUpdate(userId, { recentSearches: [] });
+            socket.emit("getRecentSearches", { success: true, data: [] });
+        } catch {
+            socket.emit("getRecentSearches", { success: false, msg: "Failed to clear recent searches" });
+        }
     });
 }

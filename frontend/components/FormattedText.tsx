@@ -94,10 +94,12 @@ function parseInline(text: string, highlight?: string): InlineToken[] {
     };
 
     // If search highlight exists, apply highlight layer
-    if (highlightRegex) {
+    if (highlightRegex && highlight?.trim()) {
+        const matchTestRegex = new RegExp(`^${highlight.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
         const parts = text.split(highlightRegex);
         parts.forEach(part => {
-            if (highlightRegex.test(part)) {
+            if (!part) return;
+            if (matchTestRegex.test(part)) {
                 resultTokens.push({ type: 'highlight', value: part });
             } else {
                 parseUrlsAndFormatting(part);
@@ -123,6 +125,11 @@ export const FormattedText: React.FC<FormattedTextProps> = ({
         return match ? match[1] : null;
     }, [content]);
 
+    const tokens = useMemo(
+        () => (codeBlockMatch !== null ? [] : parseInline(content, searchHighlight)),
+        [content, searchHighlight, codeBlockMatch]
+    );
+
     if (codeBlockMatch !== null) {
         return (
             <View style={styles.codeBlockContainer}>
@@ -132,11 +139,6 @@ export const FormattedText: React.FC<FormattedTextProps> = ({
             </View>
         );
     }
-
-    const tokens = useMemo(
-        () => parseInline(content, searchHighlight),
-        [content, searchHighlight]
-    );
 
     const baseTextStyle: TextStyle = {
         fontSize: verticalScale(size),

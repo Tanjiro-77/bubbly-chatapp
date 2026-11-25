@@ -34,17 +34,21 @@ import {
   Palette,
   Eye,
   Radio,
+  Search,
+  Lock,
+  QrCode,
+  Timer,
 } from "lucide-react";
 import { sounds } from "@/lib/sound";
 
-export const APP_VERSION = "v3.0.0";
-export const APK_DOWNLOAD_LINK =
-  "https://github.com/Tanjiro-77/bubbly-chatapp/releases/download/v3.0.0/Bubbly-v3.0.0.apk";
+export const APP_VERSION = "v3.4.0";
+export const PACKAGE_ID = "com.arnav5569.chat";
+export const APK_DOWNLOAD_LINK = "https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest";
 export const APK_BACKUP_DOWNLOAD_LINK =
   "https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest";
 export const GITHUB_URL = "https://github.com/Tanjiro-77/bubbly-chatapp";
 export const FEEDBACK_EMAIL =
-  "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v3.0%20Feedback&body=Hi%20Arnav%2C%0A%0AHere%27s%20my%20feedback%20on%20Bubbly%20v3.0%3A%0A%0A-%20%5BDescribe%20the%20feedback%2C%20idea%20or%20bug%5D%0A%0ADevice%3A%20%5BYour%20phone%20model%5D%0AAndroid%20%2F%20iOS%20version%3A%20%5BVersion%5D%0A%0AThanks%21";
+  "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v3.4%20Feedback&body=Hi%20Arnav%2C%0A%0AHere%27s%20my%20feedback%20on%20Bubbly%20v3.4%3A%0A%0A-%20%5BDescribe%20the%20feedback%2C%20idea%20or%20bug%5D%0A%0ADevice%3A%20%5BYour%20phone%20model%5D%0AAndroid%20%2F%20iOS%20version%3A%20%5BVersion%5D%0A%0AThanks%21";
 export const DEVELOPER_NAME = "Arnav Khari";
 
 export const featureGroups = [
@@ -109,8 +113,36 @@ export const featureGroups = [
       },
       {
         icon: Bell,
-        title: "Incoming Call Handling",
-        text: "Animated full-screen incoming call notifications with quick decline-and-message flow.",
+        title: "Background Push & Call Alerts",
+        text: "Receive WhatsApp-style message alerts and incoming voice/video calls with Accept & Decline actions even when the app is closed.",
+      },
+    ],
+  },
+  {
+    name: "Privacy, Security & Vault",
+    badge: "Zero Tracking",
+    color: "from-emerald-500/20 to-lime-500/10",
+    textCol: "text-emerald-400",
+    items: [
+      {
+        icon: Lock,
+        title: "Biometric App Lock & PIN Vault",
+        text: "Protect Bubbly with biometric/passcode lock and store private notes inside a dedicated PIN-protected Vault.",
+      },
+      {
+        icon: Eye,
+        title: "View-Once Media",
+        text: "Send photos and videos that vanish automatically after being opened once by the recipient.",
+      },
+      {
+        icon: Timer,
+        title: "Disappearing Messages",
+        text: "Configure automatic self-destruct timers per conversation for ephemeral, clutter-free chats.",
+      },
+      {
+        icon: QrCode,
+        title: "QR Profiles & Contact Sync",
+        text: "Share your personal Bubbly QR code or optionally sync phonebook contacts to discover friends in one tap.",
       },
     ],
   },
@@ -462,26 +494,28 @@ export function PageHero({
 export const navLinks = [
   { to: "/", label: "Home" },
   { to: "/features", label: "Features" },
-  { to: "/download", label: "Download APK" },
-  { to: "/about", label: "Story & Creator" },
+  { to: "/download", label: "Download" },
+  { to: "/about", label: "Story" },
+  { to: "/privacy-policy", label: "Privacy" },
+  { to: "/security", label: "Security" },
   { to: "/faq", label: "FAQ" },
 ] as const;
 
 // ── Site header ──────────────────────────────────────────────
-export function SiteHeader() {
+export function SiteHeader({ onOpenCommand }: { onOpenCommand?: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 px-3 pt-3">
       {/* Floating Pill Header */}
       <div
-        className="mx-auto flex max-w-6xl items-center gap-3 rounded-full border border-border bg-background/85 px-4 py-2.5 backdrop-blur-xl transition-all duration-300"
+        className="mx-auto flex max-w-6xl items-center gap-2 rounded-full border border-border/80 bg-background/82 px-3.5 py-2 backdrop-blur-2xl transition-all duration-300"
         style={{ boxShadow: "var(--shadow-soft)" }}
       >
         {/* Logo */}
         <Link
           to="/"
-          className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90"
+          className="flex min-w-0 shrink-0 items-center gap-2.5 transition-opacity hover:opacity-90"
           onClick={() => {
             sounds.playPop();
             setOpen(false);
@@ -507,15 +541,15 @@ export function SiteHeader() {
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="mx-auto hidden items-center gap-1 lg:flex">
+        <nav className="mx-auto hidden items-center gap-0.5 lg:flex">
           {navLinks.map((n) => (
             <Link
               key={n.to}
               to={n.to}
               onClick={() => sounds.playTap()}
-              className="rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground"
+              className="rounded-full px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-all duration-200 hover:bg-muted/80 hover:text-foreground whitespace-nowrap"
               activeProps={{
-                className: "!bg-primary/15 !text-foreground font-semibold shadow-xs",
+                className: "!bg-primary/16 !text-foreground font-semibold shadow-xs",
               }}
             >
               {n.label}
@@ -524,7 +558,26 @@ export function SiteHeader() {
         </nav>
 
         {/* Action Controls */}
-        <div className="ml-auto flex items-center gap-2 lg:ml-0">
+        <div className="ml-auto flex items-center gap-1.5 lg:ml-0">
+          {onOpenCommand && (
+            <button
+              type="button"
+              onClick={() => {
+                sounds.playTap();
+                onOpenCommand();
+              }}
+              aria-label="Open quick search"
+              title="Quick jump (Ctrl+K)"
+              className="btn-base btn-ghost-outline hidden! h-9 gap-2 px-3! py-0! text-xs! text-muted-foreground xl:inline-flex!"
+            >
+              <Search className="h-3.5 w-3.5 text-primary" />
+              <span>Search</span>
+              <kbd className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground border border-border">
+                ⌘K
+              </kbd>
+            </button>
+          )}
+
           <SoundToggle />
           <ThemeToggle />
 
@@ -534,18 +587,18 @@ export function SiteHeader() {
             rel="noreferrer"
             aria-label="Star Bubbly on GitHub"
             onClick={() => sounds.playTap()}
-            className="btn-base btn-ghost-outline hidden! h-10 w-10 p-0! sm:inline-flex!"
+            className="btn-base btn-ghost-outline hidden! h-9 w-9 p-0! sm:inline-flex!"
           >
             <Github className="h-4 w-4" />
           </a>
 
           <DownloadButton
-            className="hidden! px-4! py-2! text-sm! sm:inline-flex!"
+            className="hidden! px-3.5! py-2! text-xs! sm:inline-flex!"
             label="Get APK"
           />
 
           <button
-            className="btn-base btn-ghost-outline h-10 w-10 p-0! lg:hidden"
+            className="btn-base btn-ghost-outline h-9 w-9 p-0! lg:hidden"
             aria-label="Toggle navigation menu"
             onClick={() => {
               sounds.playTap();
@@ -572,7 +625,7 @@ export function SiteHeader() {
             </span>
           </div>
 
-          <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {navLinks.map((n) => (
               <Link
                 key={n.to}
@@ -581,25 +634,27 @@ export function SiteHeader() {
                   sounds.playTap();
                   setOpen(false);
                 }}
-                className="flex items-center justify-between rounded-2xl px-4 py-3 font-semibold transition-colors hover:bg-muted"
-                activeProps={{ className: "!bg-primary/15 !text-foreground font-bold" }}
+                className="flex items-center justify-between rounded-2xl border border-transparent px-3.5 py-2.5 text-sm font-semibold transition-colors hover:border-border hover:bg-muted"
+                activeProps={{
+                  className: "!bg-primary/15 !border-primary/30 !text-foreground font-bold",
+                }}
               >
                 <span>{n.label}</span>
-                <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+                <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
               </Link>
             ))}
           </div>
 
-          <div className="mt-4 border-t border-border pt-4">
+          <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 sm:flex-row">
             <DownloadButton
-              className="w-full justify-center py-3!"
-              label="Download Bubbly APK (v3.0.0)"
+              className="flex-1 justify-center py-3!"
+              label={`Download APK (${APP_VERSION})`}
             />
             <a
               href={GITHUB_URL}
               target="_blank"
               rel="noreferrer"
-              className="btn-base btn-ghost-outline mt-2 w-full justify-center"
+              className="btn-base btn-ghost-outline flex-1 justify-center"
             >
               <Github className="h-4 w-4" /> View Source on GitHub
             </a>
@@ -645,7 +700,7 @@ export function CtaBand() {
         <div className="relative mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 backdrop-blur-md">
           <Zap className="h-3.5 w-3.5 text-yellow-300" />
           <span className="font-mono text-xs font-semibold tracking-widest uppercase text-white/90">
-            Version 3.0.0 Available Now · Free & Open Source
+            Version {APP_VERSION} Available Now · Free & Open Source
           </span>
         </div>
 
@@ -655,8 +710,8 @@ export function CtaBand() {
         </h2>
 
         <p className="relative mx-auto mt-5 max-w-xl text-base text-white/80 sm:text-lg">
-          Direct APK download with zero ads, real-time messaging, Agora HD voice/video calls, and
-          Story Studio.
+          Background push & call alerts, Agora HD voice/video calls, Story Studio, and Biometric
+          Vault — zero ads or trackers.
         </p>
 
         <div className="mx-auto my-8 h-1 w-24 rounded-full bg-linear-to-r from-transparent via-white/40 to-transparent" />
@@ -674,7 +729,7 @@ export function CtaBand() {
         </div>
 
         <p className="relative mt-8 font-mono text-[11px] tracking-[0.2em] uppercase text-white/50">
-          Crafted with curiosity by {DEVELOPER_NAME} · No Play Store required
+          Crafted with curiosity by {DEVELOPER_NAME} · {PACKAGE_ID}
         </p>
       </div>
     </section>
@@ -719,7 +774,7 @@ export function SiteFooter() {
           <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-semibold">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-muted-foreground">Status:</span>
-            <span className="text-foreground">All Systems v3.0 Operational</span>
+            <span className="text-foreground">All Systems {APP_VERSION} Operational</span>
           </div>
         </div>
 
@@ -752,10 +807,11 @@ export function SiteFooter() {
             <li>
               <a
                 href={APK_DOWNLOAD_LINK}
-                download
+                target="_blank"
+                rel="noreferrer"
                 className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
               >
-                Direct APK v3.0.0
+                Direct APK ({APP_VERSION})
               </a>
             </li>
             <li>
@@ -777,6 +833,22 @@ export function SiteFooter() {
               >
                 GitHub Repository
               </a>
+            </li>
+            <li>
+              <Link
+                to="/privacy-policy"
+                className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
+              >
+                Privacy Policy
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/security"
+                className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
+              >
+                Security & Data Safety
+              </Link>
             </li>
             <li>
               <a
@@ -823,7 +895,7 @@ export function SiteFooter() {
             {DEVELOPER_NAME}.
           </p>
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground/60">
-            v3.0.0 · Android APK & Expo Ready · Open Source
+            {APP_VERSION} · {PACKAGE_ID} · Open Source
           </p>
         </div>
       </div>

@@ -27,7 +27,7 @@ export type TypoProps = {
 // ─────────────────────────────────────────────
 
 export interface UserProps {
-  email: string;
+  email?: string;
   name: string;
   avatar?: string | null;
   id?: string;
@@ -39,7 +39,7 @@ export interface UserProps {
 
 export interface UserDataProps {
   name: string;
-  email: string;
+  email?: string;
   avatar?: any;
 }
 
@@ -70,8 +70,14 @@ export type AuthContextProps = {
     password: string
   ) => Promise<void>;
 
+  signInWithPhone: (
+    phoneNumber: string,
+    password: string
+  ) => Promise<void>;
+
   signInWithGoogle: (payload: {
     idToken?: string;
+    accessToken?: string;
     email?: string;
     name?: string;
     avatar?: string;
@@ -82,6 +88,13 @@ export type AuthContextProps = {
 
   signUp: (
     email: string,
+    password: string,
+    name: string,
+    avatar?: string
+  ) => Promise<void>;
+
+  signUpWithPhone: (
+    phoneNumber: string,
     password: string,
     name: string,
     avatar?: string
@@ -196,6 +209,9 @@ export type ConversationProps = {
   unreadCount?: number;
   isMuted?: boolean;
   mutedUntil?: string | null;
+  admins?: any[];
+  createdBy?: string;
+  disappearingSeconds?: number;
   pinnedMessages?: {
     id: string;
     content: string;

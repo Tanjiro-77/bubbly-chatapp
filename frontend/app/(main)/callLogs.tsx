@@ -5,7 +5,7 @@
  * Provides WhatsApp-grade call logging with Missed call filters, duration, and 1-tap redial.
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
     View,
     FlatList,
@@ -41,7 +41,7 @@ interface CallLogItem {
     conversationId?: {
         _id: string;
     } | string;
-    status: "ongoing" | "ended" | "missed" | "declined" | "ringing";
+    status: "ongoing" | "ended" | "missed" | "rejected" | "failed" | "cancelled" | "declined" | "ringing";
     duration: number;
     kind: "voice" | "video";
     createdAt: string;
@@ -62,6 +62,7 @@ const CallLogsScreen = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "missed">("all");
+    const redialTargetRef = useRef<{ name: string; avatar: string } | null>(null);
 
     const fetchHistory = useCallback(async () => {
         try {
@@ -81,19 +82,23 @@ const CallLogsScreen = () => {
         fetchHistory();
 
         const ringingHandler = (data: any) => {
+            const target = redialTargetRef.current;
+            redialTargetRef.current = null;
             router.push({
                 pathname: "/(main)/callScreen",
                 params: {
                     callId: data.callId,
                     kind: data.kind,
                     conversationId: data.conversationId,
-                    remoteUserName: data.remoteUserName || "Contact",
-                    remoteUserAvatar: data.remoteUserAvatar || "",
+                    remoteUserName: target?.name || data.remoteUserName || "Contact",
+                    remoteUserAvatar: target?.avatar || data.remoteUserAvatar || "",
+                    isOutgoing: "true",
                 },
             });
         };
 
         const failedHandler = (data: any) => {
+            redialTargetRef.current = null;
             Alert.alert("Call Failed", data?.msg || "User is currently busy.");
         };
 
@@ -117,6 +122,11 @@ const CallLogsScreen = () => {
             return;
         }
 
+        redialTargetRef.current = {
+            name: target.name || "Contact",
+            avatar: target.avatar || "",
+        };
+
         callInvite({
             conversationId: convId,
             calleeId: target._id,
@@ -126,7 +136,7 @@ const CallLogsScreen = () => {
 
     const filteredCalls = useMemo(() => {
         if (activeTab === "missed") {
-            return calls.filter(c => c.status === "missed" || c.status === "declined");
+            return calls.filter(c => ["missed", "rejected", "failed", "cancelled", "declined"].includes(c.status));
         }
         return calls;
     }, [calls, activeTab]);
@@ -135,7 +145,7 @@ const CallLogsScreen = () => {
         if (!currentUser) return null;
         const isCaller = item.callerId?._id === currentUser.id;
         const otherUser = isCaller ? item.calleeId : item.callerId;
-        const isMissed = item.status === "missed" || item.status === "declined";
+        const isMissed = ["missed", "rejected", "failed", "cancelled", "declined"].includes(item.status);
         const isVideo = item.kind === "video";
         const dateFormatted = moment(item.createdAt).calendar(null, {
             sameDay: "h:mm A",
@@ -189,7 +199,7 @@ const CallLogsScreen = () => {
                         )}
                         {isMissed && (
                             <Typo size={12} fontWeight="600" color={colors.rose} style={{ marginLeft: scale(4) }}>
-                                · {item.status === "missed" ? "Missed" : "Declined"}
+                                · {item.status === "missed" ? "Missed" : item.status === "cancelled" ? "Cancelled" : item.status === "failed" ? "Failed" : "Declined"}
                             </Typo>
                         )}
                     </View>
@@ -220,10 +230,11 @@ const CallLogsScreen = () => {
     }, [currentUser, handleRedial]);
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+            <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
-                <BackButton />
+                <BackButton color={colors.neutral900} />
                 <View style={styles.headerTitleWrap}>
                     <Typo size={19} fontWeight="700" color={colors.neutral900}>
                         Calls
@@ -288,7 +299,7 @@ const CallLogsScreen = () => {
             ) : (
                 <FlatList
                     data={filteredCalls}
-                    keyExtractor={item => item._id || Math.random().toString()}
+                    keyExtractor={(item, idx) => item._id || `call-${idx}`}
                     renderItem={renderCallItem}
                     contentContainerStyle={styles.listContent}
                     refreshControl={
@@ -303,6 +314,7 @@ const CallLogsScreen = () => {
                     }
                 />
             )}
+            </View>
         </ScreenWrapper>
     );
 };

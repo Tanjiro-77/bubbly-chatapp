@@ -15,10 +15,16 @@ export const useGoogleAuth = () => {
     const { signInWithGoogle } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
+    const hasClientForPlatform = Platform.select({
+        ios: !!GOOGLE_IOS_CLIENT_ID,
+        android: !!GOOGLE_ANDROID_CLIENT_ID,
+        default: !!GOOGLE_WEB_CLIENT_ID,
+    });
+
     const [request, response, promptAsync] = Google.useAuthRequest({
-        webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
-        androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
-        iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+        webClientId: GOOGLE_WEB_CLIENT_ID || "unconfigured",
+        androidClientId: GOOGLE_ANDROID_CLIENT_ID || "unconfigured",
+        iosClientId: GOOGLE_IOS_CLIENT_ID || "unconfigured",
         scopes: ["profile", "email"],
     });
 
@@ -41,21 +47,7 @@ export const useGoogleAuth = () => {
             if (idToken) {
                 await signInWithGoogle({ idToken });
             } else if (accessToken) {
-                // Fetch profile using Google's userinfo endpoint
-                const res = await fetch("https://www.googleapis.com/userinfo/v2/me", {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                });
-                const userInfo = await res.json();
-                if (userInfo.email) {
-                    await signInWithGoogle({
-                        email: userInfo.email,
-                        name: userInfo.name,
-                        avatar: userInfo.picture,
-                        googleId: userInfo.id,
-                    });
-                } else {
-                    throw new Error("Unable to retrieve Google user profile");
-                }
+                await signInWithGoogle({ accessToken } as any);
             } else {
                 throw new Error("No Google token received");
             }
@@ -68,9 +60,9 @@ export const useGoogleAuth = () => {
     };
 
     const triggerGoogleSignIn = async () => {
-        // If Google Client IDs are not yet configured in production env,
-        // provide a clean fallback prompt so users and testers can still authenticate
-        if (!GOOGLE_WEB_CLIENT_ID && !GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID) {
+        // If Google Client ID is not configured for the active platform,
+        // provide a clean dev fallback instead of sending an invalid clientId
+        if (!hasClientForPlatform) {
             Alert.prompt
                 ? Alert.prompt(
                     "Sign in with Google",

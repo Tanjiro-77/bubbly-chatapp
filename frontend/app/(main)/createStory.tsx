@@ -13,7 +13,7 @@ import { colors, radius, spacingX, spacingY } from '../../constants/theme';
 import { verticalScale, scale } from '../../utils/styling';
 import Typo from '../../components/Typo';
 import Loading from '../../components/Loading';
-import { createStory } from '../../socket/socketEvents';
+import { createStory, isSocketConnected } from '../../socket/socketEvents';
 import { uploadFileToCloudinary } from '../../services/imageService';
 
 interface GradientPreset {
@@ -102,6 +102,11 @@ const CreateStory = () => {
             return;
         }
 
+        if (!isSocketConnected()) {
+            Alert.alert('Offline', 'You need an internet connection to post a story.');
+            return;
+        }
+
         setLoading(true);
         try {
             let mediaUrl = '';
@@ -119,11 +124,24 @@ const CreateStory = () => {
                 mediaUrl = uploadResult.data;
             }
 
-            createStory({
-                type: storyType,
-                text: text.trim(),
-                backgroundColor: selectedGradient.colors[0],
-                mediaUrl,
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    createStory(ackHandler, true);
+                    resolve();
+                }, 4000);
+                const ackHandler = (res: any) => {
+                    clearTimeout(timeout);
+                    createStory(ackHandler, true);
+                    if (res?.success) resolve();
+                    else reject(new Error(res?.msg || 'Failed to publish story'));
+                };
+                createStory(ackHandler);
+                createStory({
+                    type: storyType,
+                    text: text.trim(),
+                    backgroundColor: selectedGradient.colors[0],
+                    mediaUrl,
+                });
             });
 
             router.back();

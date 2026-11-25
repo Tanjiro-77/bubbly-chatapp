@@ -25,13 +25,13 @@ export interface UserPrivacyProps {
 
 export interface UserProps extends Document {
     id: string;
-    email: string;
+    email?: string;
     password?: string;
     name?: string;
     avatar?: string;
     googleId?: string;
     phoneNumber?: string;
-    authProvider?: "local" | "google";
+    authProvider?: "local" | "google" | "phone";
     created?: Date;
     isOnline?: boolean;
     lastSeen?: Date | null;
@@ -39,6 +39,8 @@ export interface UserProps extends Document {
     privacy: UserPrivacyProps;
     isModerator: boolean;
     recentSearches: string[];
+    pushTokens?: string[];
+    notificationsEnabled?: boolean;
     theme: {
         mode: "light" | "dark" | "system";
         accent: string;
@@ -74,6 +76,8 @@ export interface ConversationProps extends Document {
     disappearingSeconds: number;
     wallpaper?: string;
     pinnedMessages?: Types.ObjectId[];
+    pinnedBy?: Types.ObjectId[];
+    deletedFor?: Types.ObjectId[];
     mutedBy?: { userId: Types.ObjectId; until: Date | null }[];
     createdAt: Date;
     updatedAt: Date;
