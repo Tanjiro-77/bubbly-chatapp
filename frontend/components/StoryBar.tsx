@@ -176,22 +176,23 @@ export default StoryBar;
 
 const styles = StyleSheet.create({
     container: {
-        marginBottom: spacingY._12,
+        marginBottom: spacingY._8,
     },
     scrollContent: {
         paddingHorizontal: spacingX._20,
-        gap: spacingX._15,
+        gap: spacingX._12,
         paddingVertical: spacingY._5,
     },
     storyWrap: {
         alignItems: 'center',
         gap: spacingY._5,
-        position: 'relative',
+        width: scale(66),
     },
     avatarWrap: {
         position: 'relative',
         alignItems: 'center',
         justifyContent: 'center',
+        padding: 2,
     },
     gradientRing: {
         padding: 2.5,
@@ -234,7 +235,7 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     storyName: {
-        maxWidth: scale(64),
+        width: "100%",
         textAlign: 'center',
     },
 });

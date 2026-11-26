@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-    View, StyleSheet, TouchableOpacity, StatusBar, Platform,
+    View, StyleSheet, TouchableOpacity, StatusBar, Platform, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from '../../components/BubblyAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -111,6 +112,9 @@ const AcousticRings = ({ size }: { size: number }) => {
 const CallScreen = () => {
     const [localVideoReady, setLocalVideoReady] = useState(false);
     const router = useRouter();
+    const insets = useSafeAreaInsets();
+    const { height } = useWindowDimensions();
+    const isCompactHeight = height < 700;
     const {
         callId,
         kind,
@@ -438,7 +442,13 @@ const CallScreen = () => {
 
                 {/* Local video small PIP preview */}
                 {!isVideoOff && localVideoReady && (
-                    <Animated.View entering={FadeIn.duration(300)} style={styles.localVideoWrap}>
+                    <Animated.View
+                        entering={FadeIn.duration(300)}
+                        style={[
+                            styles.localVideoWrap,
+                            { top: Math.max(insets.top, 20) + verticalScale(78) },
+                        ]}
+                    >
                         <RtcSurfaceView
                             style={styles.localVideo}
                             canvas={{ uid: 0, sourceType: VideoSourceType.VideoSourceCamera }}
@@ -462,22 +472,30 @@ const CallScreen = () => {
                         {/* Top glass header */}
                         <LinearGradient
                             colors={['rgba(0,0,0,0.85)', 'rgba(0,0,0,0.4)', 'transparent']}
-                            style={styles.videoTopGradient}
+                            style={[
+                                styles.videoTopGradient,
+                                { paddingTop: Math.max(insets.top, 20) + verticalScale(12) },
+                            ]}
                         >
                             <View style={styles.videoTopBar}>
                                 <View style={styles.videoTopLeft}>
                                     <View style={styles.videoHeaderAvatarWrap}>
                                         <Avatar size={38} uri={remoteUserAvatar as string} />
                                     </View>
-                                    <View>
-                                        <Typo size={18} fontWeight="800" color={colors.white}>
+                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                        <Typo
+                                            size={18}
+                                            fontWeight="800"
+                                            color={colors.white}
+                                            textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}
+                                        >
                                             {remoteUserName}
                                         </Typo>
                                         <View style={styles.videoStatusRow}>
                                             {callState === 'connected' && (
                                                 <View style={styles.connectedDot} />
                                             )}
-                                            <Typo size={12} color={callState === 'connected' ? colors.primary : 'rgba(255,255,255,0.7)'} fontWeight="600">
+                                            <Typo size={12} color={callState === 'connected' ? colors.primary : 'rgba(255,255,255,0.7)'} fontWeight="600" textProps={{ numberOfLines: 1 }}>
                                                 {getStatusText()}
                                             </Typo>
                                         </View>
@@ -495,7 +513,10 @@ const CallScreen = () => {
                         {/* Bottom dock controls */}
                         <LinearGradient
                             colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.92)']}
-                            style={styles.videoBottomGradient}
+                            style={[
+                                styles.videoBottomGradient,
+                                { paddingBottom: Math.max(insets.bottom, 16) + verticalScale(14) },
+                            ]}
                         >
                             <View style={styles.videoGlassDock}>
                                 <VideoControlButton
@@ -562,7 +583,16 @@ const CallScreen = () => {
         >
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-            <Animated.View entering={FadeIn.duration(500)} style={styles.voiceContent}>
+            <Animated.View
+                entering={FadeIn.duration(500)}
+                style={[
+                    styles.voiceContent,
+                    {
+                        paddingTop: Math.max(insets.top, 20) + verticalScale(16),
+                        paddingBottom: Math.max(insets.bottom, 20) + verticalScale(16),
+                    },
+                ]}
+            >
 
                 {/* ── Top section: Type badge, name, live status ── */}
                 <View style={styles.voiceTopSection}>
@@ -573,7 +603,13 @@ const CallScreen = () => {
                         </Typo>
                     </View>
 
-                    <Typo size={28} fontWeight="800" color={colors.white} style={{ marginTop: spacingY._12 }}>
+                    <Typo
+                        size={isCompactHeight ? 24 : 28}
+                        fontWeight="800"
+                        color={colors.white}
+                        style={{ marginTop: spacingY._12, textAlign: 'center', maxWidth: '95%' }}
+                        textProps={{ numberOfLines: 2, ellipsizeMode: 'tail' }}
+                    >
                         {remoteUserName}
                     </Typo>
 
@@ -816,9 +852,12 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     videoTopLeft: {
+        flex: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
         gap: spacingX._12,
+        marginRight: spacingX._10,
     },
     videoHeaderAvatarWrap: {
         borderRadius: radius.full,
@@ -841,6 +880,7 @@ const styles = StyleSheet.create({
     hdBadge: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 0,
         gap: 5,
         backgroundColor: 'rgba(255,255,255,0.15)',
         paddingHorizontal: spacingX._10,
@@ -854,18 +894,17 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        paddingBottom: verticalScale(Platform.OS === 'ios' ? 45 : 30),
         paddingTop: spacingY._30,
-        paddingHorizontal: spacingX._15,
+        paddingHorizontal: spacingX._12,
     },
     videoGlassDock: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-around',
+        justifyContent: 'space-between',
         backgroundColor: 'rgba(24,24,27,0.85)',
         borderRadius: radius._24,
-        paddingVertical: spacingY._15,
-        paddingHorizontal: spacingX._15,
+        paddingVertical: spacingY._12,
+        paddingHorizontal: spacingX._12,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
     },

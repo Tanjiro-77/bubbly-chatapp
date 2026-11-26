@@ -206,7 +206,7 @@ const StarredMessagesScreen = () => {
                             uri={sender?.avatar}
                             size={verticalScale(32)}
                         />
-                        <View style={{ marginLeft: spacingX._7, flex: 1 }}>
+                        <View style={{ marginLeft: spacingX._7, flex: 1, minWidth: 0 }}>
                             <Typo size={13} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
                                 {sender?.name || "Unknown"}
                             </Typo>
@@ -274,7 +274,7 @@ const StarredMessagesScreen = () => {
     }, [handleJumpToChat, handleUnstar]);
 
     return (
-        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+        <ScreenWrapper backgroundColor={colors.white} style={{ backgroundColor: colors.white }}>
             <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
@@ -364,6 +364,7 @@ const styles = StyleSheet.create({
     },
     headerTitleWrap: {
         flex: 1,
+        minWidth: 0,
         marginLeft: spacingX._5,
     },
     searchBox: {

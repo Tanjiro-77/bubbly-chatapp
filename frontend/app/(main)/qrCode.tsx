@@ -8,6 +8,7 @@ import {
     Dimensions,
     Platform,
     ScrollView,
+    KeyboardAvoidingView,
 } from "react-native";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
@@ -227,17 +228,21 @@ export default function QRCodeScreen() {
 
     return (
         <ScreenWrapper showPattern bgOpacity={0.4}>
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+            >
                 {/* Header */}
                 <View style={styles.header}>
                     <BackButton />
-                    <Typo size={17} fontWeight="700" color={colors.white}>
+                    <Typo size={17} fontWeight="700" color={colors.white} style={{ flex: 1, textAlign: "center" }} textProps={{ numberOfLines: 1 }}>
                         Bubbly QR Code
                     </Typo>
                     <TouchableOpacity
                         onPress={handleShare}
                         style={styles.headerShareBtn}
                         activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                         <Icons.ShareNetwork size={20} color={colors.white} weight="bold" />
                     </TouchableOpacity>
@@ -287,6 +292,7 @@ export default function QRCodeScreen() {
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
                 >
                     {activeTab === 0 ? (
                         /* ── TAB 1: MY QR CODE ── */
@@ -434,7 +440,7 @@ export default function QRCodeScreen() {
                         </Animated.View>
                     )}
                 </ScrollView>
-            </View>
+            </KeyboardAvoidingView>
         </ScreenWrapper>
     );
 }

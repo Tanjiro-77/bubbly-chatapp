@@ -201,15 +201,16 @@ const ContactProfileScreen = () => {
                 {/* ── Top App Bar ── */}
                 <View style={styles.topBar}>
                     <BackButton iconSize={22} />
-                    <Typo size={17} fontWeight="700" color={colors.white}>
+                    <Typo size={17} fontWeight="700" color={colors.white} style={{ flex: 1, textAlign: "center" }} textProps={{ numberOfLines: 1 }}>
                         {isDirectChat ? "Contact Info" : "Group Info"}
                     </Typo>
-                    <TouchableOpacity onPress={handleShareContact} activeOpacity={0.7} style={styles.iconBtn}>
+                    <TouchableOpacity onPress={handleShareContact} activeOpacity={0.7} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Icons.ShareNetwork size={verticalScale(20)} color={colors.white} weight="bold" />
                     </TouchableOpacity>
                 </View>
 
                 {/* ── Content Card ── */}
+                <View style={styles.sheet}>
                 <ScrollView
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
@@ -423,6 +424,7 @@ const ContactProfileScreen = () => {
                         </TouchableOpacity>
                     </View>
                 </ScrollView>
+                </View>
             </View>
         </ScreenWrapper>
     );
@@ -445,15 +447,20 @@ const styles = StyleSheet.create({
     iconBtn: {
         padding: spacingY._7,
     },
-    scrollContent: {
+    sheet: {
+        flex: 1,
         backgroundColor: colors.white,
         borderTopLeftRadius: radius._40,
         borderTopRightRadius: radius._40,
+        borderCurve: "continuous",
+        overflow: "hidden",
+    },
+    scrollContent: {
         paddingTop: spacingY._25,
         paddingHorizontal: spacingX._20,
-        paddingBottom: verticalScale(50),
+        paddingBottom: verticalScale(40),
         gap: spacingY._15,
-        minHeight: "100%",
+        flexGrow: 1,
     },
     heroSection: {
         alignItems: "center",
@@ -481,14 +488,18 @@ const styles = StyleSheet.create({
     },
     nameText: {
         marginTop: spacingY._5,
+        textAlign: "center",
     },
     actionDock: {
         flexDirection: "row",
+        flexWrap: "wrap",
         alignItems: "center",
         justifyContent: "space-around",
         backgroundColor: colors.white,
         borderRadius: radius._20,
-        paddingVertical: spacingY._15,
+        paddingVertical: spacingY._12,
+        paddingHorizontal: spacingX._8,
+        gap: scale(8),
         borderWidth: 1,
         borderColor: colors.cardBorderSubtle,
         marginBottom: spacingY._5,
@@ -501,6 +512,7 @@ const styles = StyleSheet.create({
     actionItem: {
         alignItems: "center",
         gap: spacingY._5,
+        minWidth: scale(52),
     },
     actionCircle: {
         width: verticalScale(46),

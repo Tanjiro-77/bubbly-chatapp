@@ -4,10 +4,10 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     ScrollView,
     Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { captureAppException } from "../services/errorReporter";
 
 interface Props {
@@ -148,20 +148,20 @@ const styles = StyleSheet.create({
     },
     retryButton: {
         width: "100%",
-        backgroundColor: "#208AEF",
+        backgroundColor: "#f59e0b",
         paddingVertical: 14,
-        borderRadius: 12,
+        borderRadius: 999,
         alignItems: "center",
-        shadowColor: "#208AEF",
+        shadowColor: "#d97706",
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
+        shadowOpacity: 0.25,
         shadowRadius: 8,
         elevation: 3,
     },
     retryButtonText: {
-        color: "#FFFFFF",
+        color: "#1c1917",
         fontSize: 16,
-        fontWeight: "600",
+        fontWeight: "700",
     },
 });
 

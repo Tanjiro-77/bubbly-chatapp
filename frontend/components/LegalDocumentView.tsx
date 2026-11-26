@@ -8,6 +8,7 @@ import {
     View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import * as Icons from "phosphor-react-native";
 import ScreenWrapper from "./ScreenWrapper";
@@ -80,6 +81,7 @@ const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
     contactDescription,
 }) => {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const appVersion = Constants.expoConfig?.version ?? "3.4.0";
 
     const handleBack = () => {
@@ -153,7 +155,10 @@ const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
                 {/* ── White Sheet Content ── */}
                 <View style={styles.sheet}>
                     <ScrollView
-                        contentContainerStyle={styles.scrollContent}
+                        contentContainerStyle={[
+                            styles.scrollContent,
+                            { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._15 },
+                        ]}
                         showsVerticalScrollIndicator={false}
                     >
                         {/* Highlights grid */}
@@ -360,7 +365,9 @@ const styles = StyleSheet.create({
         gap: scale(10),
     },
     highlightCard: {
-        width: "48%",
+        flexBasis: "47%",
+        flexGrow: 1,
+        minWidth: 0,
         backgroundColor: colors.white,
         borderRadius: radius._15,
         padding: spacingX._12,

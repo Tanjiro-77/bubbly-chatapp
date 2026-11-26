@@ -13,9 +13,10 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Modal,
-    Dimensions,
     Linking,
+    useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useLocalSearchParams } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -29,9 +30,6 @@ import { getMessages, isSocketConnected } from "../../socket/socketEvents";
 import { MessageProps, ResponseProps } from "../../types";
 import moment from "moment";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const GRID_ITEM_SIZE = (SCREEN_WIDTH - scale(40)) / 3;
-
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
 
 const formatFileSize = (bytes?: number) => {
@@ -43,6 +41,9 @@ const formatFileSize = (bytes?: number) => {
 
 const SharedMediaScreen = () => {
     const { conversationId, name } = useLocalSearchParams();
+    const insets = useSafeAreaInsets();
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const gridItemSize = Math.floor((screenWidth - spacingX._15 * 2 - scale(5) * 2) / 3);
     const [messages, setMessages] = useState<MessageProps[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"media" | "docs" | "links">("media");
@@ -152,7 +153,7 @@ const SharedMediaScreen = () => {
         const isVideo = item.type === "video" || item.attachmentMeta?.mimeType?.startsWith("video/");
         return (
             <TouchableOpacity
-                style={styles.gridItem}
+                style={[styles.gridItem, { width: gridItemSize, height: gridItemSize }]}
                 activeOpacity={0.8}
                 onPress={() => {
                     if (isVideo) {
@@ -170,7 +171,7 @@ const SharedMediaScreen = () => {
                 )}
             </TouchableOpacity>
         );
-    }, []);
+    }, [gridItemSize]);
 
     const renderDocItem = useCallback(({ item }: { item: MessageProps }) => {
         const uri = item.attachmentMeta?.url || item.attachement;
@@ -233,7 +234,7 @@ const SharedMediaScreen = () => {
     }, []);
 
     return (
-        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+        <ScreenWrapper backgroundColor={colors.white} style={{ backgroundColor: colors.white }}>
             <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
@@ -374,7 +375,7 @@ const SharedMediaScreen = () => {
             >
                 <View style={styles.modalBg}>
                     <TouchableOpacity
-                        style={styles.modalCloseBtn}
+                        style={[styles.modalCloseBtn, { top: Math.max(insets.top, spacingY._20) + spacingY._10 }]}
                         onPress={() => setPreviewImageUri(null)}
                         activeOpacity={0.8}
                     >
@@ -383,7 +384,7 @@ const SharedMediaScreen = () => {
                     {previewImageUri && (
                         <Image
                             source={{ uri: previewImageUri }}
-                            style={styles.modalImage}
+                            style={{ width: screenWidth, height: screenHeight * 0.78 }}
                             contentFit="contain"
                         />
                     )}
@@ -460,8 +461,6 @@ const styles = StyleSheet.create({
         marginBottom: scale(5),
     },
     gridItem: {
-        width: GRID_ITEM_SIZE,
-        height: GRID_ITEM_SIZE,
         borderRadius: radius._10,
         overflow: "hidden",
         backgroundColor: colors.neutral100,
@@ -500,6 +499,7 @@ const styles = StyleSheet.create({
     },
     docInfo: {
         flex: 1,
+        minWidth: 0,
     },
     linkCard: {
         flexDirection: "row",
@@ -526,6 +526,7 @@ const styles = StyleSheet.create({
     },
     linkInfo: {
         flex: 1,
+        minWidth: 0,
     },
     modalBg: {
         flex: 1,
@@ -535,13 +536,10 @@ const styles = StyleSheet.create({
     },
     modalCloseBtn: {
         position: "absolute",
-        top: verticalScale(40),
         right: spacingX._20,
         zIndex: 10,
         padding: spacingX._7,
-    },
-    modalImage: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_WIDTH * 1.3,
+        backgroundColor: "rgba(255,255,255,0.12)",
+        borderRadius: radius.full,
     },
 });

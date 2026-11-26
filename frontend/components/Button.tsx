@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import React from 'react'
 import { ButtonProps } from "../types"
 import { colors, radius } from "../constants/theme"
@@ -10,19 +10,27 @@ const Button = ({
     onPress,
     children,
     loading = false,
-
+    disabled = false,
+    activeOpacity = 0.82,
+    ...rest
 }: ButtonProps) => {
 
     if (loading) {
         return (
-            <View style={[styles.button, style, { backgroundColor: 'transparent' }]}>
-                <Loading />
+            <View style={[styles.button, style, styles.loadingState]}>
+                <Loading size="small" color={colors.neutral900} />
             </View>
         )
     }
 
     return (
-        <TouchableOpacity onPress={onPress} style={[styles.button, style]}>
+        <TouchableOpacity
+            onPress={onPress}
+            disabled={disabled}
+            activeOpacity={activeOpacity}
+            style={[styles.button, style, disabled && styles.disabledState]}
+            {...rest}
+        >
             {children}
         </TouchableOpacity>
     )
@@ -35,8 +43,15 @@ const styles = StyleSheet.create({
         backgroundColor: colors.primary,
         borderRadius: radius.full,
         borderCurve: 'continuous',
-        height: verticalScale(56),
+        height: verticalScale(54),
         justifyContent: 'center',
-        alignItems: 'center'
-    }
+        alignItems: 'center',
+        flexDirection: 'row',
+    },
+    loadingState: {
+        opacity: 0.85,
+    },
+    disabledState: {
+        opacity: 0.5,
+    },
 })

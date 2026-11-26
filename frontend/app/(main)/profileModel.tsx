@@ -1,5 +1,5 @@
 import {
-    Platform, ScrollView, StyleSheet,
+    KeyboardAvoidingView, Platform, ScrollView, StyleSheet,
     TouchableOpacity, View, Pressable,
 } from 'react-native';
 import { BubblyAlert } from "../../components/BubblyAlert";
@@ -117,7 +117,10 @@ const ProfileModal = () => {
 
     return (
         <ScreenWrapper isModal={true}>
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
 
                 {/* ── Header ── */}
                 <Animated.View
@@ -126,14 +129,14 @@ const ProfileModal = () => {
                 >
                     <BackButton color={colors.neutral800} iconSize={22} />
                     <View style={styles.headerTitleWrap}>
-                        <Typo size={17} fontWeight="800" color={colors.neutral900}>
+                        <Typo size={17} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                             Account & Profile
                         </Typo>
-                        <Typo size={11} color={colors.neutral400} fontWeight="500">
+                        <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
                             Bubbly v3.4.0 Profile
                         </Typo>
                     </View>
-                    <View style={{ width: 22 }} />
+                    <View style={{ width: verticalScale(36) }} />
                 </Animated.View>
 
                 <ScrollView
@@ -165,12 +168,12 @@ const ProfileModal = () => {
                         </View>
 
                         <View style={styles.userInfo}>
-                            <Typo size={22} fontWeight="800" color={colors.neutral900}>
+                            <Typo size={22} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }} style={{ textAlign: 'center', maxWidth: '100%' }}>
                                 {userData.name || "Bubbly User"}
                             </Typo>
                             <View style={styles.statusPill}>
                                 <View style={styles.onlineDot} />
-                                <Typo size={12} color={colors.neutral600} fontWeight="600">
+                                <Typo size={12} color={colors.neutral600} fontWeight="600" style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
                                     Active on Bubbly · {userData.email}
                                 </Typo>
                             </View>
@@ -309,11 +312,11 @@ const ProfileModal = () => {
                                         weight="bold"
                                     />
                                 </View>
-                                <View>
-                                    <Typo size={15} fontWeight="700" color={colors.neutral800}>
+                                <View style={styles.actionTextWrap}>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
                                         Settings
                                     </Typo>
-                                    <Typo size={12} color={colors.neutral400}>
+                                    <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Notifications, chat privacy & themes
                                     </Typo>
                                 </View>
@@ -341,11 +344,11 @@ const ProfileModal = () => {
                                         weight="bold"
                                     />
                                 </View>
-                                <View>
-                                    <Typo size={15} fontWeight="700" color={colors.neutral800}>
+                                <View style={styles.actionTextWrap}>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
                                         How to Use Bubbly
                                     </Typo>
-                                    <Typo size={12} color={colors.neutral400}>
+                                    <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Replay interactive onboarding guide
                                     </Typo>
                                 </View>
@@ -373,11 +376,11 @@ const ProfileModal = () => {
                                         weight="bold"
                                     />
                                 </View>
-                                <View>
-                                    <Typo size={15} fontWeight="700" color={colors.neutral800}>
-                                        About Bubbly Release v3.0
+                                <View style={styles.actionTextWrap}>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                        About Bubbly v3.4.0
                                     </Typo>
-                                    <Typo size={12} color={colors.neutral400}>
+                                    <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Build info, credits & terms
                                     </Typo>
                                 </View>
@@ -405,11 +408,11 @@ const ProfileModal = () => {
                                         weight="bold"
                                     />
                                 </View>
-                                <View>
-                                    <Typo size={15} fontWeight="700" color={colors.rose}>
+                                <View style={styles.actionTextWrap}>
+                                    <Typo size={15} fontWeight="700" color={colors.rose} textProps={{ numberOfLines: 1 }}>
                                         Sign Out
                                     </Typo>
-                                    <Typo size={12} color={colors.neutral400}>
+                                    <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Safely log out of this device
                                     </Typo>
                                 </View>
@@ -423,7 +426,6 @@ const ProfileModal = () => {
                     </Animated.View>
 
                 </ScrollView>
-            </View>
 
             {/* ── Footer Button ── */}
             <Animated.View
@@ -440,6 +442,7 @@ const ProfileModal = () => {
                     </Typo>
                 </Button>
             </Animated.View>
+            </KeyboardAvoidingView>
 
         </ScreenWrapper>
     );
@@ -462,7 +465,10 @@ const styles = StyleSheet.create({
         borderBottomColor: colors.neutral100,
     },
     headerTitleWrap: {
+        flex: 1,
+        minWidth: 0,
         alignItems: 'center',
+        paddingHorizontal: spacingX._8,
     },
     scrollContent: {
         paddingBottom: spacingY._35,
@@ -502,6 +508,7 @@ const styles = StyleSheet.create({
     userInfo: {
         alignItems: "center",
         gap: spacingY._5,
+        width: "100%",
     },
     statusPill: {
         flexDirection: 'row',
@@ -511,6 +518,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacingX._12,
         paddingVertical: spacingY._5,
         borderRadius: radius.full,
+        maxWidth: '92%',
     },
     onlineDot: {
         width: 7,
@@ -565,9 +573,16 @@ const styles = StyleSheet.create({
         elevation: 1,
     },
     actionLeft: {
+        flex: 1,
+        minWidth: 0,
         flexDirection: "row",
         alignItems: "center",
         gap: spacingX._12,
+        marginRight: spacingX._8,
+    },
+    actionTextWrap: {
+        flex: 1,
+        minWidth: 0,
     },
     actionIconWrap: {
         width: 40,
@@ -575,11 +590,12 @@ const styles = StyleSheet.create({
         borderRadius: radius._12,
         alignItems: 'center',
         justifyContent: 'center',
+        flexShrink: 0,
     },
     footer: {
         paddingHorizontal: spacingX._20,
         paddingTop: spacingY._12,
-        paddingBottom: verticalScale(Platform.OS === 'ios' ? 35 : 20),
+        paddingBottom: spacingY._12,
         borderTopWidth: 1,
         borderTopColor: colors.neutral100,
         backgroundColor: colors.white,

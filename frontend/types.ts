@@ -49,9 +49,10 @@ export interface UserDataProps {
 
 export interface InputProps extends TextInputProps {
   icon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
-  inputRef?: React.RefObject<TextInput>;
+  inputRef?: React.RefObject<TextInput | null>;
 }
 
 export interface DecodedTokenProps {
@@ -111,6 +112,8 @@ export type ScreenWrapperProps = {
   isModal?: boolean;
   showPattern?: boolean;
   bgOpacity?: number;
+  backgroundColor?: string;
+  statusBarStyle?: "light-content" | "dark-content";
 };
 
 export type ResponseProps = {

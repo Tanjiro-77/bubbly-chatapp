@@ -11,10 +11,12 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Icons from "phosphor-react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 
 const SplashScreen = () => {
+  const insets = useSafeAreaInsets();
   const glowScale = useSharedValue(1);
   const glowOpacity = useSharedValue(0.35);
 
@@ -89,7 +91,7 @@ const SplashScreen = () => {
       {/* Bottom Launch & Security Footer */}
       <Animated.View
         entering={FadeInUp.duration(600).delay(450)}
-        style={styles.footer}
+        style={[styles.footer, { bottom: Math.max(insets.bottom, spacingY._20) + spacingY._15 }]}
       >
         <ActivityIndicator size="small" color={colors.primary} style={styles.loader} />
 

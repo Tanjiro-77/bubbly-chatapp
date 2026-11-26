@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, TextInput,
-    ScrollView, KeyboardAvoidingView, Platform,
+    ScrollView, KeyboardAvoidingView, Platform, StatusBar, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from '../../components/BubblyAlert';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -71,6 +72,9 @@ const GRADIENT_PRESETS: GradientPreset[] = [
 
 const CreateStory = () => {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
+    const { height } = useWindowDimensions();
+    const previewHeight = height < 700 ? verticalScale(300) : verticalScale(375);
     const [storyType, setStoryType] = useState<'text' | 'image'>('text');
     const [text, setText] = useState('');
     const [selectedGradient, setSelectedGradient] = useState<GradientPreset>(GRADIENT_PRESETS[0]);
@@ -158,8 +162,9 @@ const CreateStory = () => {
             style={styles.container}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+            <StatusBar barStyle="dark-content" backgroundColor={colors.white} translucent />
             {/* ── Header ── */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + spacingY._8 }]}>
                 <TouchableOpacity
                     onPress={() => router.back()}
                     style={styles.closeBtn}
@@ -169,10 +174,10 @@ const CreateStory = () => {
                 </TouchableOpacity>
 
                 <View style={styles.titleWrap}>
-                    <Typo size={17} fontWeight="800" color={colors.neutral900}>
+                    <Typo size={17} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                         Story Studio
                     </Typo>
-                    <Typo size={11} color={colors.neutral400} fontWeight="500">
+                    <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
                         Share for 24 hours
                     </Typo>
                 </View>
@@ -194,7 +199,10 @@ const CreateStory = () => {
             </View>
 
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._15 },
+                ]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
             >
@@ -241,7 +249,7 @@ const CreateStory = () => {
                 {/* ── Interactive Story Canvas Preview ── */}
                 <Animated.View
                     entering={FadeIn.duration(300)}
-                    style={styles.previewContainer}
+                    style={[styles.previewContainer, { height: previewHeight }]}
                 >
                     {storyType === 'text' ? (
                         <LinearGradient
@@ -429,7 +437,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     titleWrap: {
+        flex: 1,
+        minWidth: 0,
         alignItems: 'center',
+        paddingHorizontal: spacingX._8,
     },
     shareBtn: {
         paddingHorizontal: spacingX._20,

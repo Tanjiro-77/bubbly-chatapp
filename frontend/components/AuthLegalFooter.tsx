@@ -36,6 +36,7 @@ const AuthLegalFooter: React.FC<AuthLegalFooterProps> = ({
             <View style={styles.linksRow}>
                 <Pressable
                     onPress={() => router.push("/(legal)/privacyPolicy" as any)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     style={({ pressed }) => [
                         styles.linkChip,
                         { backgroundColor: chipBg, borderColor: chipBorder },
@@ -50,6 +51,7 @@ const AuthLegalFooter: React.FC<AuthLegalFooterProps> = ({
 
                 <Pressable
                     onPress={() => router.push("/(legal)/security" as any)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     style={({ pressed }) => [
                         styles.linkChip,
                         { backgroundColor: chipBg, borderColor: chipBorder },

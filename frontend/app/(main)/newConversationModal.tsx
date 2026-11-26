@@ -1,4 +1,4 @@
-import { Linking, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
+import { KeyboardAvoidingView, Linking, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
 import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -254,7 +254,10 @@ const NewConversationModal = () => {
 
     return (
         <ScreenWrapper isModal={true}>
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
 
                 {/* ── Header ── */}
                 <Animated.View
@@ -263,14 +266,14 @@ const NewConversationModal = () => {
                 >
                     <BackButton color={colors.neutral800} iconSize={22} />
                     <View style={styles.headerTitleWrap}>
-                        <Typo size={17} fontWeight="800" color={colors.neutral900}>
+                        <Typo size={17} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                             {isGroupMode ? "Create New Group" : "New Conversation"}
                         </Typo>
-                        <Typo size={11} color={colors.neutral400} fontWeight="500">
+                        <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
                             {isGroupMode ? "Select at least 2 members" : "Choose someone to chat with"}
                         </Typo>
                     </View>
-                    <View style={{ width: 22 }} />
+                    <View style={{ width: verticalScale(36) }} />
                 </Animated.View>
 
                 {/* ── Search Bar ── */}
@@ -487,6 +490,7 @@ const NewConversationModal = () => {
                 {/* ── Contacts List ── */}
                 <ScrollView
                     showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
                     contentContainerStyle={[
                         styles.contactList,
                         isGroupMode && selectedParticipants.length >= 2 && { paddingBottom: verticalScale(120) }
@@ -693,7 +697,7 @@ const NewConversationModal = () => {
                     </Animated.View>
                 )}
 
-            </View>
+            </KeyboardAvoidingView>
         </ScreenWrapper>
     );
 };
@@ -715,7 +719,10 @@ const styles = StyleSheet.create({
         borderBottomColor: colors.neutral100,
     },
     headerTitleWrap: {
+        flex: 1,
+        minWidth: 0,
         alignItems: 'center',
+        paddingHorizontal: spacingX._8,
     },
     searchContainer: {
         flexDirection: 'row',
@@ -731,6 +738,7 @@ const styles = StyleSheet.create({
     },
     searchInput: {
         flex: 1,
+        minWidth: 0,
         fontSize: verticalScale(14),
         color: colors.neutral800,
     },
@@ -838,6 +846,7 @@ const styles = StyleSheet.create({
     contactAvatar: {},
     contactInfo: {
         flex: 1,
+        minWidth: 0,
         gap: 3,
     },
     checkCircle: {
@@ -888,7 +897,7 @@ const styles = StyleSheet.create({
         borderTopColor: colors.neutral100,
         paddingHorizontal: spacingX._20,
         paddingTop: spacingY._12,
-        paddingBottom: verticalScale(Platform.OS === 'ios' ? 35 : 20),
+        paddingBottom: spacingY._12,
         gap: spacingY._10,
         shadowColor: colors.black,
         shadowOffset: { width: 0, height: -3 },

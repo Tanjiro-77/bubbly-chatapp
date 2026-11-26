@@ -141,6 +141,8 @@ const LinkRow: React.FC<LinkRowProps> = ({
                 size={14.5}
                 fontWeight="500"
                 color={isDark ? colors.neutral100 : colors.neutral800}
+                style={{ flex: 1 }}
+                textProps={{ numberOfLines: 1 }}
             >
                 {label}
             </Typo>
@@ -163,7 +165,11 @@ export default function AboutScreen() {
     const subtleTextColor = isDark ? colors.neutral400 : colors.neutral500;
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper
+            backgroundColor={pageBg}
+            statusBarStyle={isDark ? "light-content" : "dark-content"}
+            style={{ backgroundColor: pageBg }}
+        >
             {/* ── Header ── */}
             <View
                 style={[
@@ -562,9 +568,12 @@ const styles = StyleSheet.create({
         minHeight: verticalScale(54),
     },
     linkRowLeft: {
+        flex: 1,
+        minWidth: 0,
         flexDirection: "row",
         alignItems: "center",
         gap: scale(12),
+        marginRight: spacingX._8,
     },
     linkIconBadge: {
         width: scale(32),

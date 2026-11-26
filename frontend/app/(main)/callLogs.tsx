@@ -236,16 +236,16 @@ const CallLogsScreen = () => {
     }, [currentUser, handleRedial]);
 
     return (
-        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+        <ScreenWrapper backgroundColor={colors.white} style={{ backgroundColor: colors.white }}>
             <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
                 <BackButton color={colors.neutral900} />
                 <View style={styles.headerTitleWrap}>
-                    <Typo size={19} fontWeight="700" color={colors.neutral900}>
+                    <Typo size={19} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                         Calls
                     </Typo>
-                    <Typo size={11} color={colors.neutral400}>
+                    <Typo size={11} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                         {calls.length} total calls
                     </Typo>
                 </View>
@@ -339,10 +339,12 @@ const styles = StyleSheet.create({
     },
     headerTitleWrap: {
         flex: 1,
+        minWidth: 0,
         marginLeft: spacingX._5,
     },
     segmentedContainer: {
         flexDirection: "row",
+        flexShrink: 0,
         backgroundColor: colors.neutral100,
         borderRadius: radius.full,
         padding: scale(3),
@@ -392,10 +394,13 @@ const styles = StyleSheet.create({
     },
     callInfo: {
         flex: 1,
+        minWidth: 0,
         marginLeft: spacingX._12,
+        marginRight: spacingX._8,
     },
     statusRow: {
         flexDirection: "row",
+        flexWrap: "wrap",
         alignItems: "center",
         marginTop: verticalScale(3),
         gap: scale(4),
@@ -407,5 +412,6 @@ const styles = StyleSheet.create({
         backgroundColor: colors.primaryLight,
         alignItems: "center",
         justifyContent: "center",
+        flexShrink: 0,
     },
 });

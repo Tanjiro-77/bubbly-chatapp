@@ -162,8 +162,8 @@ export default function StorageManagerScreen() {
                     {/* ── Storage Overview Card ── */}
                     <View style={styles.card}>
                         <View style={styles.cardTopRow}>
-                            <View>
-                                <Typo size={12} fontWeight="600" color={colors.neutral400}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Typo size={12} fontWeight="600" color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                     TOTAL BUBBLY STORAGE
                                 </Typo>
                                 <Typo size={28} fontWeight="800" color={colors.neutral900} style={{ marginTop: 2 }}>
@@ -305,7 +305,7 @@ export default function StorageManagerScreen() {
                         </Typo>
 
                         <View style={styles.toggleRow}>
-                            <Typo size={13.5} color={colors.neutral700}>Photos & Images</Typo>
+                            <Typo size={13.5} color={colors.neutral700} style={{ flex: 1, marginRight: scale(10) }}>Photos & Images</Typo>
                             <Switch
                                 value={prefs.mobilePhotos}
                                 onValueChange={(v) => updatePref("mobilePhotos", v)}
@@ -315,7 +315,7 @@ export default function StorageManagerScreen() {
                         </View>
 
                         <View style={styles.toggleRow}>
-                            <Typo size={13.5} color={colors.neutral700}>Voice Notes & Audio</Typo>
+                            <Typo size={13.5} color={colors.neutral700} style={{ flex: 1, marginRight: scale(10) }}>Voice Notes & Audio</Typo>
                             <Switch
                                 value={prefs.mobileAudio}
                                 onValueChange={(v) => updatePref("mobileAudio", v)}
@@ -325,7 +325,7 @@ export default function StorageManagerScreen() {
                         </View>
 
                         <View style={[styles.toggleRow, { borderBottomWidth: 0 }]}>
-                            <Typo size={13.5} color={colors.neutral700}>Documents & Files</Typo>
+                            <Typo size={13.5} color={colors.neutral700} style={{ flex: 1, marginRight: scale(10) }}>Documents & Files</Typo>
                             <Switch
                                 value={prefs.mobileDocs}
                                 onValueChange={(v) => updatePref("mobileDocs", v)}
@@ -341,7 +341,7 @@ export default function StorageManagerScreen() {
                         </Typo>
 
                         <View style={styles.toggleRow}>
-                            <Typo size={13.5} color={colors.neutral700}>Photos & Images</Typo>
+                            <Typo size={13.5} color={colors.neutral700} style={{ flex: 1, marginRight: scale(10) }}>Photos & Images</Typo>
                             <Switch
                                 value={prefs.wifiPhotos}
                                 onValueChange={(v) => updatePref("wifiPhotos", v)}
@@ -351,7 +351,7 @@ export default function StorageManagerScreen() {
                         </View>
 
                         <View style={styles.toggleRow}>
-                            <Typo size={13.5} color={colors.neutral700}>Voice Notes & Audio</Typo>
+                            <Typo size={13.5} color={colors.neutral700} style={{ flex: 1, marginRight: scale(10) }}>Voice Notes & Audio</Typo>
                             <Switch
                                 value={prefs.wifiAudio}
                                 onValueChange={(v) => updatePref("wifiAudio", v)}
@@ -361,7 +361,7 @@ export default function StorageManagerScreen() {
                         </View>
 
                         <View style={[styles.toggleRow, { borderBottomWidth: 0 }]}>
-                            <Typo size={13.5} color={colors.neutral700}>Documents & Files</Typo>
+                            <Typo size={13.5} color={colors.neutral700} style={{ flex: 1, marginRight: scale(10) }}>Documents & Files</Typo>
                             <Switch
                                 value={prefs.wifiDocs}
                                 onValueChange={(v) => updatePref("wifiDocs", v)}
@@ -447,11 +447,13 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
+        gap: scale(12),
         marginBottom: verticalScale(14),
     },
     cleanBtn: {
         flexDirection: "row",
         alignItems: "center",
+        flexShrink: 0,
         gap: scale(6),
         backgroundColor: colors.primary,
         paddingHorizontal: scale(14),

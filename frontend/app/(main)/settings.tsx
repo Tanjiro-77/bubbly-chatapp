@@ -110,11 +110,12 @@ const Row: React.FC<RowProps> = ({
             <View style={[styles.iconBadge, { backgroundColor: iconBg }]}>
                 <MaterialIcons name={icon} size={19} color={iconColor} />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
                 <Typo
                     size={14.5}
                     fontWeight="500"
                     color={danger ? colors.rose : colors.neutral800}
+                    textProps={{ numberOfLines: 1 }}
                 >
                     {label}
                 </Typo>
@@ -123,6 +124,7 @@ const Row: React.FC<RowProps> = ({
                         size={11.5}
                         color={colors.neutral400}
                         style={{ marginTop: verticalScale(2) }}
+                        textProps={{ numberOfLines: 2 }}
                     >
                         {subtitle}
                     </Typo>
@@ -179,14 +181,15 @@ const PermissionRow: React.FC<PermissionRowProps> = ({
                     color={granted ? "#16a34a" : "#d97706"}
                 />
             </View>
-            <View style={{ flex: 1 }}>
-                <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+                <Typo size={14.5} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
                     {title}
                 </Typo>
                 <Typo
                     size={11.5}
                     color={colors.neutral400}
                     style={{ marginTop: verticalScale(2) }}
+                    textProps={{ numberOfLines: 2 }}
                 >
                     {subtitle}
                 </Typo>
@@ -393,7 +396,7 @@ export default function SettingsScreen() {
     }, []);
 
     return (
-        <ScreenWrapper style={{ backgroundColor: colors.neutral100 }}>
+        <ScreenWrapper backgroundColor={colors.neutral100} style={{ backgroundColor: colors.neutral100 }}>
             <View style={styles.header}>
                 <BackButton color={colors.neutral900} />
                 <Typo
@@ -425,14 +428,15 @@ export default function SettingsScreen() {
                         }
                         style={styles.profileAvatar}
                     />
-                    <View style={{ flex: 1 }}>
-                        <Typo size={16} fontWeight="700" color={colors.neutral900}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                        <Typo size={16} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                             {user?.name ?? "Your Profile"}
                         </Typo>
                         <Typo
                             size={12.5}
                             color={colors.neutral500}
                             style={{ marginTop: verticalScale(2) }}
+                            textProps={{ numberOfLines: 1, ellipsizeMode: "tail" }}
                         >
                             {user?.phoneNumber ? `${user.phoneNumber} · ` : ""}{user?.email ?? "Tap to edit your profile"}
                         </Typo>
@@ -855,6 +859,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         gap: scale(12),
         flex: 1,
+        minWidth: 0,
         paddingRight: spacingX._10,
     },
     iconBadge: {

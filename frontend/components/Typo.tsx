@@ -20,7 +20,7 @@ const Typo = ({
     }
 
     return (
-        <Text style={[textStyle, style]} {...textProps} >
+        <Text maxFontSizeMultiplier={1.3} style={[textStyle, style]} {...textProps}>
             {children}
         </Text>
     )

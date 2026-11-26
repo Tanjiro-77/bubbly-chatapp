@@ -4,6 +4,7 @@ import {
     TextInput, KeyboardAvoidingView, Platform,
     FlatList, StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from '../../components/BubblyAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -33,6 +34,7 @@ const EMOJIS = ['❤️', '🔥', '😂', '👏', '😍', '😮'];
 
 const StoryViewer = () => {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { user: currentUser } = useAuth();
     const { groupIndex: groupIndexParam, storiesData } = useLocalSearchParams();
 
@@ -259,7 +261,7 @@ const StoryViewer = () => {
             />
 
             {/* ── Progress Bars ── */}
-            <View style={styles.progressContainer}>
+            <View style={[styles.progressContainer, { paddingTop: Math.max(insets.top, 16) + verticalScale(8) }]}>
                 {currentGroup.stories.map((_, idx) => (
                     <View key={idx} style={styles.progressTrack}>
                         {idx < currentStoryIndex ? (
@@ -277,8 +279,8 @@ const StoryViewer = () => {
                     <View style={styles.avatarBorder}>
                         <Avatar size={40} uri={currentGroup.user.avatar} />
                     </View>
-                    <View>
-                        <Typo size={15} fontWeight="800" color={colors.white}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                        <Typo size={15} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
                             {currentGroup.user.name}
                         </Typo>
                         <Typo size={11} color={'rgba(255,255,255,0.7)'} fontWeight="500">
@@ -323,7 +325,7 @@ const StoryViewer = () => {
 
             {/* ── Photo Story Caption (if any) ── */}
             {currentStory.type === 'image' && currentStory.text ? (
-                <View style={styles.imageCaptionWrap}>
+                <View style={[styles.imageCaptionWrap, { bottom: Math.max(insets.bottom, 16) + verticalScale(84) }]}>
                     <Typo size={16} fontWeight="600" color={colors.white} style={styles.imageCaptionText}>
                         {currentStory.text}
                     </Typo>
@@ -359,7 +361,7 @@ const StoryViewer = () => {
             </View>
 
             {/* ── Bottom Interaction Dock ── */}
-            <View style={styles.bottomBar}>
+            <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) + spacingY._12 }]}>
                 {isMyStory ? (
                     // ── Author View: Viewers count button ──
                     <TouchableOpacity
@@ -431,7 +433,7 @@ const StoryViewer = () => {
             {showReplyInput && (
                 <Animated.View
                     entering={FadeIn.duration(200)}
-                    style={styles.replyModal}
+                    style={[styles.replyModal, { paddingBottom: Math.max(insets.bottom, 16) + spacingY._12 }]}
                 >
                     <View style={styles.replyInputRow}>
                         <TextInput
@@ -472,7 +474,7 @@ const StoryViewer = () => {
             {showViewers && (
                 <Animated.View
                     entering={FadeIn.duration(200)}
-                    style={styles.viewersModal}
+                    style={[styles.viewersModal, { paddingBottom: Math.max(insets.bottom, 16) + spacingY._12 }]}
                 >
                     <View style={styles.viewersHeader}>
                         <View style={styles.viewersTitleWrap}>
@@ -559,6 +561,9 @@ const styles = StyleSheet.create({
         zIndex: 10,
     },
     userInfo: {
+        flex: 1,
+        minWidth: 0,
+        marginRight: spacingX._8,
         flexDirection: 'row',
         alignItems: 'center',
         gap: spacingX._10,

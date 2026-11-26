@@ -10,6 +10,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
     View,
     FlatList,
+    ScrollView,
     StyleSheet,
     TouchableOpacity,
     Platform,
@@ -185,18 +186,22 @@ const VaultScreen = () => {
     // Render Pin Entry / Setup Screen
     if (!isUnlocked) {
         return (
-            <ScreenWrapper style={{ backgroundColor: colors.white }}>
+            <ScreenWrapper backgroundColor={colors.white} style={{ backgroundColor: colors.white }}>
                 <View style={{ flex: 1, backgroundColor: colors.white }}>
                 <View style={styles.header}>
                     <BackButton color={colors.neutral900} />
                     <View style={styles.headerTitleWrap}>
-                        <Typo size={18} fontWeight="700" color={colors.neutral900}>
+                        <Typo size={18} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                             Secret Chat Vault
                         </Typo>
                     </View>
                 </View>
 
-                <View style={styles.pinContainer}>
+                <ScrollView
+                    contentContainerStyle={styles.pinContainer}
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                >
                     <View style={styles.shieldWrap}>
                         <Icons.LockKey size={verticalScale(38)} color={colors.primaryDark} weight="duotone" />
                     </View>
@@ -291,7 +296,7 @@ const VaultScreen = () => {
                             </View>
                         ))}
                     </View>
-                </View>
+                </ScrollView>
                 </View>
             </ScreenWrapper>
         );
@@ -299,7 +304,7 @@ const VaultScreen = () => {
 
     // Render Vault Content Screen
     return (
-        <ScreenWrapper style={{ backgroundColor: colors.white }}>
+        <ScreenWrapper backgroundColor={colors.white} style={{ backgroundColor: colors.white }}>
             <View style={{ flex: 1, backgroundColor: colors.white }}>
             {/* Header */}
             <View style={styles.header}>
@@ -418,6 +423,7 @@ const styles = StyleSheet.create({
     },
     headerTitleWrap: {
         flex: 1,
+        minWidth: 0,
         marginLeft: spacingX._5,
     },
     headerActionBtn: {
@@ -426,10 +432,11 @@ const styles = StyleSheet.create({
         backgroundColor: colors.neutral100,
     },
     pinContainer: {
-        flex: 1,
+        flexGrow: 1,
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: spacingX._20,
+        paddingVertical: spacingY._20,
     },
     shieldWrap: {
         width: verticalScale(74),
@@ -535,6 +542,7 @@ const styles = StyleSheet.create({
     },
     chatInfo: {
         flex: 1,
+        minWidth: 0,
         marginLeft: spacingX._12,
     },
     unlockBtn: {

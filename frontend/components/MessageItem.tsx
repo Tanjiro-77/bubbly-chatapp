@@ -2,8 +2,10 @@ import {
     StyleSheet, View, Modal, FlatList,
     TouchableOpacity, TouchableWithoutFeedback,
     Pressable, TextInput, Dimensions, ScrollView, Linking,
-    PanResponder, Animated as RNAnimated, Platform, Vibration
+    PanResponder, Animated as RNAnimated, Platform, Vibration,
+    KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BubblyAlert } from './BubblyAlert'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { AttachmentMetaProps, MessageProps, PollProps, ReactionProps, ReplyToProps } from "../types"
@@ -209,6 +211,9 @@ const EmojiGridPopup = ({
     onClose: () => void;
     currentUserReaction?: string;
 }) => {
+    const insets = useSafeAreaInsets();
+    const { width: winWidth, height: winHeight } = useWindowDimensions();
+    const cellSize = Math.floor((winWidth - spacingX._10 * 2 - scale(4)) / EMOJI_COLUMNS);
     const [search, setSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState(0);
 
@@ -226,10 +231,21 @@ const EmojiGridPopup = ({
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose} statusBarTranslucent>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <TouchableWithoutFeedback onPress={handleClose}>
                 <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={popupStyles.overlay}>
                     <TouchableWithoutFeedback>
-                        <Animated.View entering={FadeInUp.duration(300).springify()} exiting={FadeOutDown.duration(200)} style={popupStyles.sheet}>
+                        <Animated.View
+                            entering={FadeInUp.duration(300).springify()}
+                            exiting={FadeOutDown.duration(200)}
+                            style={[
+                                popupStyles.sheet,
+                                {
+                                    height: Math.min(winHeight * 0.65, 520),
+                                    paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8,
+                                },
+                            ]}
+                        >
                             <View style={popupStyles.handle} />
                             <View style={popupStyles.header}>
                                 <View style={popupStyles.headerLeft}>
@@ -300,7 +316,7 @@ const EmojiGridPopup = ({
                                     renderItem={({ item: emoji }) => {
                                         const isSelected = currentUserReaction === emoji;
                                         return (
-                                            <TouchableOpacity onPress={() => handleSelect(emoji)} activeOpacity={0.6} style={[popupStyles.emojiCell, isSelected && popupStyles.emojiCellSelected]}>
+                                            <TouchableOpacity onPress={() => handleSelect(emoji)} activeOpacity={0.6} style={[popupStyles.emojiCell, { width: cellSize, height: cellSize }, isSelected && popupStyles.emojiCellSelected]}>
                                                 <Typo size={24}>{emoji}</Typo>
                                             </TouchableOpacity>
                                         );
@@ -311,6 +327,7 @@ const EmojiGridPopup = ({
                     </TouchableWithoutFeedback>
                 </Animated.View>
             </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
@@ -678,7 +695,7 @@ const viewOnceStyles = StyleSheet.create({
 });
 
 const voiceStyles = StyleSheet.create({
-    container: { flexDirection: "row", alignItems: "center", gap: spacingX._10, minWidth: scale(190), maxWidth: scale(230), paddingVertical: 2 },
+    container: { flexDirection: "row", alignItems: "center", gap: spacingX._10, minWidth: scale(170), maxWidth: "100%", paddingVertical: 2 },
     playBtn: {
         width: scale(38),
         height: scale(38),
@@ -906,11 +923,11 @@ const FileBubble = ({ meta, isMe }: { meta: AttachmentMetaProps; isMe: boolean }
 };
 
 const fileBubbleStyles = StyleSheet.create({
-    container: { flexDirection: "row", alignItems: "center", gap: spacingX._10, borderRadius: radius._12, padding: spacingX._12, minWidth: scale(200), maxWidth: scale(240), borderWidth: 1 },
+    container: { flexDirection: "row", alignItems: "center", gap: spacingX._10, borderRadius: radius._12, padding: spacingX._12, minWidth: scale(170), maxWidth: "100%", borderWidth: 1 },
     myContainer: { backgroundColor: "rgba(0,0,0,0.04)", borderColor: "rgba(0,0,0,0.08)" },
     theirContainer: { backgroundColor: colors.white, borderColor: colors.neutral200 },
     iconWrap: { width: scale(44), height: scale(44), borderRadius: radius._10, alignItems: "center", justifyContent: "center", flexShrink: 0, borderWidth: 1, borderColor: colors.neutral200 },
-    info: { flex: 1, gap: 3 },
+    info: { flex: 1, minWidth: 0, gap: 3 },
     arrowWrap: { flexShrink: 0 },
 });
 
@@ -926,15 +943,19 @@ const PollVoterModal = ({
     poll: PollProps;
     onClose: () => void;
 }) => {
+    const insets = useSafeAreaInsets();
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
             <TouchableWithoutFeedback onPress={onClose}>
                 <View style={pollVoterStyles.overlay}>
                     <TouchableWithoutFeedback>
-                        <Animated.View entering={FadeInUp.duration(260).springify()} style={pollVoterStyles.sheet}>
+                        <Animated.View
+                            entering={FadeInUp.duration(260).springify()}
+                            style={[pollVoterStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
                             <View style={pollVoterStyles.handle} />
                             <View style={pollVoterStyles.header}>
-                                <View style={{ flex: 1, gap: 2 }}>
+                                <View style={{ flex: 1, minWidth: 0, gap: 2, marginRight: spacingX._8 }}>
                                     <Typo size={17} fontWeight="800" color={colors.neutral900}>Poll Breakdown</Typo>
                                     <Typo size={12} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>{poll.question}</Typo>
                                 </View>
@@ -956,7 +977,7 @@ const PollVoterModal = ({
                                     {poll.options.map((opt) => (
                                         <View key={opt.id} style={pollVoterStyles.optionSection}>
                                             <View style={pollVoterStyles.optionHeader}>
-                                                <Typo size={14} fontWeight="700" color={colors.neutral900}>{opt.text}</Typo>
+                                                <Typo size={14} fontWeight="700" color={colors.neutral900} style={{ flex: 1, minWidth: 0 }}>{opt.text}</Typo>
                                                 <View style={pollVoterStyles.countPill}>
                                                     <Typo size={11} fontWeight="800" color={colors.primaryDark}>{opt.votes.length} votes</Typo>
                                                 </View>
@@ -998,8 +1019,8 @@ const pollVoterStyles = StyleSheet.create({
     anonBox: { alignItems: "center", justifyContent: "center", paddingVertical: verticalScale(36), gap: verticalScale(8) },
     scroll: { gap: verticalScale(14), paddingBottom: verticalScale(10) },
     optionSection: { backgroundColor: colors.neutral50, borderRadius: radius._15, padding: spacingX._12, borderWidth: 1, borderColor: colors.neutral200 },
-    optionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: verticalScale(8) },
-    countPill: { backgroundColor: colors.primaryLight, paddingHorizontal: scale(8), paddingVertical: verticalScale(2), borderRadius: radius.full },
+    optionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: scale(8), marginBottom: verticalScale(8) },
+    countPill: { backgroundColor: colors.primaryLight, paddingHorizontal: scale(8), paddingVertical: verticalScale(2), borderRadius: radius.full, flexShrink: 0 },
     voterList: { gap: verticalScale(6) },
     voterRow: { flexDirection: "row", alignItems: "center", gap: scale(8), paddingVertical: verticalScale(3) },
     voterAvatarPlaceholder: { width: scale(24), height: scale(24), borderRadius: radius.full, backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center" },
@@ -1479,8 +1500,9 @@ const PollBubble = ({
 
 const pollStyles = StyleSheet.create({
     card: {
-        width: scale(300),
-        maxWidth: "100%",
+        width: "100%",
+        maxWidth: scale(295),
+        minWidth: scale(235),
         backgroundColor: colors.white,
         borderRadius: radius._20,
         borderWidth: 1,
@@ -1662,8 +1684,10 @@ const pollStyles = StyleSheet.create({
     },
     bottomRow: {
         flexDirection: "row",
+        flexWrap: "wrap",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: scale(6),
         paddingTop: spacingY._5,
         borderTopWidth: 1,
         borderTopColor: colors.neutral100,
@@ -1673,6 +1697,7 @@ const pollStyles = StyleSheet.create({
         alignItems: "center",
         gap: spacingX._5,
         flex: 1,
+        minWidth: scale(90),
     },
     bottomDot: {
         width: 3,
@@ -1798,6 +1823,7 @@ const imageViewerStyles = StyleSheet.create({
 // EDIT MESSAGE MODAL
 // ─────────────────────────────────────────────
 const EditMessageModal = ({ visible, initialContent, onSave, onClose }: { visible: boolean; initialContent: string; onSave: (newContent: string) => void; onClose: () => void }) => {
+    const insets = useSafeAreaInsets();
     const [editText, setEditText] = useState(initialContent);
     const inputRef = useRef<TextInput>(null);
 
@@ -1813,10 +1839,15 @@ const EditMessageModal = ({ visible, initialContent, onSave, onClose }: { visibl
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <TouchableWithoutFeedback onPress={onClose}>
                 <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={editStyles.overlay}>
                     <TouchableWithoutFeedback>
-                        <Animated.View entering={FadeInUp.duration(300).springify()} exiting={FadeOutDown.duration(200)} style={editStyles.sheet}>
+                        <Animated.View
+                            entering={FadeInUp.duration(300).springify()}
+                            exiting={FadeOutDown.duration(200)}
+                            style={[editStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
                             <View style={editStyles.handle} />
                             <View style={editStyles.header}>
                                 <View style={editStyles.headerLeft}>
@@ -1862,6 +1893,7 @@ const EditMessageModal = ({ visible, initialContent, onSave, onClose }: { visibl
                     </TouchableWithoutFeedback>
                 </Animated.View>
             </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
@@ -2003,6 +2035,8 @@ const MessageItem = ({
     onLocalEdit?: (messageId: string, newContent: string) => void;
 }) => {
     const { user: currentUser } = useAuth();
+    const insets = useSafeAreaInsets();
+    const { width: screenWidth } = useWindowDimensions();
     const isMe = currentUser?.id == item?.sender?.id;
     const formattedTime = moment(item.createdAt).format("h:mm A");
 
@@ -2653,7 +2687,17 @@ const MessageItem = ({
                     <TouchableWithoutFeedback onPress={handleDismiss}>
                         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={styles.modalOverlay}>
                             <TouchableWithoutFeedback>
-                                <Animated.View entering={FadeInUp.duration(250).springify()} exiting={FadeOutDown.duration(150)} style={[styles.actionSheet, { maxHeight: "75%" }]}>
+                                <Animated.View
+                                    entering={FadeInUp.duration(250).springify()}
+                                    exiting={FadeOutDown.duration(150)}
+                                    style={[
+                                        styles.actionSheet,
+                                        {
+                                            maxHeight: "75%",
+                                            paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8,
+                                        },
+                                    ]}
+                                >
                                     <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                                     {/* ── Quick Reactions ── */}
                                     <View style={styles.quickReactWrap}>
@@ -2897,10 +2941,10 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 8,
     },
-    messageContainer: { flexDirection: "row", gap: spacingX._7, maxWidth: "80%" },
+    messageContainer: { flexDirection: "row", gap: spacingX._7, maxWidth: "82%" },
     myMessage: { alignSelf: "flex-end" },
     theirMessage: { alignSelf: "flex-start" },
-    bubbleColumn: { flexDirection: "column", gap: 2 },
+    bubbleColumn: { flexDirection: "column", flexShrink: 1, minWidth: 0, gap: 2 },
     messageBubble: {
         paddingHorizontal: spacingX._12, paddingVertical: spacingY._8,
         borderRadius: radius._15, gap: spacingY._5, maxWidth: "100%",

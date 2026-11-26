@@ -9,6 +9,8 @@ import {
     FlatList,
     ListRenderItemInfo,
     StatusBar,
+    ScrollView,
+    useWindowDimensions,
     AppState,
     AppStateStatus,
 } from "react-native";
@@ -385,11 +387,11 @@ const PermissionSetupCard: React.FC<PermissionSetupCardProps> = ({
                                 />
                             </View>
 
-                            <View style={{ flex: 1 }}>
-                                <Typo size={13.5} fontWeight="700" color={colors.neutral900}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Typo size={13.5} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                                     {meta.title}
                                 </Typo>
-                                <Typo size={11} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
+                                <Typo size={11} color={colors.neutral500} textProps={{ numberOfLines: 2 }}>
                                     {meta.subtitle}
                                 </Typo>
                             </View>
@@ -523,10 +525,17 @@ const SlideItem: React.FC<{
         return { transform: [{ translateY }], opacity };
     });
 
-    const ICON_SIZE = scale(100);
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const isCompactHeight = screenHeight < 700;
+    const ICON_SIZE = isCompactHeight ? scale(76) : scale(96);
 
     return (
-        <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
+        <ScrollView
+            style={{ width: screenWidth, flex: 1 }}
+            contentContainerStyle={styles.slideScroll}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+        >
             {/* Main Visual */}
             <Animated.View style={[iconContainerStyle, styles.iconWrapper]}>
                 <View
@@ -550,7 +559,7 @@ const SlideItem: React.FC<{
                     />
                     <MaterialIcons
                         name={item.icon}
-                        size={scale(44)}
+                        size={isCompactHeight ? scale(36) : scale(44)}
                         color={item.accentColor}
                     />
                 </View>
@@ -576,7 +585,7 @@ const SlideItem: React.FC<{
             <View style={styles.textContainer}>
                 <Animated.View style={titleStyle}>
                     <Typo
-                        size={25}
+                        size={isCompactHeight ? 22 : 25}
                         fontWeight="800"
                         color={colors.neutral900}
                         style={styles.slideTitle}
@@ -587,7 +596,7 @@ const SlideItem: React.FC<{
 
                 <Animated.View style={subtitleStyle}>
                     <Typo
-                        size={14.5}
+                        size={14}
                         color={colors.neutral500}
                         fontWeight="400"
                         style={styles.slideSubtitle}
@@ -605,7 +614,7 @@ const SlideItem: React.FC<{
                     onEnableAll={onEnableAll}
                 />
             )}
-        </View>
+        </ScrollView>
     );
 };
 
@@ -1089,6 +1098,15 @@ const styles = StyleSheet.create({
 
     flatList: {
         flex: 1,
+    },
+
+    slideScroll: {
+        flexGrow: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: spacingX._25,
+        paddingVertical: spacingY._15,
+        gap: spacingY._12,
     },
 
     slide: {

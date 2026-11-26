@@ -1,4 +1,4 @@
-import { StyleSheet, View, TouchableOpacity, Dimensions } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import React from 'react';
 import ScreenWrapper from "../../components/ScreenWrapper";
 import Typo from "../../components/Typo";
@@ -8,19 +8,23 @@ import Animated, { FadeIn, FadeInDown, FadeInUp } from "react-native-reanimated"
 import Button from "../../components/Button";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import AuthLegalFooter from "../../components/AuthLegalFooter";
-
-const { width } = Dimensions.get('window');
 
 const Welcome = () => {
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
+  const isCompactHeight = height < 700;
+  const heroHeight = isCompactHeight ? verticalScale(185) : verticalScale(245);
 
   return (
     <ScreenWrapper showPattern={true} bgOpacity={0.45}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
 
-        {/* ── Top Brand with V3.0 Badge ── */}
+        {/* ── Top Brand with V3.4.0 Badge ── */}
         <Animated.View
           entering={FadeInDown.duration(600).delay(100).springify()}
           style={styles.brandRow}
@@ -48,7 +52,7 @@ const Welcome = () => {
         <Animated.Image
           entering={FadeIn.duration(900).delay(200).springify()}
           source={require('../../assets/images/welcome.png')}
-          style={styles.welcomeImage}
+          style={[styles.welcomeImage, { width: Math.min(width * 0.8, scale(320)), height: heroHeight }]}
           resizeMode="contain"
         />
 
@@ -81,15 +85,15 @@ const Welcome = () => {
           <View style={styles.headlineContainer}>
             <Typo
               color={colors.white}
-              size={38}
+              size={isCompactHeight ? 32 : 36}
               fontWeight="800"
               style={styles.headlineMain}
             >
               Connect Seamlessly,
             </Typo>
             <Typo
-              color={'rgba(255,255,255,0.45)'}
-              size={38}
+              color={'rgba(255,255,255,0.48)'}
+              size={isCompactHeight ? 32 : 36}
               fontWeight="800"
               style={styles.headlineSub}
             >
@@ -99,7 +103,7 @@ const Welcome = () => {
 
           {/* Description */}
           <Typo
-            color={'rgba(255,255,255,0.55)'}
+            color={'rgba(255,255,255,0.6)'}
             size={14}
             fontWeight="400"
             style={styles.subText}
@@ -126,7 +130,7 @@ const Welcome = () => {
               style={styles.loginBtn}
               activeOpacity={0.65}
             >
-              <Typo size={13.5} color={'rgba(255,255,255,0.45)'} fontWeight="400">
+              <Typo size={13.5} color={'rgba(255,255,255,0.5)'} fontWeight="400">
                 Already have an account?{'  '}
                 <Typo size={13.5} color={colors.primary} fontWeight="700">
                   Sign In
@@ -139,7 +143,7 @@ const Welcome = () => {
 
         </Animated.View>
 
-      </View>
+      </ScrollView>
     </ScreenWrapper>
   );
 };
@@ -147,11 +151,13 @@ const Welcome = () => {
 export default Welcome;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
     paddingHorizontal: spacingX._20,
     paddingTop: spacingY._10,
-    paddingBottom: spacingY._20,
+    paddingBottom: spacingY._15,
+    gap: spacingY._12,
   },
 
   // ─── Brand ───────────────────────────────────────────────
@@ -159,7 +165,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacingY._10,
+    marginTop: spacingY._6,
+    gap: spacingX._8,
   },
   brandLeft: {
     flexDirection: 'row',
@@ -186,6 +193,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(10),
     paddingVertical: verticalScale(4),
     borderRadius: radius.full,
+    flexShrink: 0,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
@@ -195,25 +203,22 @@ const styles = StyleSheet.create({
 
   // ─── Hero ─────────────────────────────────────────────────
   welcomeImage: {
-    height: verticalScale(270),
-    width: width * 0.82,
     alignSelf: 'center',
-    marginTop: spacingY._15,
+    marginVertical: spacingY._6,
   },
 
   // ─── Bottom Section ───────────────────────────────────────
   bottomSection: {
-    flex: 1,
     justifyContent: 'flex-end',
-    paddingBottom: spacingY._10,
   },
 
   // Feature Chips
   featureChipsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: scale(8),
-    marginBottom: spacingY._15,
+    gap: scale(7),
+    marginBottom: spacingY._12,
   },
   featureChip: {
     flexDirection: 'row',
@@ -233,11 +238,11 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._8,
   },
   headlineMain: {
-    lineHeight: verticalScale(44),
+    lineHeight: verticalScale(41),
     letterSpacing: -0.5,
   },
   headlineSub: {
-    lineHeight: verticalScale(44),
+    lineHeight: verticalScale(41),
     letterSpacing: -0.5,
   },
 

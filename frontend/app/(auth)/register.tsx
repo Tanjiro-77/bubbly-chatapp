@@ -27,6 +27,7 @@ const Register = () => {
     const phoneRef = useRef("");
     const passwordRef = useRef("");
     const [signupMethod, setSignupMethod] = useState<'phone' | 'email'>('phone');
+    const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
     const { signUp, signUpWithPhone } = useAuth();
@@ -80,12 +81,11 @@ const Register = () => {
     };
 
     return (
-        <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? "padding" : "height"}
-        >
-            <ScreenWrapper showPattern={true}>
-                <View style={styles.container}>
+        <ScreenWrapper showPattern={true}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? "padding" : "height"}
+            >
 
                     {/* Header — minimal top bar */}
                     <Animated.View
@@ -214,7 +214,7 @@ const Register = () => {
                                     </Typo>
                                     <Input
                                         placeholder="Min. 6 characters"
-                                        secureTextEntry
+                                        secureTextEntry={!showPassword}
                                         onChangeText={(value: string) => passwordRef.current = value}
                                         icon={
                                             <Icons.Lock
@@ -222,6 +222,19 @@ const Register = () => {
                                                 color={colors.neutral400}
                                                 weight="regular"
                                             />
+                                        }
+                                        rightIcon={
+                                            <TouchableOpacity
+                                                onPress={() => setShowPassword(prev => !prev)}
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                activeOpacity={0.7}
+                                            >
+                                                {showPassword ? (
+                                                    <Icons.EyeSlash size={verticalScale(19)} color={colors.neutral500} weight="regular" />
+                                                ) : (
+                                                    <Icons.Eye size={verticalScale(19)} color={colors.neutral500} weight="regular" />
+                                                )}
+                                            </TouchableOpacity>
                                         }
                                     />
                                 </View>
@@ -234,7 +247,7 @@ const Register = () => {
                                     onPress={handleSubmit}
                                     style={styles.signUpBtn}
                                 >
-                                    <Typo fontWeight="700" color={colors.white} size={16}>
+                                    <Typo fontWeight="800" color={colors.neutral900} size={16}>
                                         Create Account
                                     </Typo>
                                 </Button>
@@ -287,9 +300,8 @@ const Register = () => {
                         </ScrollView>
                     </Animated.View>
 
-                </View>
-            </ScreenWrapper>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+        </ScreenWrapper>
     )
 }
 

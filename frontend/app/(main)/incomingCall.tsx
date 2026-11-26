@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import {
-    View, StyleSheet, TouchableOpacity, Vibration, Platform, StatusBar,
+    View, StyleSheet, TouchableOpacity, Vibration, Platform, StatusBar, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
     useSharedValue, useAnimatedStyle,
@@ -93,6 +94,9 @@ const IncomingPulsingRings = ({ size, color }: { size: number; color: string }) 
 
 const IncomingCall = () => {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
+    const { height } = useWindowDimensions();
+    const isCompactHeight = height < 700;
     const { callId, callerId, callerName, callerAvatar, kind, conversationId } = useLocalSearchParams();
     const callIdStr = Array.isArray(callId) ? callId[0] : (callId as string);
     const callerIdStr = Array.isArray(callerId) ? callerId[0] : (callerId as string);
@@ -250,7 +254,16 @@ const IncomingCall = () => {
         >
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-            <Animated.View style={[styles.content, entryStyle]}>
+            <Animated.View
+                style={[
+                    styles.content,
+                    {
+                        paddingTop: Math.max(insets.top, 24) + verticalScale(16),
+                        paddingBottom: Math.max(insets.bottom, 20) + verticalScale(16),
+                    },
+                    entryStyle,
+                ]}
+            >
 
                 {/* ── Top Section ── */}
                 <View style={styles.topSection}>
@@ -276,12 +289,12 @@ const IncomingCall = () => {
                 {/* ── Center Avatar with Multi-Layer Acoustic Waves ── */}
                 <View style={styles.avatarSection}>
                     <View style={styles.avatarPulseContainer}>
-                        <IncomingPulsingRings size={scale(136)} color={colors.primary} />
+                        <IncomingPulsingRings size={isCompactHeight ? scale(118) : scale(136)} color={colors.primary} />
 
                         <View style={styles.avatarOuterRing}>
                             <View style={styles.avatarInnerRing}>
                                 <Avatar
-                                    size={scale(120)}
+                                    size={isCompactHeight ? scale(104) : scale(120)}
                                     uri={callerAvatar as string}
                                 />
                             </View>
@@ -290,7 +303,13 @@ const IncomingCall = () => {
 
                     {/* Caller name & status */}
                     <View style={styles.callerInfo}>
-                        <Typo size={30} fontWeight="800" color={colors.white}>
+                        <Typo
+                            size={isCompactHeight ? 26 : 30}
+                            fontWeight="800"
+                            color={colors.white}
+                            style={{ textAlign: 'center', maxWidth: '100%' }}
+                            textProps={{ numberOfLines: 2, ellipsizeMode: 'tail' }}
+                        >
                             {callerName}
                         </Typo>
                         <View style={styles.callerSubRow}>
@@ -368,9 +387,7 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: verticalScale(Platform.OS === 'ios' ? 70 : 55),
-        paddingBottom: verticalScale(Platform.OS === 'ios' ? 55 : 45),
-        paddingHorizontal: spacingX._30,
+        paddingHorizontal: spacingX._25,
     },
 
     // ── Top ──

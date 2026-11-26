@@ -2,8 +2,9 @@ import {
     FlatList, KeyboardAvoidingView, Platform,
     StyleSheet, TouchableOpacity, View,
     ActivityIndicator, Modal, TouchableWithoutFeedback,
-    TextInput, ScrollView, BackHandler, Share,
+    TextInput, ScrollView, BackHandler, Share, useWindowDimensions,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BubblyAlert } from "../../components/BubblyAlert"
 import * as Clipboard from 'expo-clipboard'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -231,12 +232,18 @@ const ChatThemeModal = ({
     onSelectTheme: (theme: ChatTheme) => void;
     onPickCustomWallpaper?: () => void;
     onClose: () => void;
-}) => (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+}) => {
+    const insets = useSafeAreaInsets();
+    return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
         <TouchableWithoutFeedback onPress={onClose}>
             <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={themeModalStyles.overlay}>
                 <TouchableWithoutFeedback>
-                    <Animated.View entering={FadeInUp.duration(250).springify()} exiting={FadeOutDown.duration(150)} style={themeModalStyles.sheet}>
+                    <Animated.View
+                        entering={FadeInUp.duration(250).springify()}
+                        exiting={FadeOutDown.duration(150)}
+                        style={[themeModalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                    >
                         <View style={themeModalStyles.header}>
                             <View>
                                 <Typo size={17} fontWeight="800" color={colors.neutral900}>Chat Wallpaper & Theme</Typo>
@@ -295,7 +302,8 @@ const ChatThemeModal = ({
             </Animated.View>
         </TouchableWithoutFeedback>
     </Modal>
-);
+    );
+};
 
 // ── Disappearing Messages Modal ──
 const DISAPPEARING_OPTIONS = [
@@ -315,12 +323,17 @@ const DisappearingModal = ({
     currentSeconds: number;
     onSelect: (sec: number) => void;
     onClose: () => void;
-}) => (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+}) => {
+    const insets = useSafeAreaInsets();
+    return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
         <TouchableWithoutFeedback onPress={onClose}>
             <View style={disappearingStyles.overlay}>
                 <TouchableWithoutFeedback>
-                    <Animated.View entering={FadeInUp.duration(260).springify()} style={disappearingStyles.sheet}>
+                    <Animated.View
+                        entering={FadeInUp.duration(260).springify()}
+                        style={[disappearingStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                    >
                         <View style={disappearingStyles.handle} />
                         <View style={disappearingStyles.header}>
                             <Icons.Timer size={22} color={colors.primaryDark} weight="fill" />
@@ -360,7 +373,8 @@ const DisappearingModal = ({
             </View>
         </TouchableWithoutFeedback>
     </Modal>
-);
+    );
+};
 
 // ── Group Mention Autocomplete Bar ──
 const GroupMentionBar = ({
@@ -486,9 +500,9 @@ const mentionStyles = StyleSheet.create({
 });
 
 const inAppToastStyles = StyleSheet.create({
-    banner: { position: 'absolute', top: Platform.OS === 'ios' ? verticalScale(48) : verticalScale(14), left: spacingX._15, right: spacingX._15, zIndex: 999 },
+    banner: { position: 'absolute', top: spacingY._8, left: spacingX._15, right: spacingX._15, zIndex: 999 },
     touchable: { flexDirection: 'row', alignItems: 'center', gap: scale(10), backgroundColor: colors.white, borderRadius: radius._20, paddingHorizontal: spacingX._12, paddingVertical: verticalScale(10), shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, borderWidth: 1, borderColor: colors.primaryLight },
-    closeBtn: { width: scale(24), height: scale(24), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center' },
+    closeBtn: { width: scale(24), height: scale(24), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 });
 
 // ── Format duration ──
@@ -778,6 +792,7 @@ const ForwardModal = ({
     onSelectMultiple: (targetIds: string[]) => void;
     onClose: () => void;
 }) => {
+    const insets = useSafeAreaInsets();
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
     useEffect(() => {
@@ -791,11 +806,11 @@ const ForwardModal = ({
     };
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
             <TouchableWithoutFeedback onPress={onClose}>
                 <View style={forwardStyles.overlay}>
                     <TouchableWithoutFeedback>
-                        <View style={forwardStyles.sheet}>
+                        <View style={[forwardStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}>
                             <View style={forwardStyles.handle} />
                             <View style={forwardStyles.header}>
                                 <Typo size={17} fontWeight="700" color={colors.neutral900}>
@@ -873,6 +888,7 @@ const ScheduleModal = ({
     onSchedule: (delayMs: number, label: string) => void;
     onClose: () => void;
 }) => {
+    const insets = useSafeAreaInsets();
     const SCHEDULE_PRESETS = [
         { label: "In 15 minutes", delay: 15 * 60 * 1000, desc: "Quick follow-up" },
         { label: "In 1 hour", delay: 60 * 60 * 1000, desc: "Later today" },
@@ -889,11 +905,14 @@ const ScheduleModal = ({
     ];
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
             <TouchableWithoutFeedback onPress={onClose}>
                 <View style={scheduleStyles.overlay}>
                     <TouchableWithoutFeedback>
-                        <Animated.View entering={FadeInUp.duration(260).springify()} style={scheduleStyles.sheet}>
+                        <Animated.View
+                            entering={FadeInUp.duration(260).springify()}
+                            style={[scheduleStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
                             <View style={scheduleStyles.handle} />
                             <View style={scheduleStyles.header}>
                                 <Icons.ClockCountdown size={22} color={colors.primaryDark} weight="fill" />
@@ -984,17 +1003,20 @@ const GroupInfoModal = ({
 }) => {
     const isAdmin = admins?.some((a: any) => (a._id || a).toString() === currentUserId) || createdBy?.toString() === currentUserId;
     const [infoTab, setInfoTab] = useState<'members' | 'media'>('members');
+    const insets = useSafeAreaInsets();
+    const { width: screenWidth } = useWindowDimensions();
+    const mediaThumbSize = Math.floor((Math.min(screenWidth, 600) - spacingX._20 * 2 - scale(8) * 2) / 3);
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
             <TouchableWithoutFeedback onPress={onClose}>
                 <View style={groupInfoStyles.overlay}>
                     <TouchableWithoutFeedback>
-                        <View style={groupInfoStyles.sheet}>
+                        <View style={[groupInfoStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}>
                             <View style={groupInfoStyles.handle} />
                             <View style={groupInfoStyles.header}>
                                 <Avatar size={50} uri={conversationAvatar} isGroup={true} />
-                                <Typo size={18} fontWeight="700" color={colors.neutral900}>{conversationName || "Group"}</Typo>
+                                <Typo size={18} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }} style={{ maxWidth: '88%' }}>{conversationName || "Group"}</Typo>
                                 <Typo size={13} color={colors.neutral500}>{participants.length} members</Typo>
                             </View>
 
@@ -1005,7 +1027,7 @@ const GroupInfoModal = ({
                                     style={[groupInfoStyles.tabBtn, infoTab === 'members' && groupInfoStyles.tabBtnActive]}
                                     activeOpacity={0.7}
                                 >
-                                    <Typo size={13} fontWeight={infoTab === 'members' ? "700" : "500"} color={infoTab === 'members' ? colors.neutral900 : colors.neutral400}>
+                                    <Typo size={13} fontWeight={infoTab === 'members' ? "700" : "500"} color={infoTab === 'members' ? colors.neutral900 : colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Members ({participants.length})
                                     </Typo>
                                 </TouchableOpacity>
@@ -1014,7 +1036,7 @@ const GroupInfoModal = ({
                                     style={[groupInfoStyles.tabBtn, infoTab === 'media' && groupInfoStyles.tabBtnActive]}
                                     activeOpacity={0.7}
                                 >
-                                    <Typo size={13} fontWeight={infoTab === 'media' ? "700" : "500"} color={infoTab === 'media' ? colors.neutral900 : colors.neutral400}>
+                                    <Typo size={13} fontWeight={infoTab === 'media' ? "700" : "500"} color={infoTab === 'media' ? colors.neutral900 : colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Media & Docs ({mediaItems.length})
                                     </Typo>
                                 </TouchableOpacity>
@@ -1032,7 +1054,7 @@ const GroupInfoModal = ({
                                             <View style={groupInfoStyles.memberRow}>
                                                 <Avatar size={38} uri={item.avatar} />
                                                 <View style={groupInfoStyles.memberInfo}>
-                                                    <Typo size={14} fontWeight="600" color={colors.neutral900}>
+                                                    <Typo size={14} fontWeight="600" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                                                         {item.name} {item._id === currentUserId ? "(You)" : ""}
                                                     </Typo>
                                                     {userIsCreator ? (
@@ -1085,7 +1107,7 @@ const GroupInfoModal = ({
                                             {mediaItems.map((m) => {
                                                 if (m.attachement) {
                                                     return (
-                                                        <View key={m.id} style={groupInfoStyles.mediaThumbWrap}>
+                                                        <View key={m.id} style={[groupInfoStyles.mediaThumbWrap, { width: mediaThumbSize, height: mediaThumbSize }]}>
                                                             <Image source={m.attachement} style={groupInfoStyles.mediaThumb} contentFit="cover" />
                                                         </View>
                                                     );
@@ -1131,15 +1153,15 @@ const groupInfoStyles = StyleSheet.create({
     tabBtnActive: { borderBottomColor: colors.primary },
     list: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
     memberRow: { flexDirection: 'row', alignItems: 'center', gap: spacingX._12, paddingVertical: spacingY._10 },
-    memberInfo: { flex: 1, gap: 2 },
-    memberActions: { flexDirection: 'row', alignItems: 'center', gap: spacingX._6 },
+    memberInfo: { flex: 1, minWidth: 0, gap: 2 },
+    memberActions: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, gap: spacingX._6 },
     roleBtn: { paddingHorizontal: spacingX._10, paddingVertical: spacingY._5, backgroundColor: colors.primaryLight, borderRadius: radius.full },
     removeBtn: { padding: spacingX._7, backgroundColor: '#fef2f2', borderRadius: radius.full },
     leaveBtn: { marginTop: spacingY._12, paddingVertical: spacingY._12, borderRadius: radius._15, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacingX._8 },
     mediaScroll: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
     emptyMedia: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacingY._30, gap: spacingY._7 },
     mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(8) },
-    mediaThumbWrap: { width: scale(100), height: scale(100), borderRadius: radius._10, overflow: 'hidden' },
+    mediaThumbWrap: { borderRadius: radius._10, overflow: 'hidden' },
     mediaThumb: { width: '100%', height: '100%' },
     docItem: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: spacingX._10, paddingVertical: spacingY._8, borderBottomWidth: 1, borderBottomColor: colors.neutral100 },
     docIconWrap: { width: scale(36), height: scale(36), borderRadius: radius._10, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
@@ -1192,17 +1214,17 @@ const AttachmentOptions = ({
 
 const attachStyles = StyleSheet.create({
     container: {
-        flexDirection: "row", alignItems: "center",
+        flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between",
         backgroundColor: colors.white, borderRadius: radius._15,
         borderWidth: 1, borderColor: colors.neutral200,
-        marginBottom: spacingY._7, paddingHorizontal: spacingX._15,
-        paddingVertical: spacingY._10, gap: spacingX._15,
+        marginBottom: spacingY._7, paddingHorizontal: spacingX._12,
+        paddingVertical: spacingY._10, gap: spacingX._8,
         shadowColor: colors.black, shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
     },
     option: { alignItems: "center", gap: spacingY._5 },
     iconWrap: { width: verticalScale(44), height: verticalScale(44), borderRadius: radius._12, alignItems: "center", justifyContent: "center" },
-    closeOption: { marginLeft: "auto", padding: spacingX._5, backgroundColor: colors.neutral100, borderRadius: radius.full, width: verticalScale(30), height: verticalScale(30), alignItems: "center", justifyContent: "center" },
+    closeOption: { padding: spacingX._5, backgroundColor: colors.neutral100, borderRadius: radius.full, width: verticalScale(30), height: verticalScale(30), alignItems: "center", justifyContent: "center" },
 });
 
 // ─────────────────────────────────────────────
@@ -1210,6 +1232,7 @@ const attachStyles = StyleSheet.create({
 // ─────────────────────────────────────────────
 const Conversation = () => {
     const { user: currentUser } = useAuth();
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const rawParams = useLocalSearchParams();
     const conversationId = Array.isArray(rawParams.id) ? rawParams.id[0] : rawParams.id;
@@ -3215,14 +3238,14 @@ const Conversation = () => {
                                 {!isNotesToSelf && isDirect && contactIsOnline && <View style={styles.onlineDot} />}
                             </View>
                             <View style={styles.headerText}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                    <Typo color={colors.white} fontWeight="700" size={16} textProps={{ numberOfLines: 1 }}>{conversationName}</Typo>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                                    <Typo color={colors.white} fontWeight="700" size={16} style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>{conversationName}</Typo>
                                     {disappearingSeconds > 0 && (
                                         <Icons.Timer size={verticalScale(14)} color={colors.primaryLight} weight="fill" />
                                     )}
                                 </View>
                                 {isNotesToSelf ? (
-                                    <Typo color={'rgba(255,255,255,0.7)'} size={12} fontWeight="500">
+                                    <Typo color={'rgba(255,255,255,0.7)'} size={11.5} fontWeight="500" textProps={{ numberOfLines: 1 }}>
                                         Private Notebook 🔒
                                     </Typo>
                                 ) : typingUser ? (
@@ -3230,12 +3253,12 @@ const Conversation = () => {
                                         <View style={styles.headerTypingDots}>
                                             <TypingDot delay={0} /><TypingDot delay={150} /><TypingDot delay={300} />
                                         </View>
-                                        <Typo color={'rgba(255,255,255,0.8)'} size={12} fontWeight="500">
+                                        <Typo color={'rgba(255,255,255,0.8)'} size={11.5} fontWeight="500" style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
                                             {isDirect ? 'typing...' : `${typingUser} is typing...`}
                                         </Typo>
                                     </Animated.View>
                                 ) : (
-                                    <Typo color={'rgba(255,255,255,0.55)'} size={12} fontWeight="400">
+                                    <Typo color={'rgba(255,255,255,0.55)'} size={11.5} fontWeight="400" textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
                                         {isDirect ? contactIsOnline ? 'Online' : formatLastSeen(contactLastSeen) : `${participants.length} members`}
                                     </Typo>
                                 )}
@@ -3313,6 +3336,7 @@ const Conversation = () => {
                         />
                     )}
 
+                    <View style={styles.listStage}>
                     <FlatList
                         ref={flatListRef}
                         data={messagesWithSeparators}
@@ -3360,6 +3384,7 @@ const Conversation = () => {
                             </TouchableOpacity>
                         </Animated.View>
                     )}
+                    </View>
 
                     {/* ── Group Mention Autocomplete Bar (Feature 7) ── */}
                     <GroupMentionBar candidates={mentionCandidates} onSelect={handleSelectMention} />
@@ -3505,7 +3530,10 @@ const Conversation = () => {
                                     <Input
                                         value={message}
                                         onChangeText={handleMessageChange}
+                                        multiline
+                                        maxLength={4000}
                                         containerStyle={styles.textInput}
+                                        inputStyle={styles.composerInput}
                                         placeholder={replyTo ? "Reply..." : "Message..."}
                                     />
 
@@ -3540,7 +3568,10 @@ const Conversation = () => {
                 <TouchableWithoutFeedback onPress={() => setShowPollModal(false)}>
                     <View style={pollModalStyles.overlay}>
                         <TouchableWithoutFeedback>
-                            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={pollModalStyles.sheet}>
+                            <KeyboardAvoidingView
+                                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                                style={[pollModalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                            >
                                 <View style={pollModalStyles.handle} />
 
                                 <View style={pollModalStyles.header}>
@@ -3688,27 +3719,29 @@ export default Conversation;
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacingX._15, paddingTop: spacingY._10, paddingBottom: spacingY._12 },
-    headerLeft: { flexDirection: "row", alignItems: "center", gap: spacingX._10, flex: 1 },
-    headerInfo: { flexDirection: "row", alignItems: "center", gap: spacingX._10, flex: 1 },
-    avatarWrap: { position: "relative" },
+    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacingX._15, paddingTop: spacingY._10, paddingBottom: spacingY._12, gap: scale(6) },
+    headerLeft: { flexDirection: "row", alignItems: "center", gap: scale(8), flex: 1, minWidth: 0 },
+    headerInfo: { flexDirection: "row", alignItems: "center", gap: scale(8), flex: 1, minWidth: 0 },
+    avatarWrap: { position: "relative", flexShrink: 0 },
     onlineDot: { position: "absolute", bottom: 0, right: 0, width: scale(11), height: scale(11), borderRadius: radius.full, backgroundColor: colors.emerald, borderWidth: 2, borderColor: colors.neutral900 },
-    headerText: { flex: 1, gap: 2 },
-    headerTypingRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    headerTypingDots: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-    headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacingX._7 },
-    callBtn: { width: verticalScale(38), height: verticalScale(38), borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.glassDarkBg, borderWidth: 1, borderColor: colors.glassBorder },
-    moreBtn: { width: verticalScale(38), height: verticalScale(38), borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.glassDarkBg, borderWidth: 1, borderColor: colors.glassBorder },
+    headerText: { flex: 1, minWidth: 0, gap: 2 },
+    headerTypingRow: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
+    headerTypingDots: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
+    headerRight: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, gap: scale(5) },
+    callBtn: { width: verticalScale(34), height: verticalScale(34), borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.glassDarkBg, borderWidth: 1, borderColor: colors.glassBorder },
+    moreBtn: { width: verticalScale(34), height: verticalScale(34), borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.glassDarkBg, borderWidth: 1, borderColor: colors.glassBorder },
     content: { flex: 1, backgroundColor: colors.white, borderTopRightRadius: radius._40, borderTopLeftRadius: radius._40, borderCurve: "continuous", overflow: "hidden" },
+    listStage: { flex: 1, position: "relative" },
     messagesContent: { paddingHorizontal: spacingX._15, paddingTop: spacingY._20, paddingBottom: spacingY._10, gap: spacingY._12, flexGrow: 1 },
     emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacingY._12, paddingTop: verticalScale(100), paddingHorizontal: spacingX._30 },
     emptyIconWrap: { backgroundColor: colors.neutral100, padding: spacingY._20, borderRadius: radius._30, marginBottom: spacingY._5 },
-    inputBar: { paddingHorizontal: spacingX._12, paddingTop: spacingY._10, paddingBottom: verticalScale(22), backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.cardBorderSubtle, gap: spacingY._8 },
-    inputRow: { flexDirection: "row", alignItems: "center", gap: spacingX._10 },
-    actionBtn: { width: verticalScale(44), height: verticalScale(44), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.neutral200 },
-    textInput: { flex: 1, height: verticalScale(46), borderRadius: radius.full, paddingHorizontal: spacingX._15, backgroundColor: colors.neutral50, borderWidth: 1, borderColor: colors.neutral200 },
-    sendBtn: { width: verticalScale(46), height: verticalScale(46), borderRadius: radius.full, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 6 },
-    micBtn: { width: verticalScale(46), height: verticalScale(46), borderRadius: radius.full, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 6 },
+    inputBar: { paddingHorizontal: spacingX._12, paddingTop: spacingY._10, paddingBottom: spacingY._10, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.cardBorderSubtle, gap: spacingY._8 },
+    inputRow: { flexDirection: "row", alignItems: "flex-end", gap: spacingX._8 },
+    actionBtn: { width: verticalScale(44), height: verticalScale(44), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.neutral200, flexShrink: 0 },
+    textInput: { flex: 1, minHeight: verticalScale(44), maxHeight: verticalScale(106), borderRadius: radius._24, paddingHorizontal: spacingX._15, paddingVertical: verticalScale(8), backgroundColor: colors.neutral50, borderWidth: 1, borderColor: colors.neutral200 },
+    composerInput: { maxHeight: verticalScale(90), lineHeight: verticalScale(20) },
+    sendBtn: { width: verticalScale(44), height: verticalScale(44), borderRadius: radius.full, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", flexShrink: 0, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 6 },
+    micBtn: { width: verticalScale(44), height: verticalScale(44), borderRadius: radius.full, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", flexShrink: 0, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 6 },
     cancelRecordBtn: { width: verticalScale(42), height: verticalScale(42), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.rose },
     networkBanner: {
         flexDirection: 'row',
@@ -3735,6 +3768,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: spacingX._7,
         flex: 1,
+        minWidth: 0,
         marginRight: spacingX._10,
     },
     manageSchedBtn: {
@@ -3798,7 +3832,7 @@ const styles = StyleSheet.create({
     },
     scrollToBottomWrap: {
         position: 'absolute',
-        bottom: verticalScale(85),
+        bottom: spacingY._12,
         right: spacingX._15,
         zIndex: 50,
     },
@@ -3847,7 +3881,7 @@ const pollModalStyles = StyleSheet.create({
     removeOption: { width: verticalScale(28), height: verticalScale(28), borderRadius: radius.full, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     addOptionBtn: { flexDirection: 'row', alignItems: 'center', gap: spacingX._7, paddingVertical: spacingY._12, paddingHorizontal: spacingX._15, backgroundColor: colors.primaryLight, borderRadius: radius._10, borderWidth: 1, borderColor: colors.primary, marginBottom: spacingY._15 },
     toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacingY._15, borderTopWidth: 1, borderTopColor: colors.neutral100, marginBottom: spacingY._20 },
-    toggleInfo: { gap: 2 },
+    toggleInfo: { flex: 1, minWidth: 0, marginRight: spacingX._10, gap: 2 },
     toggle: { width: scale(46), height: scale(26), borderRadius: radius.full, backgroundColor: colors.neutral300, padding: 3, justifyContent: 'center' },
     toggleActive: { backgroundColor: colors.primary },
     toggleDot: { width: scale(20), height: scale(20), borderRadius: radius.full, backgroundColor: colors.white },

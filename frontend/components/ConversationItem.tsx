@@ -28,7 +28,13 @@ const HighlightText = ({
 }) => {
     if (!query.trim()) {
         return (
-            <Typo size={size} color={color} fontWeight={fontWeight} textProps={{ numberOfLines }}>
+            <Typo
+                size={size}
+                color={color}
+                fontWeight={fontWeight}
+                style={{ flexShrink: 1 }}
+                textProps={{ numberOfLines, ellipsizeMode: "tail" }}
+            >
                 {text}
             </Typo>
         );
@@ -38,7 +44,13 @@ const HighlightText = ({
     const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
 
     return (
-        <Typo size={size} color={color} fontWeight={fontWeight} textProps={{ numberOfLines }}>
+        <Typo
+            size={size}
+            color={color}
+            fontWeight={fontWeight}
+            style={{ flexShrink: 1 }}
+            textProps={{ numberOfLines, ellipsizeMode: "tail" }}
+        >
             {parts.map((part, i) =>
                 part.toLowerCase() === query.trim().toLowerCase() ? (
                     <Typo
@@ -227,7 +239,8 @@ const ConversationItem = ({
                                         size={13.5}
                                         color={colors.green}
                                         fontWeight="700"
-                                        textProps={{ numberOfLines: 1 }}
+                                        style={{ flexShrink: 1 }}
+                                        textProps={{ numberOfLines: 1, ellipsizeMode: "tail" }}
                                     >
                                         {isDirect ? "typing..." : `${typingUser} is typing...`}
                                     </Typo>
@@ -239,7 +252,8 @@ const ConversationItem = ({
                                         size={13.5}
                                         color={colors.neutral600}
                                         fontWeight="500"
-                                        textProps={{ numberOfLines: 1 }}
+                                        style={{ flex: 1, flexShrink: 1 }}
+                                        textProps={{ numberOfLines: 1, ellipsizeMode: "tail" }}
                                     >
                                         {draftText}
                                     </Typo>
@@ -354,20 +368,23 @@ const styles = StyleSheet.create({
     },
     textContent: {
         flex: 1,
+        minWidth: 0,
         gap: spacingY._4,
     },
     topRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: spacingX._8,
     },
     nameContainer: {
         flex: 1,
-        marginRight: spacingX._8,
+        minWidth: 0,
     },
     timeBadgeRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 0,
         gap: scale(5),
     },
     pinnedPill: {
@@ -386,13 +403,17 @@ const styles = StyleSheet.create({
     },
     previewWrap: {
         flex: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
     },
     deliveryTickWrap: {
         marginRight: scale(4),
+        flexShrink: 0,
     },
     liveTypingRow: {
+        flex: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
         gap: scale(6),
@@ -402,8 +423,11 @@ const styles = StyleSheet.create({
         height: 7,
         borderRadius: 4,
         backgroundColor: colors.green,
+        flexShrink: 0,
     },
     draftRow: {
+        flex: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
     },

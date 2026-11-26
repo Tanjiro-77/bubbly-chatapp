@@ -1,4 +1,5 @@
 import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform, Modal, TouchableWithoutFeedback } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -46,6 +47,7 @@ const getGreeting = (): string => {
 const Home = () => {
     const { user: currentUser } = useAuth();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(false);
     const [selectedTab, setSelectedTab] = useState(0); // 0 = direct, 1 = group
     const [filterCategory, setFilterCategory] = useState<FilterCategory>("all");
@@ -416,68 +418,74 @@ const Home = () => {
                     entering={FadeInDown.duration(500).springify()}
                     style={styles.header}
                 >
-                    <View style={styles.headerLeft}>
-                        <View style={styles.brandRow}>
-                            <View style={styles.brandBadge}>
-                                <Typo size={10} fontWeight="800" color={colors.neutral900}>
-                                    V3.4.0
+                    <View style={styles.headerTopRow}>
+                        <View style={styles.headerLeft}>
+                            <View style={styles.brandRow}>
+                                <View style={styles.brandBadge}>
+                                    <Typo size={9.5} fontWeight="800" color={colors.neutral900}>
+                                        V3.4.0
+                                    </Typo>
+                                </View>
+                                <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="500" textProps={{ numberOfLines: 1 }}>
+                                    {getGreeting()}
                                 </Typo>
                             </View>
-                            <Typo size={12.5} color={'rgba(255,255,255,0.6)'} fontWeight="500">
-                                {getGreeting()}
+                            <Typo
+                                size={22}
+                                color={colors.white}
+                                fontWeight="800"
+                                textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}
+                            >
+                                {currentUser?.name || "Bubbly Chat"}
                             </Typo>
                         </View>
-                        <Typo
-                            size={23}
-                            color={colors.white}
-                            fontWeight="800"
-                            textProps={{ numberOfLines: 1 }}
-                        >
-                            {currentUser?.name || "Bubbly Chat"}
-                        </Typo>
-                    </View>
-
-                    {/* Header Quick Actions */}
-                    <View style={styles.headerActions}>
-                        <TouchableOpacity
-                            onPress={() => router.push("/(main)/qrCode")}
-                            style={styles.headerIconBtn}
-                            activeOpacity={0.75}
-                        >
-                            <Icons.QrCode size={verticalScale(20)} color={colors.white} weight="regular" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            onPress={() => router.push("/(main)/callLogs")}
-                            style={styles.headerIconBtn}
-                            activeOpacity={0.75}
-                        >
-                            <Icons.PhoneCall size={verticalScale(20)} color={colors.white} weight="regular" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            onPress={() => router.push("/(main)/vault")}
-                            style={styles.headerIconBtn}
-                            activeOpacity={0.75}
-                        >
-                            <Icons.LockKey size={verticalScale(20)} color={colors.white} weight="regular" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            onPress={() => router.push("/(main)/settings")}
-                            style={styles.headerIconBtn}
-                            activeOpacity={0.75}
-                        >
-                            <Icons.GearSix size={verticalScale(20)} color={colors.white} weight="regular" />
-                        </TouchableOpacity>
 
                         <TouchableOpacity
                             onPress={() => router.push("/(main)/profileModel")}
                             activeOpacity={0.8}
                             style={styles.avatarBtn}
                         >
-                            <Avatar uri={currentUser?.avatar || null} size={42} />
+                            <Avatar uri={currentUser?.avatar || null} size={44} />
                             <View style={styles.avatarBadge} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Quick Actions Pill Bar */}
+                    <View style={styles.headerQuickRow}>
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/qrCode")}
+                            style={styles.headerQuickPill}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.QrCode size={verticalScale(15)} color={colors.primary} weight="bold" />
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>QR</Typo>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/callLogs")}
+                            style={styles.headerQuickPill}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.PhoneCall size={verticalScale(15)} color={colors.primary} weight="bold" />
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>Calls</Typo>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/vault")}
+                            style={styles.headerQuickPill}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.LockKey size={verticalScale(15)} color={colors.primary} weight="bold" />
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>Vault</Typo>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => router.push("/(main)/settings")}
+                            style={styles.headerQuickPill}
+                            activeOpacity={0.75}
+                        >
+                            <Icons.GearSix size={verticalScale(15)} color={colors.primary} weight="bold" />
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>Settings</Typo>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
@@ -586,11 +594,13 @@ const Home = () => {
                                 weight={selectedTab === 0 ? "fill" : "regular"}
                             />
                             <Typo
-                                size={13.5}
+                                size={13}
                                 fontWeight={selectedTab === 0 ? "700" : "500"}
                                 color={selectedTab === 0 ? colors.neutral900 : colors.neutral400}
+                                style={{ flexShrink: 1 }}
+                                textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.8 }}
                             >
-                                Direct Messages
+                                Direct Chats
                             </Typo>
                             {totalUnreadDirect > 0 && (
                                 <View style={styles.tabBadge}>
@@ -613,9 +623,11 @@ const Home = () => {
                                 weight={selectedTab === 1 ? "fill" : "regular"}
                             />
                             <Typo
-                                size={13.5}
+                                size={13}
                                 fontWeight={selectedTab === 1 ? "700" : "500"}
                                 color={selectedTab === 1 ? colors.neutral900 : colors.neutral400}
+                                style={{ flexShrink: 1 }}
+                                textProps={{ numberOfLines: 1 }}
                             >
                                 Groups
                             </Typo>
@@ -630,7 +642,12 @@ const Home = () => {
                     </View>
 
                     {/* ── V3 Interactive Filter Chips (All, Unread, Pinned) ── */}
-                    <View style={styles.filterChipsRow}>
+                    <View>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.filterChipsRow}
+                    >
                         <TouchableOpacity
                             style={[
                                 styles.filterChip,
@@ -686,6 +703,7 @@ const Home = () => {
                                 Pinned {totalPinnedCurrent > 0 ? `(${totalPinnedCurrent})` : ""}
                             </Typo>
                         </TouchableOpacity>
+                    </ScrollView>
                     </View>
 
                     {/* ── Search Bar ── */}
@@ -866,7 +884,7 @@ const Home = () => {
             {/* ── Floating Action Button (FAB) ── */}
             <Animated.View
                 entering={FadeInUp.duration(500).delay(300).springify()}
-                style={styles.fabWrap}
+                style={[styles.fabWrap, { bottom: Math.max(insets.bottom, spacingY._15) + spacingY._12 }]}
             >
                 <Button
                     style={styles.fab}
@@ -896,7 +914,10 @@ const Home = () => {
                         <TouchableWithoutFeedback>
                             <Animated.View
                                 entering={FadeInUp.duration(260).springify()}
-                                style={styles.actionSheet}
+                                style={[
+                                    styles.actionSheet,
+                                    { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._10 },
+                                ]}
                             >
                                 <View style={styles.sheetHandle} />
 
@@ -913,8 +934,8 @@ const Home = () => {
                                                 size={46}
                                                 isGroup={actionConv.type === 'group'}
                                             />
-                                            <View style={{ flex: 1 }}>
-                                                <Typo size={16} fontWeight="700" color={colors.neutral900}>
+                                            <View style={{ flex: 1, minWidth: 0 }}>
+                                                <Typo size={16} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                                                     {actionConv.type === 'direct'
                                                         ? (actionConv.participants.find(p => p._id !== currentUser?.id)?.name || actionConv.name)
                                                         : actionConv.name}
@@ -1044,15 +1065,20 @@ const styles = StyleSheet.create({
 
     // Header
     header: {
+        paddingHorizontal: spacingX._20,
+        paddingTop: spacingY._10,
+        paddingBottom: spacingY._15,
+        gap: spacingY._12,
+    },
+    headerTopRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        paddingHorizontal: spacingX._20,
-        paddingTop: spacingY._12,
-        paddingBottom: spacingY._20,
+        gap: scale(12),
     },
     headerLeft: {
         flex: 1,
+        minWidth: 0,
         gap: verticalScale(2),
     },
     brandRow: {
@@ -1066,24 +1092,30 @@ const styles = StyleSheet.create({
         paddingHorizontal: scale(5),
         paddingVertical: verticalScale(2),
         borderRadius: radius._6,
+        flexShrink: 0,
     },
-    headerActions: {
+    headerQuickRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: scale(10),
+        gap: scale(8),
     },
-    headerIconBtn: {
-        width: verticalScale(40),
-        height: verticalScale(40),
-        borderRadius: radius.full,
-        backgroundColor: "rgba(255, 255, 255, 0.12)",
+    headerQuickPill: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
+        gap: scale(5),
+        height: verticalScale(36),
+        borderRadius: radius.full,
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
         borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.12)",
+        borderColor: "rgba(255, 255, 255, 0.14)",
+        paddingHorizontal: scale(6),
     },
     avatarBtn: {
         position: "relative",
+        flexShrink: 0,
     },
     avatarBadge: {
         position: "absolute",

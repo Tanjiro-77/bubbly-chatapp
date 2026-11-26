@@ -10,7 +10,9 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    StatusBar,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -33,6 +35,7 @@ const CATEGORIES: { label: string; value: CategoryType; icon: string }[] = [
 
 export default function ReportBugModal() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
 
     const [title, setTitle] = useState("");
@@ -119,9 +122,10 @@ export default function ReportBugModal() {
             style={styles.container}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent />
             {/* Header */}
-            <View style={styles.header}>
-                <Typo size={18} fontWeight="700" color={colors.neutral900}>
+            <View style={[styles.header, { paddingTop: Math.max(insets.top, spacingY._15) + spacingY._5 }]}>
+                <Typo size={18} fontWeight="700" color={colors.neutral900} style={{ flex: 1 }}>
                     Report an Issue
                 </Typo>
                 <TouchableOpacity
@@ -135,7 +139,7 @@ export default function ReportBugModal() {
 
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, spacingY._25) + spacingY._15 }]}
                 keyboardShouldPersistTaps="handled"
             >
                 {/* Intro notice */}
@@ -256,10 +260,10 @@ export default function ReportBugModal() {
                     activeOpacity={0.8}
                 >
                     {isSubmitting ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
+                        <ActivityIndicator color={colors.neutral900} size="small" />
                     ) : (
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <MaterialIcons name="send" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                            <MaterialIcons name="send" size={18} color={colors.neutral900} style={{ marginRight: 8 }} />
                             <Text style={styles.submitButtonText}>Submit Error Report</Text>
                         </View>
                     )}
@@ -333,8 +337,8 @@ const styles = StyleSheet.create({
         borderColor: "#E2E8F0",
     },
     categoryChipSelected: {
-        backgroundColor: "#208AEF",
-        borderColor: "#208AEF",
+        backgroundColor: colors.primary,
+        borderColor: colors.primaryDark,
     },
     categoryText: {
         fontSize: 13,
@@ -343,7 +347,8 @@ const styles = StyleSheet.create({
         marginLeft: 6,
     },
     categoryTextSelected: {
-        color: "#FFFFFF",
+        color: colors.neutral900,
+        fontWeight: "700",
     },
     input: {
         backgroundColor: "#F8FAFC",
@@ -410,12 +415,12 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     },
     submitButton: {
-        backgroundColor: "#208AEF",
-        borderRadius: radius._12,
+        backgroundColor: colors.primary,
+        borderRadius: radius.full,
         paddingVertical: 15,
         alignItems: "center",
         justifyContent: "center",
-        shadowColor: "#208AEF",
+        shadowColor: colors.primaryDark,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.25,
         shadowRadius: 8,
@@ -425,7 +430,7 @@ const styles = StyleSheet.create({
         opacity: 0.6,
     },
     submitButtonText: {
-        color: "#FFFFFF",
+        color: colors.neutral900,
         fontSize: 16,
         fontWeight: "700",
     },
