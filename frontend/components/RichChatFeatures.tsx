@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
 import * as Icons from "phosphor-react-native";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
@@ -17,6 +18,7 @@ import {
     BubblyGamePayload,
     QuickReplyTemplate,
 } from "../utils/featureStorage";
+import { hapticTap } from "../utils/haptics";
 
 // ── 1. Shared Checklist Bubble Card ───────────────────────────────────────────
 export const ChecklistCardBubble = ({
@@ -31,16 +33,19 @@ export const ChecklistCardBubble = ({
     const items = Array.isArray(checklist?.items) ? checklist.items : [];
     const doneCount = items.filter((i) => i.completed).length;
     const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
+    const isAllDone = items.length > 0 && doneCount === items.length;
 
     return (
-        <View style={richStyles.cardWrap}>
+        <Animated.View entering={FadeIn.duration(220)} layout={LinearTransition.springify()} style={richStyles.cardWrap}>
             <View style={richStyles.cardTopRow}>
-                <View style={richStyles.cardBadge}>
-                    <Icons.CheckSquare size={verticalScale(13)} color={colors.primaryDark} weight="fill" />
-                    <Typo size={10.5} fontWeight="800" color={colors.primaryDark}>CHECKLIST</Typo>
+                <View style={[richStyles.cardBadge, isAllDone && { backgroundColor: "#dcfce7" }]}>
+                    <Icons.CheckSquare size={verticalScale(13)} color={isAllDone ? "#15803d" : colors.primaryDark} weight="fill" />
+                    <Typo size={10.5} fontWeight="800" color={isAllDone ? "#15803d" : colors.primaryDark}>
+                        {isAllDone ? "ALL DONE" : "CHECKLIST"}
+                    </Typo>
                 </View>
-                <Typo size={11} fontWeight="700" color={isMe ? colors.neutral700 : colors.neutral500}>
-                    {doneCount}/{items.length} done ({pct}%)
+                <Typo size={11} fontWeight="700" color={isAllDone ? "#15803d" : isMe ? colors.neutral700 : colors.neutral500}>
+                    {doneCount}/{items.length} ({pct}%)
                 </Typo>
             </View>
 
@@ -49,7 +54,7 @@ export const ChecklistCardBubble = ({
             </Typo>
 
             <View style={richStyles.progressTrack}>
-                <View style={[richStyles.progressFill, { width: `${pct}%` }]} />
+                <View style={[richStyles.progressFill, { width: `${pct}%`, backgroundColor: isAllDone ? "#16a34a" : colors.primary }]} />
             </View>
 
             <View style={richStyles.checklistList}>
@@ -57,7 +62,11 @@ export const ChecklistCardBubble = ({
                     <TouchableOpacity
                         key={item.id}
                         style={[richStyles.checkRow, item.completed && richStyles.checkRowDone]}
-                        onPress={() => onToggleItem?.(item.id)}
+                        onPress={() => {
+                            const willFinishAll = !item.completed && doneCount + 1 === items.length;
+                            hapticTap(willFinishAll ? "success" : "light");
+                            onToggleItem?.(item.id);
+                        }}
                         activeOpacity={0.7}
                     >
                         <View style={[richStyles.checkbox, item.completed && richStyles.checkboxChecked]}>
@@ -76,7 +85,7 @@ export const ChecklistCardBubble = ({
                     </TouchableOpacity>
                 ))}
             </View>
-        </View>
+        </Animated.View>
     );
 };
 
@@ -108,9 +117,11 @@ export const CountdownCardBubble = ({ countdown }: { countdown: BubblyCountdownP
     const secs = Math.floor((diff % 60000) / 1000);
 
     return (
-        <View style={richStyles.countdownCard}>
+        <Animated.View entering={FadeIn.duration(220)} style={richStyles.countdownCard}>
             <View style={richStyles.countdownHeader}>
-                <Typo size={18}>{countdown.emoji || "⏳"}</Typo>
+                <View style={richStyles.countdownEmojiWrap}>
+                    <Typo size={18}>{countdown.emoji || "⏳"}</Typo>
+                </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                     <Typo size={10} fontWeight="800" color={colors.primaryDark} textProps={{ numberOfLines: 1 }}>
                         LIVE COUNTDOWN
@@ -130,13 +141,24 @@ export const CountdownCardBubble = ({ countdown }: { countdown: BubblyCountdownP
             ) : (
                 <View style={richStyles.countdownGrid}>
                     {[
-                        { val: days, label: "DAYS" },
-                        { val: hours, label: "HRS" },
-                        { val: mins, label: "MIN" },
-                        { val: secs, label: "SEC" },
+                        { val: days, label: "DAYS", highlight: false },
+                        { val: hours, label: "HRS", highlight: false },
+                        { val: mins, label: "MIN", highlight: false },
+                        { val: secs, label: "SEC", highlight: true },
                     ].map((unit) => (
-                        <View key={unit.label} style={richStyles.timeBox}>
-                            <Typo size={15} fontWeight="800" color={colors.neutral900}>
+                        <View
+                            key={unit.label}
+                            style={[
+                                richStyles.timeBox,
+                                unit.highlight && { borderColor: colors.primary, backgroundColor: "#fffbeb" },
+                            ]}
+                        >
+                            <Typo
+                                size={15}
+                                fontWeight="800"
+                                color={unit.highlight ? colors.primaryDark : colors.neutral900}
+                                style={{ fontVariant: ["tabular-nums"] }}
+                            >
                                 {String(unit.val).padStart(2, "0")}
                             </Typo>
                             <Typo size={8.5} fontWeight="700" color={colors.neutral500}>
@@ -146,7 +168,7 @@ export const CountdownCardBubble = ({ countdown }: { countdown: BubblyCountdownP
                     ))}
                 </View>
             )}
-        </View>
+        </Animated.View>
     );
 };
 
@@ -168,7 +190,7 @@ export const GameCardBubble = ({
             : "✊";
 
     return (
-        <View style={richStyles.gameCard}>
+        <Animated.View entering={FadeIn.springify()} style={richStyles.gameCard}>
             <View style={richStyles.gameTop}>
                 <View style={richStyles.gameEmojiWrap}>
                     <Typo size={22}>{icon}</Typo>
@@ -197,7 +219,10 @@ export const GameCardBubble = ({
             {onPlayAgain && (
                 <TouchableOpacity
                     style={richStyles.playAgainBtn}
-                    onPress={() => onPlayAgain(game.kind)}
+                    onPress={() => {
+                        hapticTap("medium");
+                        onPlayAgain(game.kind);
+                    }}
                     activeOpacity={0.75}
                 >
                     <Icons.ArrowsClockwise size={13} color={colors.primaryDark} weight="bold" />
@@ -206,7 +231,7 @@ export const GameCardBubble = ({
                     </Typo>
                 </TouchableOpacity>
             )}
-        </View>
+        </Animated.View>
     );
 };
 
@@ -237,7 +262,10 @@ export const ComposerFormatBar = ({
         ].map((btn) => (
             <TouchableOpacity
                 key={btn.id}
-                onPress={() => onApplyFormat(btn.id)}
+                onPress={() => {
+                    hapticTap("light");
+                    onApplyFormat(btn.id);
+                }}
                 activeOpacity={0.7}
                 style={richStyles.formatPill}
             >
@@ -256,7 +284,10 @@ export const ComposerFormatBar = ({
         ))}
 
         <TouchableOpacity
-            onPress={onToggleSilent}
+            onPress={() => {
+                hapticTap("medium");
+                onToggleSilent();
+            }}
             activeOpacity={0.7}
             style={[richStyles.formatPill, isSilent && richStyles.formatPillActive]}
         >
@@ -270,7 +301,14 @@ export const ComposerFormatBar = ({
             </Typo>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={onOpenQuickReplies} activeOpacity={0.7} style={richStyles.formatPill}>
+        <TouchableOpacity
+            onPress={() => {
+                hapticTap("light");
+                onOpenQuickReplies();
+            }}
+            activeOpacity={0.7}
+            style={richStyles.formatPill}
+        >
             <Icons.Lightning size={13} color={colors.primaryDark} weight="fill" />
             <Typo size={11.5} fontWeight="700" color={colors.neutral800}>Templates</Typo>
         </TouchableOpacity>
@@ -401,6 +439,14 @@ const richStyles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         gap: scale(8),
+    },
+    countdownEmojiWrap: {
+        width: scale(34),
+        height: scale(34),
+        borderRadius: radius._10,
+        backgroundColor: colors.primaryLight,
+        alignItems: "center",
+        justifyContent: "center",
     },
     countdownGrid: {
         flexDirection: "row",

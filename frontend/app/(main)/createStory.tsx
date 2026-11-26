@@ -161,7 +161,7 @@ const CreateStory = () => {
                     backgroundColor: selectedGradient.colors[0],
                     mediaUrl,
                     fontStyle: storyType === 'text' ? fontStyle : 'classic',
-                    sticker: storyType === 'text' ? selectedSticker : '',
+                    sticker: selectedSticker,
                 });
             });
 
@@ -344,6 +344,21 @@ const CreateStory = () => {
                                         colors={['transparent', 'rgba(0,0,0,0.7)']}
                                         style={styles.imageBottomGradient}
                                     />
+                                    {!!selectedSticker && (
+                                        <View style={{
+                                            position: 'absolute',
+                                            top: spacingY._15,
+                                            left: spacingX._15,
+                                            backgroundColor: 'rgba(0,0,0,0.52)',
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 4,
+                                            borderRadius: radius.full,
+                                            borderWidth: 1,
+                                            borderColor: 'rgba(255,255,255,0.35)',
+                                        }}>
+                                            <Typo size={11.5} fontWeight="800" color={colors.white}>{selectedSticker}</Typo>
+                                        </View>
+                                    )}
                                 </View>
                             ) : (
                                 <TouchableOpacity
@@ -412,7 +427,7 @@ const CreateStory = () => {
                             })}
                         </ScrollView>
 
-                        {/* Typography & Stickers */}
+                        {/* Typography */}
                         <View style={styles.sectionHeaderRow}>
                             <Typo size={13} fontWeight="700" color={colors.neutral700}>Typography Style</Typo>
                         </View>
@@ -425,35 +440,51 @@ const CreateStory = () => {
                                         onPress={() => setFontStyle(f.id)}
                                         style={[styles.gradientPill, { flex: 1, justifyContent: 'center' }, act && styles.gradientPillActive]}
                                     >
-                                        <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.primaryDark : colors.neutral600}>
+                                        <Typo
+                                            size={12}
+                                            fontWeight={act ? '800' : '600'}
+                                            color={act ? colors.primaryDark : colors.neutral600}
+                                            style={{
+                                                fontFamily: f.id === 'mono' ? 'monospace' : f.id === 'serif' ? 'serif' : undefined,
+                                                fontStyle: f.id === 'serif' ? 'italic' : 'normal',
+                                                textShadowColor: f.id === 'neon' ? '#fde047' : 'transparent',
+                                                textShadowRadius: f.id === 'neon' ? 8 : 0,
+                                            }}
+                                        >
                                             {f.label}
                                         </Typo>
                                     </TouchableOpacity>
                                 );
                             })}
                         </View>
-
-                        <View style={styles.sectionHeaderRow}>
-                            <Typo size={13} fontWeight="700" color={colors.neutral700}>Mood Sticker</Typo>
-                        </View>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteScroll}>
-                            {STORY_STICKERS.map((st, idx) => {
-                                const act = selectedSticker === st;
-                                return (
-                                    <TouchableOpacity
-                                        key={idx}
-                                        onPress={() => setSelectedSticker(st)}
-                                        style={[styles.gradientPill, act && styles.gradientPillActive]}
-                                    >
-                                        <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.neutral900 : colors.neutral600}>
-                                            {st || "None"}
-                                        </Typo>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </ScrollView>
                     </Animated.View>
                 )}
+
+                {/* ── Mood Sticker (Available for Text & Photo Stories) ── */}
+                <Animated.View entering={FadeInDown.duration(300)} style={styles.paletteSection}>
+                    <View style={styles.sectionHeaderRow}>
+                        <Typo size={13} fontWeight="700" color={colors.neutral700}>Mood Sticker</Typo>
+                        {!!selectedSticker && (
+                            <Typo size={12} fontWeight="700" color={colors.primaryDark}>{selectedSticker}</Typo>
+                        )}
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteScroll}>
+                        {STORY_STICKERS.map((st, idx) => {
+                            const act = selectedSticker === st;
+                            return (
+                                <TouchableOpacity
+                                    key={idx}
+                                    onPress={() => setSelectedSticker(st)}
+                                    style={[styles.gradientPill, act && styles.gradientPillActive]}
+                                >
+                                    <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.neutral900 : colors.neutral600}>
+                                        {st || "None"}
+                                    </Typo>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+                </Animated.View>
 
                 {/* ── Photo Story: Caption Input & Change Button ── */}
                 {storyType === 'image' && imageUri && (

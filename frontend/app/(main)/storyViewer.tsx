@@ -310,7 +310,7 @@ const StoryViewer = () => {
             </View>
 
             {/* ── Story Mood Sticker Pill ── */}
-            {currentStory.type === 'text' && !!currentStory.sticker && (
+            {!!currentStory.sticker && (
                 <View style={{
                     alignSelf: 'center',
                     marginTop: spacingY._10,

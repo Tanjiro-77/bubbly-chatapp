@@ -36,6 +36,7 @@ import {
     computeChatInsights,
     QuickReplyTemplate,
 } from "../utils/featureStorage";
+import { hapticTap } from "../utils/haptics";
 import { SavedMessageReminder } from "../services/reminderService";
 
 // ── 1. Checklist Creator Modal ────────────────────────────────────────────────
@@ -201,6 +202,7 @@ export const GamePickerModal = ({
     const [question, setQuestion] = useState("");
 
     const play = (kind: BubblyGameKind) => {
+        hapticTap("medium");
         const res = rollBubblyGame(kind, question);
         setQuestion("");
         onSelectGame(res);
@@ -269,17 +271,33 @@ export const CountdownCreatorModal = ({
     const insets = useSafeAreaInsets();
     const [title, setTitle] = useState("");
     const [emoji, setEmoji] = useState("⏳");
+    const [customHours, setCustomHours] = useState(2);
+    const [customMins, setCustomMins] = useState(0);
 
     const PRESETS = [
-        { label: "In 1 Hour", ms: 3600 * 1000 },
-        { label: "In 6 Hours", ms: 6 * 3600 * 1000 },
-        { label: "Tomorrow 9 AM", ms: (() => {
-            const n = new Date();
-            const t = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 9, 0, 0);
-            return Math.max(t.getTime() - n.getTime(), 60000);
-        })() },
-        { label: "Next Week (7d)", ms: 7 * 86400 * 1000 },
+        { label: "15m", ms: 15 * 60 * 1000 },
+        { label: "1h", ms: 3600 * 1000 },
+        { label: "6h", ms: 6 * 3600 * 1000 },
+        {
+            label: "Tomorrow 9 AM",
+            ms: (() => {
+                const n = new Date();
+                const t = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 9, 0, 0);
+                return Math.max(t.getTime() - n.getTime(), 60000);
+            })(),
+        },
+        { label: "7 Days", ms: 7 * 86400 * 1000 },
     ];
+
+    const triggerCreate = (ms: number) => {
+        hapticTap("success");
+        onCreate({
+            title: title.trim() || "Upcoming Event",
+            emoji,
+            targetIso: new Date(Date.now() + Math.max(ms, 60000)).toISOString(),
+        });
+        setTitle("");
+    };
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -297,12 +315,12 @@ export const CountdownCreatorModal = ({
                                     <Icons.X size={16} color={colors.neutral600} weight="bold" />
                                 </TouchableOpacity>
                             </View>
-                            <View style={modalStyles.body}>
+                            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
                                 <View style={{ flexDirection: "row", gap: 8 }}>
                                     {["⏳", "🎉", "🚀", "🎂", "✈️"].map((e) => (
                                         <TouchableOpacity
                                             key={e}
-                                            onPress={() => setEmoji(e)}
+                                            onPress={() => { hapticTap("light"); setEmoji(e); }}
                                             style={[modalStyles.emojiBtn, emoji === e && modalStyles.emojiBtnActive]}
                                         >
                                             <Typo size={20}>{e}</Typo>
@@ -317,28 +335,74 @@ export const CountdownCreatorModal = ({
                                     onChangeText={setTitle}
                                     maxLength={80}
                                 />
-                                <Typo size={12} fontWeight="700" color={colors.neutral500} style={{ marginTop: 12, marginBottom: 6 }}>
-                                    Choose Target Time
+                                <Typo size={12} fontWeight="700" color={colors.neutral500} style={{ marginTop: 10 }}>
+                                    Quick Presets
                                 </Typo>
-                                {PRESETS.map((p) => (
-                                    <TouchableOpacity
-                                        key={p.label}
-                                        style={modalStyles.rowOption}
-                                        onPress={() => {
-                                            onCreate({
-                                                title: title.trim() || "Upcoming Event",
-                                                emoji,
-                                                targetIso: new Date(Date.now() + p.ms).toISOString(),
-                                            });
-                                            setTitle("");
-                                        }}
-                                        activeOpacity={0.75}
-                                    >
-                                        <Typo size={14} fontWeight="700" color={colors.neutral900}>{p.label}</Typo>
-                                        <Icons.CaretRight size={16} color={colors.neutral400} />
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                                    {PRESETS.map((p) => (
+                                        <TouchableOpacity
+                                            key={p.label}
+                                            style={[modalStyles.emojiStatPill, { paddingHorizontal: 12, paddingVertical: 8 }]}
+                                            onPress={() => triggerCreate(p.ms)}
+                                            activeOpacity={0.75}
+                                        >
+                                            <Typo size={12.5} fontWeight="700" color={colors.neutral900}>{p.label}</Typo>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                <Typo size={12} fontWeight="700" color={colors.neutral500} style={{ marginTop: 10 }}>
+                                    Or Set Custom Duration
+                                </Typo>
+                                <View style={modalStyles.tplCard}>
+                                    <View style={{ flex: 1, gap: 4 }}>
+                                        <Typo size={11.5} fontWeight="700" color={colors.neutral500}>Hours</Typo>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                            <TouchableOpacity
+                                                onPress={() => { hapticTap("light"); setCustomHours((h) => Math.max(0, h - 1)); }}
+                                                style={modalStyles.closeBtn}
+                                            >
+                                                <Icons.Minus size={14} color={colors.neutral800} weight="bold" />
+                                            </TouchableOpacity>
+                                            <Typo size={16} fontWeight="800" color={colors.neutral900}>{customHours}h</Typo>
+                                            <TouchableOpacity
+                                                onPress={() => { hapticTap("light"); setCustomHours((h) => Math.min(168, h + 1)); }}
+                                                style={modalStyles.closeBtn}
+                                            >
+                                                <Icons.Plus size={14} color={colors.neutral800} weight="bold" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                    <View style={{ flex: 1, gap: 4 }}>
+                                        <Typo size={11.5} fontWeight="700" color={colors.neutral500}>Minutes</Typo>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                            <TouchableOpacity
+                                                onPress={() => { hapticTap("light"); setCustomMins((m) => Math.max(0, m - 5)); }}
+                                                style={modalStyles.closeBtn}
+                                            >
+                                                <Icons.Minus size={14} color={colors.neutral800} weight="bold" />
+                                            </TouchableOpacity>
+                                            <Typo size={16} fontWeight="800" color={colors.neutral900}>{customMins}m</Typo>
+                                            <TouchableOpacity
+                                                onPress={() => { hapticTap("light"); setCustomMins((m) => (m + 5) % 60); }}
+                                                style={modalStyles.closeBtn}
+                                            >
+                                                <Icons.Plus size={14} color={colors.neutral800} weight="bold" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </View>
+
+                                <TouchableOpacity
+                                    style={modalStyles.primaryBtn}
+                                    onPress={() => triggerCreate((customHours * 60 + Math.max(customMins, customHours === 0 ? 5 : 0)) * 60 * 1000)}
+                                    activeOpacity={0.8}
+                                >
+                                    <Typo size={14.5} fontWeight="800" color={colors.black}>
+                                        Send {customHours > 0 || customMins > 0 ? `(${customHours}h ${customMins}m)` : "(5m)"} Countdown
+                                    </Typo>
+                                </TouchableOpacity>
+                            </ScrollView>
                         </KeyboardAvoidingView>
                     </TouchableWithoutFeedback>
                 </View>
@@ -538,6 +602,7 @@ export const QuickJumpModal = ({
     conversations,
     currentUserId,
     nicknames,
+    onlineUsers = {},
     focusActive,
     onToggleFocus,
     onSelectConversation,
@@ -548,6 +613,7 @@ export const QuickJumpModal = ({
     conversations: ConversationProps[];
     currentUserId?: string;
     nicknames: Record<string, string>;
+    onlineUsers?: Record<string, boolean>;
     focusActive: boolean;
     onToggleFocus: () => void;
     onSelectConversation: (conv: ConversationProps) => void;
@@ -615,6 +681,7 @@ export const QuickJumpModal = ({
                                             key={act.id}
                                             style={modalStyles.commandRow}
                                             onPress={() => {
+                                                hapticTap("light");
                                                 onClose();
                                                 setQ("");
                                                 if (act.route === "__focus__") onToggleFocus();
@@ -640,21 +707,43 @@ export const QuickJumpModal = ({
                                                 const baseName = (c.type === "group" ? c.name : other?.name) || "Chat";
                                                 const display = nicknames[c._id] || (other?._id ? nicknames[other._id] : "") || baseName;
                                                 const av = c.type === "direct" ? other?.avatar || c.avatar : c.avatar;
+                                                const isOnline = other?._id ? !!onlineUsers[other._id] : false;
+                                                const unread = c.unreadCount || 0;
                                                 return (
                                                     <TouchableOpacity
                                                         key={c._id}
                                                         style={modalStyles.commandRow}
                                                         onPress={() => {
+                                                            hapticTap("light");
                                                             setQ("");
                                                             onClose();
                                                             onSelectConversation(c);
                                                         }}
                                                         activeOpacity={0.7}
                                                     >
-                                                        <Avatar size={30} uri={av} isGroup={c.type === "group"} />
+                                                        <View style={{ position: "relative" }}>
+                                                            <Avatar size={30} uri={av} isGroup={c.type === "group"} />
+                                                            {isOnline && (
+                                                                <View style={{
+                                                                    position: "absolute", bottom: -1, right: -1,
+                                                                    width: 9, height: 9, borderRadius: 5,
+                                                                    backgroundColor: colors.green, borderWidth: 1.5, borderColor: colors.white,
+                                                                }} />
+                                                            )}
+                                                        </View>
                                                         <Typo size={14} fontWeight="600" color={colors.neutral900} style={{ flex: 1 }} textProps={{ numberOfLines: 1 }}>
                                                             {display}
                                                         </Typo>
+                                                        {(c as any).isArchived && (
+                                                            <View style={{ backgroundColor: colors.neutral100, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.full }}>
+                                                                <Typo size={9.5} fontWeight="700" color={colors.neutral500}>Archived</Typo>
+                                                            </View>
+                                                        )}
+                                                        {unread > 0 && (
+                                                            <View style={{ backgroundColor: colors.primary, minWidth: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 }}>
+                                                                <Typo size={10} fontWeight="800" color={colors.black}>{unread > 99 ? "99+" : unread}</Typo>
+                                                            </View>
+                                                        )}
                                                         <Icons.ArrowUpRight size={14} color={colors.neutral400} />
                                                     </TouchableOpacity>
                                                 );

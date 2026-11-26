@@ -26,6 +26,8 @@ import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
+import { formatRichPreviewText, getNicknamesMap } from "../../utils/featureStorage";
+import { hapticTap } from "../../utils/haptics";
 import { getConversations } from "../../socket/socketEvents";
 import { useAuth } from "../../contexts/authContext";
 import { ConversationProps, ResponseProps } from "../../types";
@@ -47,8 +49,10 @@ const VaultScreen = () => {
 
     const [lockedChatIds, setLockedChatIds] = useState<string[]>([]);
     const [allConversations, setAllConversations] = useState<ConversationProps[]>([]);
+    const [nicknames, setNicknames] = useState<Record<string, string>>({});
 
     useEffect(() => {
+        getNicknamesMap().then(setNicknames);
         const init = async () => {
             try {
                 const storedPin = await AsyncStorage.getItem(PIN_STORAGE_KEY);
@@ -93,6 +97,7 @@ const VaultScreen = () => {
 
     const handleDigitPress = (digit: string) => {
         if (currentPin.length >= 4) return;
+        hapticTap("light");
         setPinError("");
         const newPin = currentPin + digit;
         setCurrentPin(newPin);
@@ -368,7 +373,8 @@ const VaultScreen = () => {
                         const other = isDirect
                             ? item.participants?.find((p: any) => (p._id || p.id) !== currentUser?.id)
                             : null;
-                        const displayName = isDirect ? (other?.name || "Secret Chat") : (item.name || "Secret Group");
+                        const baseDisplay = isDirect ? (other?.name || "Secret Chat") : (item.name || "Secret Group");
+                        const displayName = nicknames[item._id] || (other?._id ? nicknames[other._id] : "") || baseDisplay;
                         const displayAvatar = isDirect ? (other?.avatar || null) : (item.avatar || null);
 
                         return (
@@ -401,7 +407,7 @@ const VaultScreen = () => {
                                     {displayName}
                                 </Typo>
                                 <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }} style={{ marginTop: verticalScale(2) }}>
-                                    {item.lastMessage?.content || "Hidden & Encrypted Messages"}
+                                    {formatRichPreviewText(item.lastMessage?.content) || "Hidden & Encrypted Messages"}
                                 </Typo>
                             </View>
                             <TouchableOpacity

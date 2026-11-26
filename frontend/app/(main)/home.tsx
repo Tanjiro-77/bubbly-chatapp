@@ -46,6 +46,7 @@ import {
     subscribeFeatureUpdates,
 } from "../../utils/featureStorage";
 import { verticalScale, scale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import * as Icons from 'phosphor-react-native';
 import { useRouter, useFocusEffect } from "expo-router";
 import ConversationItem from "../../components/ConversationItem";
@@ -586,7 +587,10 @@ const Home = () => {
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: scale(8), flexShrink: 0 }}>
                             <TouchableOpacity
-                                onPress={() => setShowQuickJump(true)}
+                                onPress={() => {
+                                    hapticTap("light");
+                                    setShowQuickJump(true);
+                                }}
                                 activeOpacity={0.8}
                                 style={{
                                     width: verticalScale(38),
@@ -1135,10 +1139,34 @@ const Home = () => {
                                         color={colors.neutral400}
                                         style={{ textAlign: 'center', maxWidth: scale(260) }}
                                     >
-                                        {selectedTab === 0
-                                            ? "Connect with your friends by tapping the start chat button below"
-                                            : "Create a group conversation to share stories and plans together"}
+                                        {filterCategory !== "all"
+                                            ? `You don't have any ${filterCategory} ${selectedTab === 0 ? "conversations" : "groups"} right now.`
+                                            : selectedTab === 0
+                                                ? "Connect with your friends by tapping the start chat button below"
+                                                : "Create a group conversation to share stories and plans together"}
                                     </Typo>
+                                    {filterCategory !== "all" && (
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                hapticTap("light");
+                                                setFilterCategory("all");
+                                            }}
+                                            activeOpacity={0.8}
+                                            style={{
+                                                marginTop: spacingY._8,
+                                                backgroundColor: colors.primaryLight,
+                                                paddingHorizontal: scale(16),
+                                                paddingVertical: verticalScale(8),
+                                                borderRadius: radius.full,
+                                                borderWidth: 1,
+                                                borderColor: colors.primary,
+                                            }}
+                                        >
+                                            <Typo size={12.5} fontWeight="800" color={colors.primaryDark}>
+                                                Show All {selectedTab === 0 ? "Chats" : "Groups"}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             )
                         }
@@ -1358,6 +1386,7 @@ const Home = () => {
                 conversations={conversations.filter(c => !lockedChatIds.includes(c._id))}
                 currentUserId={currentUser?.id}
                 nicknames={nicknamesMap}
+                onlineUsers={onlineUsers}
                 focusActive={focusMode.enabled}
                 onToggleFocus={handleToggleFocusMenu}
                 onSelectConversation={(c) => {

@@ -83,6 +83,7 @@ import {
     saveQuickReplies,
     subscribeFeatureUpdates,
 } from "../../utils/featureStorage"
+import { hapticTap } from "../../utils/haptics"
 import Animated, {
     FadeInDown, FadeInUp, FadeIn, FadeOut, FadeOutDown,
     useSharedValue, useAnimatedStyle,
@@ -680,7 +681,7 @@ const PinnedMessageBanner = ({
 
     return (
         <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)} style={pinnedBannerStyles.container}>
-            <TouchableOpacity onPress={() => onPress(current.id)} activeOpacity={0.8} style={pinnedBannerStyles.mainClick}>
+            <TouchableOpacity onPress={() => { hapticTap("light"); onPress(current.id); }} activeOpacity={0.8} style={pinnedBannerStyles.mainClick}>
                 <View style={pinnedBannerStyles.iconWrap}>
                     <Icons.PushPin size={verticalScale(13)} color={colors.primaryDark} weight="fill" />
                 </View>
@@ -694,13 +695,28 @@ const PinnedMessageBanner = ({
                 </View>
             </TouchableOpacity>
             {pinnedMessages.length > 1 && (
-                <TouchableOpacity
-                    onPress={() => setPinIdx((p) => (p + 1) % pinnedMessages.length)}
-                    activeOpacity={0.7}
-                    style={pinnedBannerStyles.closeBtn}
-                >
-                    <Icons.CaretRight size={verticalScale(14)} color={colors.primaryDark} weight="bold" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <TouchableOpacity
+                        onPress={() => {
+                            hapticTap("light");
+                            setPinIdx((p) => (p - 1 + pinnedMessages.length) % pinnedMessages.length);
+                        }}
+                        activeOpacity={0.7}
+                        style={pinnedBannerStyles.closeBtn}
+                    >
+                        <Icons.CaretLeft size={verticalScale(14)} color={colors.primaryDark} weight="bold" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => {
+                            hapticTap("light");
+                            setPinIdx((p) => (p + 1) % pinnedMessages.length);
+                        }}
+                        activeOpacity={0.7}
+                        style={pinnedBannerStyles.closeBtn}
+                    >
+                        <Icons.CaretRight size={verticalScale(14)} color={colors.primaryDark} weight="bold" />
+                    </TouchableOpacity>
+                </View>
             )}
             <TouchableOpacity onPress={() => onUnpin(current.id)} activeOpacity={0.7} style={pinnedBannerStyles.closeBtn}>
                 <Icons.X size={verticalScale(13)} color={colors.neutral400} weight="bold" />
@@ -1438,6 +1454,7 @@ const Conversation = () => {
     const [contactCustomStatus, setContactCustomStatus] = useState<{ emoji?: string; text?: string } | null>(null);
     const focusActiveRef = useRef(false);
     const hideNotifPreviewRef = useRef(false);
+    const composerSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
 
     useEffect(() => {
         const loadFeatureState = () => {
@@ -2630,18 +2647,31 @@ const Conversation = () => {
     }, [conversationId, isNotesToSelf]);
 
     const handleApplyFormat = useCallback((fmt: "bold" | "italic" | "strike" | "code" | "quote") => {
-        const trimmed = message;
+        const { start, end } = composerSelectionRef.current;
+        const hasSelection = end > start && end <= message.length;
+
         if (fmt === "quote") {
-            setMessage(trimmed.startsWith("> ") ? trimmed.slice(2) : `> ${trimmed}`);
+            if (hasSelection) {
+                const selected = message.slice(start, end);
+                const quoted = selected.split('\n').map(l => (l.startsWith('> ') ? l : `> ${l}`)).join('\n');
+                setMessage(`${message.slice(0, start)}${quoted}${message.slice(end)}`);
+                return;
+            }
+            setMessage(message.startsWith("> ") ? message.slice(2) : `> ${message}`);
             return;
         }
         const wrap = fmt === "bold" ? "*" : fmt === "italic" ? "_" : fmt === "strike" ? "~" : "`";
-        if (!trimmed.trim()) {
+        if (hasSelection) {
+            const selected = message.slice(start, end);
+            setMessage(`${message.slice(0, start)}${wrap}${selected}${wrap}${message.slice(end)}`);
+            return;
+        }
+        if (!message.trim()) {
             setMessage(`${wrap}text${wrap}`);
-        } else if (trimmed.endsWith(" ")) {
-            setMessage(`${trimmed}${wrap}text${wrap}`);
+        } else if (message.endsWith(" ")) {
+            setMessage(`${message}${wrap}text${wrap}`);
         } else {
-            setMessage(`${wrap}${trimmed}${wrap}`);
+            setMessage(`${wrap}${message}${wrap}`);
         }
     }, [message]);
 
@@ -2652,16 +2682,19 @@ const Conversation = () => {
     }, [message, quickReplies]);
 
     const handleSelectQuickReply = useCallback((tpl: QuickReplyTemplate) => {
+        hapticTap("light");
         setMessage(tpl.text);
     }, []);
 
     const handleToggleSelectMsg = useCallback((msgId: string) => {
+        hapticTap("light");
         setSelectedMsgIds((prev) =>
             prev.includes(msgId) ? prev.filter((id) => id !== msgId) : [...prev, msgId]
         );
     }, []);
 
     const handleEnterSelectionMode = useCallback((msgId: string) => {
+        hapticTap("medium");
         setSelectedMsgIds([msgId]);
     }, []);
 
@@ -2672,6 +2705,7 @@ const Conversation = () => {
             .join("\n");
         if (combined) {
             await Clipboard.setStringAsync(combined).catch(() => {});
+            hapticTap("success");
             BubblyAlert.alert("Copied", `${chosen.length} message(s) copied to clipboard.`);
         }
         setSelectedMsgIds([]);
@@ -2686,6 +2720,7 @@ const Conversation = () => {
         selectedMsgIds.forEach((id) => {
             toggleStarMessage({ messageId: id, conversationId: conversationId as string });
         });
+        hapticTap("success");
         setSelectedMsgIds([]);
         BubblyAlert.alert("Updated ⭐", `${selectedMsgIds.length} message(s) toggled in Starred.`);
     }, [selectedMsgIds, conversationId, isNotesToSelf]);
@@ -4048,6 +4083,9 @@ const Conversation = () => {
                                     <Input
                                         value={message}
                                         onChangeText={handleMessageChange}
+                                        onSelectionChange={(e) => {
+                                            composerSelectionRef.current = e.nativeEvent.selection;
+                                        }}
                                         multiline
                                         maxLength={4000}
                                         containerStyle={styles.textInput}
@@ -4057,14 +4095,29 @@ const Conversation = () => {
 
                                     {canSend ? (
                                         <TouchableOpacity
-                                            style={styles.sendBtn}
-                                            onPress={onSend}
-                                            onLongPress={() => setIsSilentSend(prev => !prev)}
+                                            style={[
+                                                styles.sendBtn,
+                                                isSilentSend && {
+                                                    backgroundColor: '#1c1917',
+                                                    borderWidth: 1.5,
+                                                    borderColor: colors.primary,
+                                                },
+                                            ]}
+                                            onPress={() => {
+                                                hapticTap("light");
+                                                onSend();
+                                            }}
+                                            onLongPress={() => {
+                                                hapticTap("medium");
+                                                setIsSilentSend(prev => !prev);
+                                            }}
                                             delayLongPress={320}
                                             activeOpacity={0.8}
                                         >
                                             {loading || isUploadingVoice ? (
-                                                <Loading size="small" color={colors.black} />
+                                                <Loading size="small" color={isSilentSend ? colors.primary : colors.black} />
+                                            ) : isSilentSend ? (
+                                                <Icons.BellSlash color={colors.primary} weight="fill" size={verticalScale(18)} />
                                             ) : (
                                                 <Icons.PaperPlaneTilt color={colors.black} weight="fill" size={verticalScale(18)} />
                                             )}

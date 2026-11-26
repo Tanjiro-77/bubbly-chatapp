@@ -29,6 +29,7 @@ import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import { useAuth } from "../../contexts/authContext";
 import { newConversation, isSocketConnected } from "../../socket/socketEvents";
 
@@ -104,12 +105,20 @@ function generateQRMatrix(seed: string): boolean[][] {
     return matrix;
 }
 
+const QR_ACCENTS = [
+    { id: "ink", label: "Classic Ink", color: colors.neutral900 },
+    { id: "amber", label: "Honey Gold", color: "#b45309" },
+    { id: "royal", label: "Royal Iris", color: "#6d28d9" },
+    { id: "ocean", label: "Ocean Blue", color: "#0369a1" },
+];
+
 export default function QRCodeScreen() {
     const router = useRouter();
     const { user: currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<0 | 1>(0); // 0 = My Code, 1 = Scan
     const [copiedToast, setCopiedToast] = useState(false);
     const [manualIdInput, setManualIdInput] = useState("");
+    const [qrColor, setQrColor] = useState(colors.neutral900);
 
     const userId = currentUser?.id || "bubbly_user";
     const inviteLink = `https://bubbly.app/u/${userId}`;
@@ -140,6 +149,7 @@ export default function QRCodeScreen() {
     const handleCopyLink = async () => {
         try {
             await Clipboard.setStringAsync(inviteLink);
+            hapticTap("success");
             setCopiedToast(true);
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
             toastTimerRef.current = setTimeout(() => setCopiedToast(false), 2000);
@@ -331,7 +341,7 @@ export default function QRCodeScreen() {
                                                     height={MODULE_SIZE - 0.4}
                                                     rx={MODULE_SIZE * 0.22}
                                                     ry={MODULE_SIZE * 0.22}
-                                                    fill={colors.neutral900}
+                                                    fill={qrColor}
                                                 />
                                             );
                                         })
@@ -342,6 +352,31 @@ export default function QRCodeScreen() {
                                 <View style={styles.centerLogo}>
                                     <Icons.ChatCircleDots size={22} color={colors.black} weight="fill" />
                                 </View>
+                            </View>
+
+                            {/* QR Color Personalizer */}
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: verticalScale(12) }}>
+                                {QR_ACCENTS.map((sw) => {
+                                    const active = qrColor === sw.color;
+                                    return (
+                                        <TouchableOpacity
+                                            key={sw.id}
+                                            onPress={() => {
+                                                hapticTap("light");
+                                                setQrColor(sw.color);
+                                            }}
+                                            style={{
+                                                width: scale(26),
+                                                height: scale(26),
+                                                borderRadius: radius.full,
+                                                backgroundColor: sw.color,
+                                                borderWidth: active ? 2.5 : 1,
+                                                borderColor: active ? colors.primary : colors.neutral200,
+                                                transform: [{ scale: active ? 1.12 : 1 }],
+                                            }}
+                                        />
+                                    );
+                                })}
                             </View>
 
                             <Typo size={12} color={colors.neutral400} style={styles.hintText}>

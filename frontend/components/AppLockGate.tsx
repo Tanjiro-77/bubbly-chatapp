@@ -6,13 +6,14 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, AppStateStatus, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Animated, AppState, AppStateStatus, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Icons from "phosphor-react-native";
 import { useAuth } from "../contexts/authContext";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import { getPrivacyShield, subscribeFeatureUpdates } from "../utils/featureStorage";
+import { hapticTap } from "../utils/haptics";
 import Typo from "./Typo";
 import { BubblyAlert } from "./BubblyAlert";
 
@@ -32,6 +33,18 @@ export const AppLockGate = () => {
     const initialBootCheckedRef = useRef<string | null>(null);
     const leftActiveAtRef = useRef<number | null>(null);
     const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+    const shakeX = useRef(new Animated.Value(0)).current;
+
+    const triggerShake = useCallback(() => {
+        hapticTap("error");
+        Animated.sequence([
+            Animated.timing(shakeX, { toValue: -12, duration: 55, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: 12, duration: 55, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: -8, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: 8, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: 0, duration: 45, useNativeDriver: true }),
+        ]).start();
+    }, [shakeX]);
 
     const pinStorageKey = user?.id ? `${PIN_STORAGE_KEY_PREFIX}_${user.id}` : PIN_STORAGE_KEY_PREFIX;
 
@@ -126,6 +139,7 @@ export const AppLockGate = () => {
 
     const handleDigitPress = async (digit: string) => {
         if (enteredPin.length >= 4) return;
+        hapticTap("light");
         const nextPin = enteredPin + digit;
         setEnteredPin(nextPin);
         setErrorText("");
@@ -140,6 +154,7 @@ export const AppLockGate = () => {
 
             if (setupStep === "confirm") {
                 if (nextPin !== firstPin) {
+                    triggerShake();
                     setErrorText("PINs did not match. Try again.");
                     setEnteredPin("");
                     setFirstPin("");
@@ -147,6 +162,7 @@ export const AppLockGate = () => {
                     return;
                 }
                 await AsyncStorage.setItem(pinStorageKey, nextPin).catch(() => {});
+                hapticTap("success");
                 setSavedPin(nextPin);
                 setEnteredPin("");
                 setIsLocked(false);
@@ -154,10 +170,12 @@ export const AppLockGate = () => {
             }
 
             if (nextPin === savedPin) {
+                hapticTap("success");
                 setEnteredPin("");
                 setErrorText("");
                 setIsLocked(false);
             } else {
+                triggerShake();
                 setErrorText("Incorrect PIN. Try again.");
                 setEnteredPin("");
             }
@@ -165,6 +183,7 @@ export const AppLockGate = () => {
     };
 
     const handleBackspace = () => {
+        hapticTap("light");
         setEnteredPin((prev) => prev.slice(0, -1));
         setErrorText("");
     };
@@ -226,17 +245,18 @@ export const AppLockGate = () => {
                 {subText}
             </Typo>
 
-            <View style={styles.dotsRow}>
+            <Animated.View style={[styles.dotsRow, { transform: [{ translateX: shakeX }] }]}>
                 {[0, 1, 2, 3].map((idx) => (
                     <View
                         key={idx}
                         style={[
                             styles.dot,
                             idx < enteredPin.length && styles.dotFilled,
+                            !!errorText && { borderColor: colors.rose },
                         ]}
                     />
                 ))}
-            </View>
+            </Animated.View>
 
             {!!errorText && (
                 <Typo size={12.5} fontWeight="600" color={colors.rose} style={{ marginTop: spacingY._8 }}>

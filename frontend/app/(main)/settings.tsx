@@ -27,6 +27,7 @@ import Typo from "../../components/Typo";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import BackButton from "../../components/BackButton";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import { useAuth } from "../../contexts/authContext";
 import { syncNotificationPreference } from "../../services/notificationService";
 import { getBlockedUsers, blockUser, isSocketConnected, updateProfile } from "../../socket/socketEvents";
@@ -645,81 +646,172 @@ export default function SettingsScreen() {
                 {/* ── Appearance & Bubble Studio ── */}
                 <SectionLabel label="Appearance & Bubble Studio" />
                 <SectionCard>
-                    <Row
-                        icon="chat-bubble-outline"
-                        iconColor={colors.primaryDark}
-                        iconBg={colors.primaryLight + "55"}
-                        label="Bubble Corner Style"
-                        subtitle={`Current: ${appearance.bubbleStyle.charAt(0).toUpperCase() + appearance.bubbleStyle.slice(1)}`}
-                        onPress={() => {
-                            BubblyAlert.alert(
-                                "Bubble Corner Style",
-                                "Choose how message bubbles are shaped:",
-                                [
-                                    ...(["rounded", "sharp", "minimal"] as BubbleCornerStyle[]).map((styleKey) => ({
-                                        text: styleKey === "rounded" ? "Rounded Pill" : styleKey === "sharp" ? "Crisp Modern" : "Minimal Flat",
-                                        onPress: async () => {
-                                            const next = { ...appearance, bubbleStyle: styleKey };
-                                            setAppearance(next);
-                                            await saveChatAppearance(next);
-                                            if (isSocketConnected()) updateProfile({ theme: { bubbleStyle: styleKey } });
-                                        },
-                                    })),
-                                    { text: "Cancel", style: "cancel" },
-                                ]
+                    <View style={{ padding: spacingX._15, gap: verticalScale(12) }}>
+                        {/* Live Bubble Preview Stage */}
+                        {(() => {
+                            const activeSwatch = ACCENT_SWATCHES.find((s) => s.color === appearance.accentColor) || ACCENT_SWATCHES[0];
+                            const bubbleRadius =
+                                appearance.bubbleStyle === "sharp"
+                                    ? radius._8
+                                    : appearance.bubbleStyle === "minimal"
+                                    ? radius._12
+                                    : radius._18;
+                            const previewFontSize =
+                                appearance.fontScale === "compact" ? 12.5 : appearance.fontScale === "large" ? 15.5 : 14;
+                            const borderStyle =
+                                appearance.bubbleStyle === "minimal"
+                                    ? { borderWidth: 0 }
+                                    : { borderWidth: 1, borderColor: "rgba(0,0,0,0.06)" };
+                            return (
+                                <View style={{
+                                    backgroundColor: colors.neutral50,
+                                    borderRadius: radius._15,
+                                    padding: spacingX._12,
+                                    borderWidth: 1,
+                                    borderColor: colors.neutral200,
+                                    gap: verticalScale(8),
+                                }}>
+                                    <Typo size={10.5} fontWeight="800" color={colors.neutral400}>LIVE CHAT PREVIEW</Typo>
+                                    <View style={[{
+                                        alignSelf: "flex-start",
+                                        backgroundColor: colors.white,
+                                        borderRadius: bubbleRadius,
+                                        paddingHorizontal: spacingX._12,
+                                        paddingVertical: verticalScale(8),
+                                        maxWidth: "82%",
+                                    }, borderStyle]}>
+                                        <Typo size={previewFontSize} color={colors.neutral800}>
+                                            Bubbly v4.0.1 looks super crisp! ✨
+                                        </Typo>
+                                    </View>
+                                    <View style={[{
+                                        alignSelf: "flex-end",
+                                        backgroundColor: activeSwatch.myBubble,
+                                        borderRadius: bubbleRadius,
+                                        paddingHorizontal: spacingX._12,
+                                        paddingVertical: verticalScale(8),
+                                        maxWidth: "82%",
+                                    }, borderStyle]}>
+                                        <Typo size={previewFontSize} fontWeight="500" color={colors.neutral900}>
+                                            Custom corners, typography & color 🎨
+                                        </Typo>
+                                    </View>
+                                </View>
                             );
-                        }}
-                    />
-                    <Row
-                        icon="format-size"
-                        iconColor={colors.primaryDark}
-                        iconBg={colors.primaryLight + "55"}
-                        label="Chat Text Size"
-                        subtitle={`Current: ${appearance.fontScale.charAt(0).toUpperCase() + appearance.fontScale.slice(1)}`}
-                        onPress={() => {
-                            BubblyAlert.alert(
-                                "Chat Text Size",
-                                "Pick message text scale:",
-                                [
-                                    ...(["compact", "standard", "large"] as ChatFontScale[]).map((sz) => ({
-                                        text: sz.charAt(0).toUpperCase() + sz.slice(1),
-                                        onPress: async () => {
-                                            const next = { ...appearance, fontScale: sz };
-                                            setAppearance(next);
-                                            await saveChatAppearance(next);
-                                        },
-                                    })),
-                                    { text: "Cancel", style: "cancel" },
-                                ]
-                            );
-                        }}
-                    />
-                    <Row
-                        icon="palette"
-                        iconColor={colors.primaryDark}
-                        iconBg={colors.primaryLight + "55"}
-                        label="Accent Highlight Color"
-                        subtitle={ACCENT_SWATCHES.find((s) => s.color === appearance.accentColor)?.name || "Honey Amber"}
-                        onPress={() => {
-                            BubblyAlert.alert(
-                                "Accent Color",
-                                "Choose your preferred highlight swatch:",
-                                [
-                                    ...ACCENT_SWATCHES.map((sw) => ({
-                                        text: sw.name,
-                                        onPress: async () => {
-                                            const next = { ...appearance, accentColor: sw.color };
-                                            setAppearance(next);
-                                            await saveChatAppearance(next);
-                                            if (isSocketConnected()) updateProfile({ theme: { accent: sw.color } });
-                                        },
-                                    })),
-                                    { text: "Cancel", style: "cancel" },
-                                ]
-                            );
-                        }}
-                        isLast
-                    />
+                        })()}
+
+                        {/* Inline Corner Style Pills */}
+                        <View style={{ gap: 6 }}>
+                            <Typo size={12} fontWeight="700" color={colors.neutral600}>Bubble Corner Style</Typo>
+                            <View style={{ flexDirection: "row", gap: 8 }}>
+                                {([
+                                    { key: "rounded" as BubbleCornerStyle, label: "Rounded" },
+                                    { key: "sharp" as BubbleCornerStyle, label: "Sharp" },
+                                    { key: "minimal" as BubbleCornerStyle, label: "Minimal" },
+                                ]).map((opt) => {
+                                    const active = appearance.bubbleStyle === opt.key;
+                                    return (
+                                        <TouchableOpacity
+                                            key={opt.key}
+                                            activeOpacity={0.75}
+                                            onPress={async () => {
+                                                hapticTap("light");
+                                                const next = { ...appearance, bubbleStyle: opt.key };
+                                                setAppearance(next);
+                                                await saveChatAppearance(next);
+                                                if (isSocketConnected()) updateProfile({ theme: { bubbleStyle: opt.key } });
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                paddingVertical: verticalScale(8),
+                                                borderRadius: radius.full,
+                                                backgroundColor: active ? colors.primaryLight : colors.neutral100,
+                                                borderWidth: 1,
+                                                borderColor: active ? colors.primary : colors.neutral200,
+                                                alignItems: "center",
+                                            }}
+                                        >
+                                            <Typo size={12} fontWeight={active ? "800" : "600"} color={active ? colors.primaryDark : colors.neutral700}>
+                                                {opt.label}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* Inline Font Scale Pills */}
+                        <View style={{ gap: 6 }}>
+                            <Typo size={12} fontWeight="700" color={colors.neutral600}>Chat Text Size</Typo>
+                            <View style={{ flexDirection: "row", gap: 8 }}>
+                                {(["compact", "standard", "large"] as ChatFontScale[]).map((sz) => {
+                                    const active = appearance.fontScale === sz;
+                                    return (
+                                        <TouchableOpacity
+                                            key={sz}
+                                            activeOpacity={0.75}
+                                            onPress={async () => {
+                                                hapticTap("light");
+                                                const next = { ...appearance, fontScale: sz };
+                                                setAppearance(next);
+                                                await saveChatAppearance(next);
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                paddingVertical: verticalScale(8),
+                                                borderRadius: radius.full,
+                                                backgroundColor: active ? colors.primaryLight : colors.neutral100,
+                                                borderWidth: 1,
+                                                borderColor: active ? colors.primary : colors.neutral200,
+                                                alignItems: "center",
+                                            }}
+                                        >
+                                            <Typo size={12} fontWeight={active ? "800" : "600"} color={active ? colors.primaryDark : colors.neutral700}>
+                                                {sz.charAt(0).toUpperCase() + sz.slice(1)}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* Inline Accent Color Swatches */}
+                        <View style={{ gap: 6 }}>
+                            <Typo size={12} fontWeight="700" color={colors.neutral600}>
+                                Bubble Accent · {ACCENT_SWATCHES.find((s) => s.color === appearance.accentColor)?.name || "Honey Amber"}
+                            </Typo>
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                {ACCENT_SWATCHES.map((sw) => {
+                                    const active = appearance.accentColor === sw.color;
+                                    return (
+                                        <TouchableOpacity
+                                            key={sw.color}
+                                            activeOpacity={0.8}
+                                            onPress={async () => {
+                                                hapticTap("light");
+                                                const next = { ...appearance, accentColor: sw.color };
+                                                setAppearance(next);
+                                                await saveChatAppearance(next);
+                                                if (isSocketConnected()) updateProfile({ theme: { accent: sw.color } });
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                height: verticalScale(34),
+                                                borderRadius: radius.full,
+                                                backgroundColor: sw.color,
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                borderWidth: active ? 2.5 : 1,
+                                                borderColor: active ? colors.neutral900 : "rgba(0,0,0,0.08)",
+                                            }}
+                                        >
+                                            {active && <MaterialIcons name="check" size={16} color="#ffffff" />}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+                    </View>
                 </SectionCard>
 
                 {/* ── Privacy & Security ── */}
@@ -947,6 +1039,19 @@ export default function SettingsScreen() {
                 onCancelReminder={async (id) => {
                     await cancelMessageReminder(id);
                     setReminders(await getActiveReminders());
+                }}
+                onPressReminder={(rem) => {
+                    setShowReminders(false);
+                    router.push({
+                        pathname: "/(main)/conversation",
+                        params: {
+                            id: rem.conversationId,
+                            name: rem.senderName || "Chat",
+                            type: "direct",
+                            participants: "[]",
+                            highlightMessageId: rem.messageId,
+                        },
+                    });
                 }}
                 onClose={() => setShowReminders(false)}
             />
