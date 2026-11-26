@@ -23,6 +23,7 @@ import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import { useAuth } from "../../contexts/authContext";
 import { getCallHistory } from "../../services/callService";
 import { callInvite, onCallRinging, onCallFailed, isSocketConnected } from "../../socket/socketEvents";
@@ -133,6 +134,7 @@ const CallLogsScreen = () => {
             avatar: target.avatar || "",
         };
 
+        hapticTap("heavy");
         callInvite({
             conversationId: convId,
             calleeId: target._id,
@@ -254,7 +256,7 @@ const CallLogsScreen = () => {
                 <View style={styles.segmentedContainer}>
                     <TouchableOpacity
                         style={[styles.segmentBtn, activeTab === "all" && styles.segmentBtnActive]}
-                        onPress={() => setActiveTab("all")}
+                        onPress={() => { hapticTap("light"); setActiveTab("all"); }}
                         activeOpacity={0.8}
                     >
                         <Typo
@@ -267,7 +269,7 @@ const CallLogsScreen = () => {
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.segmentBtn, activeTab === "missed" && styles.segmentBtnActive]}
-                        onPress={() => setActiveTab("missed")}
+                        onPress={() => { hapticTap("light"); setActiveTab("missed"); }}
                         activeOpacity={0.8}
                     >
                         <Typo

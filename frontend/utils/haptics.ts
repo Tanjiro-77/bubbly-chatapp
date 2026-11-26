@@ -1,32 +1,45 @@
 /**
  * frontend/utils/haptics.ts
  *
- * Lightweight, cross-platform tactile feedback helper using native Vibration patterns
+ * High-intensity, cross-platform tactile feedback helper using native Vibration patterns
  * without extra native module dependencies. Safely no-ops on Web.
  */
 
 import { Platform, Vibration } from "react-native";
 
-export type HapticKind = "light" | "medium" | "success" | "warning" | "error";
+export type HapticKind =
+    | "light"
+    | "medium"
+    | "heavy"
+    | "success"
+    | "warning"
+    | "error"
+    | "heartbeat";
 
-export function hapticTap(kind: HapticKind = "light"): void {
+export function hapticTap(kind: HapticKind = "medium"): void {
     if (Platform.OS === "web") return;
     try {
         switch (kind) {
             case "light":
-                Vibration.vibrate(14);
+                Vibration.vibrate(32);
                 break;
             case "medium":
-                Vibration.vibrate(28);
+                Vibration.vibrate(55);
+                break;
+            case "heavy":
+                Vibration.vibrate(85);
                 break;
             case "success":
-                Vibration.vibrate([0, 22, 45, 28]);
+                Vibration.vibrate([0, 48, 55, 72]);
                 break;
             case "warning":
-                Vibration.vibrate([0, 30, 50, 30]);
+                Vibration.vibrate([0, 60, 50, 70]);
                 break;
             case "error":
-                Vibration.vibrate([0, 45, 45, 55]);
+                Vibration.vibrate([0, 82, 45, 95, 45, 75]);
+                break;
+            case "heartbeat":
+                Vibration.vibrate([0, 60, 75, 90]);
                 break;
         }
     } catch {

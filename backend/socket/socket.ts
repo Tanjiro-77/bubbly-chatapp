@@ -8,6 +8,7 @@ import { registerCallEvents, handleUserDisconnectCalls } from "./callEvents";
 import { registerAppEvents } from "./appEvents";
 import Conversation from "../modals/Conversation";
 import User from "../modals/User";
+import Call from "../modals/Call";
 import { setIO, userRoom } from "./io";
 import { sanitizeLastSeen } from "../utils/permissions";
 
@@ -96,6 +97,35 @@ export function intializeSocket(server: any): SocketIOServer {
 
         } catch (error: any) {
             console.log("Error joining conversations:", error);
+        }
+
+        // Re-deliver any still-ringing incoming call that arrived while this user was reconnecting
+        try {
+            const pendingCall: any = await Call.findOne({
+                calleeId: userId,
+                status: "ringing",
+                createdAt: { $gte: new Date(Date.now() - 65_000) },
+            })
+                .populate("callerId", "name avatar")
+                .sort({ createdAt: -1 })
+                .lean();
+
+            if (pendingCall) {
+                const callerDoc = pendingCall.callerId as any;
+                socket.emit("call:incoming", {
+                    callId: pendingCall._id.toString(),
+                    conversationId: pendingCall.conversationId.toString(),
+                    kind: pendingCall.kind,
+                    caller: {
+                        id: callerDoc?._id ? callerDoc._id.toString() : pendingCall.callerId.toString(),
+                        name: callerDoc?.name || "Someone",
+                        avatar: callerDoc?.avatar || "",
+                    },
+                    calleeId: userId,
+                });
+            }
+        } catch (callErr) {
+            console.log("Error checking pending calls on connect:", callErr);
         }
 
         socket.on('disconnect', async () => {

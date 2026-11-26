@@ -4,6 +4,7 @@ import {
     AlertOptions,
     Animated,
     Easing,
+    Image,
     Modal,
     Platform,
     Pressable,
@@ -13,10 +14,10 @@ import {
     View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import MaterialIcons from "@react-native-vector-icons/material-icons";
 import { FullWindowOverlay } from "react-native-screens";
 import { colors, gradients, radius } from "../constants/theme";
 import { verticalScale } from "../utils/styling";
+import { hapticTap } from "../utils/haptics";
 import Typo from "./Typo";
 
 export type BubblyAlertTone = "amber" | "success" | "danger" | "info";
@@ -64,6 +65,8 @@ export function showBubblyAlert(
         buttons: resolvedButtons,
         options,
     });
+    const hasDestructive = resolvedButtons.some((b) => b.style === "destructive");
+    hapticTap(options?.tone === "danger" || hasDestructive ? "warning" : "medium");
     notify();
 }
 
@@ -71,11 +74,10 @@ export const BubblyAlert = {
     alert: showBubblyAlert,
 };
 
-type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
+const BUBBLY_LOGO = require("../assets/images/icon.png");
 
 function resolveAppearance(item: QueuedAlert): {
     tone: BubblyAlertTone;
-    icon: IconName;
     gradient: readonly [string, string];
     haloBg: string;
     borderTint: string;
@@ -110,40 +112,12 @@ function resolveAppearance(item: QueuedAlert): {
         }
     }
 
-    let icon: IconName = "auto-awesome";
-    if (/\b(delete|trash|clear|remove)\b/.test(combined)) {
-        icon = "delete-outline";
-    } else if (/\b(logout|log out|sign out)\b/.test(combined)) {
-        icon = "logout";
-    } else if (/\b(block|unblock)\b/.test(combined)) {
-        icon = "block";
-    } else if (/\b(permission|camera|microphone|mic|contacts|storage|gallery|photo)\b/.test(combined)) {
-        icon = "admin-panel-settings";
-    } else if (/\b(lock|vault|pin|security|password)\b/.test(combined)) {
-        icon = "lock-outline";
-    } else if (/\b(offline|network|connection|disconnect)\b/.test(combined)) {
-        icon = "wifi-off";
-    } else if (/\b(call|voice|video|ring)\b/.test(combined)) {
-        icon = "call";
-    } else if (/\b(star|favorite)\b/.test(combined)) {
-        icon = "star";
-    } else if (/\b(qr|scan)\b/.test(combined)) {
-        icon = "qr-code-2";
-    } else if (tone === "danger") {
-        icon = "error-outline";
-    } else if (tone === "success") {
-        icon = "check-circle";
-    } else if (tone === "info") {
-        icon = "info-outline";
-    }
-
     if (tone === "danger") {
         return {
             tone,
-            icon,
             gradient: ["#f87171", "#dc2626"],
             haloBg: "rgba(239, 68, 68, 0.13)",
-            borderTint: "rgba(239, 68, 68, 0.20)",
+            borderTint: "rgba(239, 68, 68, 0.24)",
             badgeBg: "#fef2f2",
             badgeText: "#dc2626",
             tag: hasDestructive ? "CONFIRM ACTION" : "ATTENTION",
@@ -153,10 +127,9 @@ function resolveAppearance(item: QueuedAlert): {
     if (tone === "success") {
         return {
             tone,
-            icon,
             gradient: ["#34d399", "#059669"],
             haloBg: "rgba(16, 185, 129, 0.14)",
-            borderTint: "rgba(16, 185, 129, 0.22)",
+            borderTint: "rgba(16, 185, 129, 0.24)",
             badgeBg: "#ecfdf5",
             badgeText: "#059669",
             tag: "SUCCESS",
@@ -166,7 +139,6 @@ function resolveAppearance(item: QueuedAlert): {
     if (tone === "info") {
         return {
             tone,
-            icon,
             gradient: ["#fbbf24", "#d97706"],
             haloBg: "rgba(245, 158, 11, 0.15)",
             borderTint: "rgba(245, 158, 11, 0.25)",
@@ -178,7 +150,6 @@ function resolveAppearance(item: QueuedAlert): {
 
     return {
         tone,
-        icon,
         gradient: ["#fbbf24", "#d97706"],
         haloBg: "rgba(245, 158, 11, 0.16)",
         borderTint: "rgba(245, 158, 11, 0.25)",
@@ -234,6 +205,7 @@ export const BubblyAlertHost: React.FC = () => {
 
     const dismissWithCallback = (cb?: () => void) => {
         if (!current) return;
+        hapticTap("light");
         queue.shift();
         notify();
         if (cb) {
@@ -285,17 +257,24 @@ export const BubblyAlertHost: React.FC = () => {
                     style={styles.topStrip}
                 />
 
-                {/* Icon Medallion */}
+                {/* Official Bubbly App Logo Medallion */}
                 <View style={styles.medallionWrap}>
-                    <View style={[styles.medallionHalo, { backgroundColor: appearance.haloBg }]}>
-                        <LinearGradient
-                            colors={appearance.gradient}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.medallionCore}
-                        >
-                            <MaterialIcons name={appearance.icon} size={26} color="#FFFFFF" />
-                        </LinearGradient>
+                    <View
+                        style={[
+                            styles.medallionHalo,
+                            {
+                                backgroundColor: appearance.haloBg,
+                                borderColor: appearance.borderTint,
+                            },
+                        ]}
+                    >
+                        <View style={[styles.medallionCore, { borderColor: appearance.borderTint }]}>
+                            <Image
+                                source={BUBBLY_LOGO}
+                                style={styles.medallionLogo}
+                                resizeMode="contain"
+                            />
+                        </View>
                     </View>
                 </View>
 
@@ -512,23 +491,31 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     medallionHalo: {
-        width: 68,
-        height: 68,
-        borderRadius: 34,
+        width: 72,
+        height: 72,
+        borderRadius: 24,
+        borderWidth: 1,
         alignItems: "center",
         justifyContent: "center",
     },
     medallionCore: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
+        width: 56,
+        height: 56,
+        borderRadius: 18,
+        backgroundColor: "#FFFFFF",
+        borderWidth: 1,
         alignItems: "center",
         justifyContent: "center",
+        padding: 4,
         shadowColor: "#d97706",
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
+        shadowOpacity: 0.22,
         shadowRadius: 8,
         elevation: 4,
+    },
+    medallionLogo: {
+        width: "100%",
+        height: "100%",
     },
     tagPill: {
         paddingHorizontal: 10,

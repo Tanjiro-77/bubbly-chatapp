@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
     View,
     ScrollView,
@@ -7,44 +7,86 @@ import {
     TouchableOpacity,
     Linking,
     Platform,
+    Share,
+    useColorScheme,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
-import { useColorScheme } from "react-native";
 import * as SimpleIcons from "simple-icons";
+import * as Icons from "phosphor-react-native";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import Typo from "../../components/Typo";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import BackButton from "../../components/BackButton";
 import BrandIcon from "../../components/BrandIcon";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 
-// ─── Placeholder URLs — REPLACE THESE ───────────────────────────────────────
 const GITHUB_URL = "https://github.com/Tanjiro-77/bubbly-chatapp";
 const BUG_REPORT_URL =
-    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20Bug%20Report&body=Describe%20the%20bug%20you%20encountered%3A%0A%0A";
-
+    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.0.2%20Bug%20Report&body=Describe%20the%20bug%20you%20encountered%3A%0A%0A";
 const FEEDBACK_EMAIL =
-    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20Feedback&body=Hi%20Arnav%2C%0A%0A";
-// ─────────────────────────────────────────────────────────────────────────────
+    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.0.2%20Feedback&body=Hi%20Arnav%2C%0A%0A";
 
-const APP_VERSION: string = Constants.expoConfig?.version ?? "4.0.1";
+const APP_VERSION: string = Constants.expoConfig?.version ?? "4.0.2";
 
 interface TechItem {
     label: string;
+    role: string;
     iconKey: string;
     fallbackEmoji: string;
-    fallbackColor: string;
 }
 
 const TECH_STACK: TechItem[] = [
-    { label: "React Native", iconKey: "siReact", fallbackEmoji: "⚛️", fallbackColor: "61DAFB" },
-    { label: "Expo", iconKey: "siExpo", fallbackEmoji: "🔷", fallbackColor: "000020" },
-    { label: "Express", iconKey: "siExpress", fallbackEmoji: "🚀", fallbackColor: "000000" },
-    { label: "Socket.IO", iconKey: "siSocketdotio", fallbackEmoji: "⚡", fallbackColor: "010101" },
-    { label: "MongoDB", iconKey: "siMongodb", fallbackEmoji: "🍃", fallbackColor: "47A248" },
-    { label: "Agora", iconKey: "siAgora", fallbackEmoji: "📡", fallbackColor: "099DFD" },
-    { label: "Cloudinary", iconKey: "siCloudinary", fallbackEmoji: "☁️", fallbackColor: "3448C5" },
+    { label: "React Native", role: "Mobile UI", iconKey: "siReact", fallbackEmoji: "⚛️" },
+    { label: "Expo SDK", role: "Native Runtime", iconKey: "siExpo", fallbackEmoji: "🔷" },
+    { label: "Express", role: "REST API", iconKey: "siExpress", fallbackEmoji: "🚀" },
+    { label: "Socket.IO", role: "Live Engine", iconKey: "siSocketdotio", fallbackEmoji: "⚡" },
+    { label: "MongoDB", role: "Persistence", iconKey: "siMongodb", fallbackEmoji: "🍃" },
+    { label: "Agora RTC", role: "HD Calls", iconKey: "siAgora", fallbackEmoji: "📡" },
+    { label: "Cloudinary", role: "Media CDN", iconKey: "siCloudinary", fallbackEmoji: "☁️" },
+];
+
+type FeatureCategory = "all" | "messaging" | "productivity" | "privacy" | "media";
+
+interface FlagshipFeature {
+    id: number;
+    title: string;
+    subtitle: string;
+    category: Exclude<FeatureCategory, "all">;
+    emoji: string;
+}
+
+const FLAGSHIP_FEATURES: FlagshipFeature[] = [
+    { id: 1, title: "Quick Formatting Toolbar", subtitle: "Bold, italic, strike, inline code & > blockquotes", category: "messaging", emoji: "✍️" },
+    { id: 2, title: "Slash Command Quick Replies", subtitle: "Type / for instant reusable reply templates", category: "productivity", emoji: "⚡" },
+    { id: 3, title: "Bulk Multi-Select Dock", subtitle: "Copy, star, or delete multiple messages at once", category: "productivity", emoji: "☑️" },
+    { id: 4, title: "Silent Send Mode", subtitle: "Long-press Send to deliver without alert chimes", category: "messaging", emoji: "🔕" },
+    { id: 5, title: "Message Reminder Alarms", subtitle: "Schedule OS alerts on important chat messages", category: "productivity", emoji: "⏰" },
+    { id: 6, title: "Interactive Smart Chips", subtitle: "1-tap @mentions, phone numbers, URLs & emails", category: "messaging", emoji: "🔗" },
+    { id: 7, title: "Shared Checklist Cards", subtitle: "Collaborative live to-do lists inside any thread", category: "productivity", emoji: "✅" },
+    { id: 8, title: "Icebreaker Mini-Games", subtitle: "Roll Dice, flip Coins, Magic 8-Ball & RPS live", category: "media", emoji: "🎲" },
+    { id: 9, title: "Multi-Pinned Carousel", subtitle: "Cycle pinned announcements & jump right to them", category: "messaging", emoji: "📌" },
+    { id: 10, title: "Live Countdown Stickers", subtitle: "Animated event timers directly inside chats", category: "media", emoji: "⏳" },
+    { id: 11, title: "Chat Archive Vault", subtitle: "Declutter home feed into a collapsible archive", category: "productivity", emoji: "🗄️" },
+    { id: 12, title: "Smart Chat Folders", subtitle: "Filter Work, Friends, Family, VIP & Unread chats", category: "productivity", emoji: "🗂️" },
+    { id: 13, title: "Private Nicknames & Notes", subtitle: "Per-contact aliases & scratchpad notes stored locally", category: "privacy", emoji: "📝" },
+    { id: 14, title: "In-Chat Insights", subtitle: "Live message counts, top senders & media breakdown", category: "productivity", emoji: "📊" },
+    { id: 15, title: "Custom Activity Status", subtitle: "Emoji + live status line visible on your chats", category: "messaging", emoji: "🎧" },
+    { id: 16, title: "Focus Quiet Mode", subtitle: "Timed Do-Not-Disturb suppressing foreground pings", category: "privacy", emoji: "🌙" },
+    { id: 17, title: "Bubble Corner Studio", subtitle: "Pill, Classic & Sharp corners plus font scaling", category: "media", emoji: "🎨" },
+    { id: 18, title: "Privacy Notification Shield", subtitle: "Mask sender & message previews on banners", category: "privacy", emoji: "🛡️" },
+    { id: 19, title: "Story Studio Typography", subtitle: "7 gradient presets, fonts & mood stickers", category: "media", emoji: "✨" },
+    { id: 20, title: "Quick Jump & Offline Outbox", subtitle: "Instant chat switcher & resilient send queue", category: "messaging", emoji: "🚀" },
+];
+
+const CATEGORY_TABS: { key: FeatureCategory; label: string }[] = [
+    { key: "all", label: "All (20)" },
+    { key: "messaging", label: "Messaging" },
+    { key: "productivity", label: "Productivity" },
+    { key: "privacy", label: "Privacy" },
+    { key: "media", label: "Media" },
 ];
 
 const openLink = async (url: string) => {
@@ -53,40 +95,47 @@ const openLink = async (url: string) => {
         if (supported) {
             await Linking.openURL(url);
         }
-    } catch (_) {
-        // silently fail — do not crash the app
-    }
+    } catch (_) {}
 };
 
 const getIcon = (key: string) => (SimpleIcons as any)[key];
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
 interface SectionLabelProps {
     label: string;
+    rightHint?: string;
     isDark: boolean;
 }
 
-const SectionLabel: React.FC<SectionLabelProps> = ({ label, isDark }) => (
-    <Typo
-        size={12}
-        fontWeight="600"
-        color={isDark ? colors.neutral500 : colors.neutral400}
-        style={styles.sectionLabel}
-    >
-        {label.toUpperCase()}
-    </Typo>
+const SectionLabel: React.FC<SectionLabelProps> = ({ label, rightHint, isDark }) => (
+    <View style={styles.sectionHeaderRow}>
+        <Typo
+            size={11.5}
+            fontWeight="800"
+            color={isDark ? colors.neutral400 : colors.neutral500}
+            style={styles.sectionLabel}
+            textProps={{ numberOfLines: 1 }}
+        >
+            {label.toUpperCase()}
+        </Typo>
+        {rightHint ? (
+            <Typo size={11} fontWeight="600" color={colors.primaryDark} textProps={{ numberOfLines: 1 }}>
+                {rightHint}
+            </Typo>
+        ) : null}
+    </View>
 );
 
 interface SectionCardProps {
     children: React.ReactNode;
     isDark: boolean;
+    noPadding?: boolean;
 }
 
-const SectionCard: React.FC<SectionCardProps> = ({ children, isDark }) => (
+const SectionCard: React.FC<SectionCardProps> = ({ children, isDark, noPadding }) => (
     <View
         style={[
             styles.card,
+            !noPadding && { padding: spacingX._15 },
             {
                 backgroundColor: isDark ? colors.neutral800 : colors.white,
                 borderColor: isDark ? colors.neutral700 : colors.neutral200,
@@ -98,8 +147,10 @@ const SectionCard: React.FC<SectionCardProps> = ({ children, isDark }) => (
 );
 
 interface LinkRowProps {
-    icon?: React.ReactNode;
+    icon: React.ReactNode;
+    iconBg?: string;
     label: string;
+    subtitle?: string;
     url?: string;
     onPress?: () => void;
     isDark: boolean;
@@ -108,15 +159,21 @@ interface LinkRowProps {
 
 const LinkRow: React.FC<LinkRowProps> = ({
     icon,
+    iconBg,
     label,
+    subtitle,
     url,
     onPress,
     isDark,
     isLast = false,
 }) => (
     <TouchableOpacity
-        activeOpacity={0.6}
-        onPress={onPress ?? (() => url && openLink(url))}
+        activeOpacity={0.7}
+        onPress={() => {
+            hapticTap("medium");
+            if (onPress) onPress();
+            else if (url) openLink(url);
+        }}
         style={[
             styles.linkRow,
             !isLast && {
@@ -130,497 +187,747 @@ const LinkRow: React.FC<LinkRowProps> = ({
                 style={[
                     styles.linkIconBadge,
                     {
-                        backgroundColor: isDark ? colors.neutral700 : colors.neutral100,
+                        backgroundColor: iconBg || (isDark ? colors.neutral700 : colors.neutral100),
                         borderColor: isDark ? colors.neutral600 : colors.neutral200,
                     },
                 ]}
             >
                 {icon}
             </View>
-            <Typo
-                size={14.5}
-                fontWeight="500"
-                color={isDark ? colors.neutral100 : colors.neutral800}
-                style={{ flex: 1 }}
-                textProps={{ numberOfLines: 1 }}
-            >
-                {label}
-            </Typo>
+            <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                <Typo
+                    size={14.5}
+                    fontWeight="600"
+                    color={isDark ? colors.neutral100 : colors.neutral900}
+                    textProps={{ numberOfLines: 1 }}
+                >
+                    {label}
+                </Typo>
+                {subtitle ? (
+                    <Typo
+                        size={11.5}
+                        color={isDark ? colors.neutral400 : colors.neutral500}
+                        textProps={{ numberOfLines: 1 }}
+                    >
+                        {subtitle}
+                    </Typo>
+                ) : null}
+            </View>
         </View>
-        <Typo size={18} color={isDark ? colors.neutral600 : colors.neutral350}>
-            ›
-        </Typo>
+        <Icons.CaretRight
+            size={verticalScale(15)}
+            color={isDark ? colors.neutral500 : colors.neutral350}
+            weight="bold"
+        />
     </TouchableOpacity>
 );
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AboutScreen() {
     const router = useRouter();
     const scheme = useColorScheme();
     const isDark = scheme === "dark";
 
+    const [selectedCat, setSelectedCat] = useState<FeatureCategory>("all");
+    const [showAllFeatures, setShowAllFeatures] = useState(false);
+
     const pageBg = isDark ? colors.neutral900 : colors.neutral100;
     const primaryTextColor = isDark ? colors.white : colors.neutral900;
     const subtleTextColor = isDark ? colors.neutral400 : colors.neutral500;
 
+    const filteredFeatures = useMemo(() => {
+        if (selectedCat === "all") return FLAGSHIP_FEATURES;
+        return FLAGSHIP_FEATURES.filter((f) => f.category === selectedCat);
+    }, [selectedCat]);
+
+    const visibleFeatures = useMemo(() => {
+        if (selectedCat !== "all" || showAllFeatures) return filteredFeatures;
+        return filteredFeatures.slice(0, 8);
+    }, [filteredFeatures, selectedCat, showAllFeatures]);
+
+    const handleShareApp = async () => {
+        hapticTap("medium");
+        try {
+            await Share.share({
+                message: `Check out Bubbly v${APP_VERSION} — real-time messaging, Agora HD voice & video calls, Story Studio, and 20 flagship chat tools built by Arnav: ${GITHUB_URL}`,
+            });
+        } catch (_) {}
+    };
+
     return (
         <ScreenWrapper
-            backgroundColor={pageBg}
-            statusBarStyle={isDark ? "light-content" : "dark-content"}
-            style={{ backgroundColor: pageBg }}
+            showPattern={true}
+            bgOpacity={isDark ? 0.25 : 0.35}
+            backgroundColor={colors.neutral900}
+            statusBarStyle="light-content"
         >
-            {/* ── Header ── */}
-            <View
-                style={[
-                    styles.header,
-                    {
-                        backgroundColor: pageBg,
-                        borderBottomColor: isDark
-                            ? colors.neutral800
-                            : colors.neutral200,
-                    },
-                ]}
-            >
-                <BackButton color={isDark ? colors.white : colors.black} />
-                <Typo
-                    size={16}
-                    fontWeight="600"
-                    color={primaryTextColor}
-                    style={styles.headerTitle}
+            {/* ── Obsidian Top Bar ── */}
+            <View style={styles.topHeader}>
+                <BackButton color={colors.white} iconSize={21} />
+                <View style={styles.headerCenter}>
+                    <Typo size={17} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                        About Bubbly
+                    </Typo>
+                    <Typo size={11} fontWeight="600" color="rgba(255,255,255,0.6)" textProps={{ numberOfLines: 1 }}>
+                        Release v{APP_VERSION} · Flagship Edition
+                    </Typo>
+                </View>
+                <TouchableOpacity
+                    onPress={handleShareApp}
+                    activeOpacity={0.75}
+                    style={styles.shareTopBtn}
                 >
-                    About
-                </Typo>
-                <View style={styles.headerSpacer} />
+                    <Icons.ShareNetwork size={verticalScale(17)} color={colors.primary} weight="bold" />
+                </TouchableOpacity>
             </View>
 
-            <ScrollView
-                style={{ backgroundColor: pageBg }}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* ── Profile Card ── */}
-                <View
-                    style={[
-                        styles.profileCard,
-                        {
-                            backgroundColor: isDark ? colors.neutral800 : colors.white,
-                            borderColor: isDark ? colors.neutral700 : colors.neutral200,
-                        },
-                    ]}
+            {/* ── Rounded Content Surface ── */}
+            <View style={[styles.surfaceSheet, { backgroundColor: pageBg }]}>
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
                 >
-                    <View
-                        style={[
-                            styles.avatarRing,
-                            { borderColor: isDark ? colors.neutral700 : colors.neutral200 },
-                        ]}
-                    >
-                        <Image
-                            source={require("@/assets/images/developer-photo.png")}
-                            style={styles.avatar}
-                            resizeMode="cover"
-                        />
-                    </View>
-
-                    <Typo
-                        size={19}
-                        fontWeight="700"
-                        color={primaryTextColor}
-                        style={styles.devName}
-                    >
-                        Arnav
-                    </Typo>
-                    <Typo
-                        size={12.5}
-                        fontWeight="600"
-                        color={colors.primaryDark}
-                        style={styles.devTitle}
-                    >
-                        CREATOR & DEVELOPER OF BUBBLY
-                    </Typo>
-                    <Typo size={12} color={subtleTextColor} style={styles.devSubtitle}>
-                        Student Developer
-                    </Typo>
-
-                    <View
-                        style={[
-                            styles.divider,
-                            { backgroundColor: isDark ? colors.neutral700 : colors.neutral200 },
-                        ]}
-                    />
-
-                    <View style={styles.appRow}>
-                        <Typo
-                            size={14}
-                            fontWeight="700"
-                            color={primaryTextColor}
-                            textProps={{ numberOfLines: 1 }}
-                        >
-                            Bubbly
-                        </Typo>
-                        <View
-                            style={[
-                                styles.versionBadge,
-                                {
-                                    backgroundColor: isDark
-                                        ? colors.neutral700
-                                        : colors.neutral100,
-                                    borderColor: isDark
-                                        ? colors.neutral600
-                                        : colors.neutral200,
-                                },
-                            ]}
-                        >
-                            <Typo
-                                size={11}
-                                fontWeight="600"
-                                color={subtleTextColor}
-                                textProps={{ numberOfLines: 1 }}
-                            >
-                                v{APP_VERSION}
-                            </Typo>
+                    {/* ── Hero Obsidian Brand & Creator Spotlight Card ── */}
+                    <Animated.View entering={FadeInDown.duration(420).springify()} style={styles.heroCard}>
+                        <View style={styles.heroTopRow}>
+                            <View style={styles.heroBrandRow}>
+                                <View style={styles.heroLogoBox}>
+                                    <Icons.ChatsCircle size={verticalScale(22)} color={colors.neutral900} weight="fill" />
+                                </View>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Typo size={18} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                        Bubbly
+                                    </Typo>
+                                    <Typo size={11.5} fontWeight="500" color="rgba(255,255,255,0.68)" textProps={{ numberOfLines: 1 }}>
+                                        Connect Beyond Messages
+                                    </Typo>
+                                </View>
+                            </View>
+                            <View style={styles.heroVersionPill}>
+                                <Icons.Sparkle size={12} color={colors.neutral900} weight="fill" />
+                                <Typo size={11} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                    v{APP_VERSION}
+                                </Typo>
+                            </View>
                         </View>
-                    </View>
-                </View>
 
-                {/* ── About Bubbly ── */}
-                <SectionLabel label="About" isDark={isDark} />
-                <SectionCard isDark={isDark}>
-                    <Typo
-                        size={13.5}
-                        color={isDark ? colors.neutral300 : colors.neutral600}
-                        style={styles.aboutText}
+                        <View style={styles.heroCreatorRow}>
+                            <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => hapticTap("success")}
+                                style={styles.heroAvatarRing}
+                            >
+                                <Image
+                                    source={require("@/assets/images/developer-photo.png")}
+                                    style={styles.heroAvatar}
+                                    resizeMode="cover"
+                                />
+                            </TouchableOpacity>
+                            <View style={{ flex: 1, minWidth: 0, gap: verticalScale(3) }}>
+                                <Typo size={17} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                    Arnav Khari
+                                </Typo>
+                                <Typo size={11.5} fontWeight="700" color={colors.primary} textProps={{ numberOfLines: 1 }}>
+                                    CREATOR & FULL-STACK ENGINEER
+                                </Typo>
+                                <Typo size={12} color="rgba(255,255,255,0.72)" textProps={{ numberOfLines: 2 }}>
+                                    Crafted from socket layer to pixels for instant chat, HD calls & tactile speed.
+                                </Typo>
+                            </View>
+                        </View>
+
+                        {/* ── Hero Quick Action Pills ── */}
+                        <View style={styles.heroActionRow}>
+                            <TouchableOpacity
+                                style={styles.heroActionBtnPrimary}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    openLink(GITHUB_URL);
+                                }}
+                            >
+                                <BrandIcon icon={getIcon("siGithub")} fallbackEmoji="🐙" size={14} monochrome={colors.neutral900} />
+                                <Typo size={12} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                    Source Code
+                                </Typo>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.heroActionBtnSecondary}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    openLink(BUG_REPORT_URL);
+                                }}
+                            >
+                                <Icons.Bug size={14} color={colors.white} weight="bold" />
+                                <Typo size={12} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                    Report Bug
+                                </Typo>
+                            </TouchableOpacity>
+                        </View>
+                    </Animated.View>
+
+                    {/* ── 2x2 Architecture Highlight Tiles ── */}
+                    <Animated.View entering={FadeInUp.duration(460).delay(60).springify()} style={styles.metricsGrid}>
+                        <View style={[styles.metricTile, { backgroundColor: isDark ? colors.neutral800 : colors.white, borderColor: isDark ? colors.neutral700 : colors.neutral200 }]}>
+                            <View style={[styles.metricIconWrap, { backgroundColor: "#fef3c7" }]}>
+                                <Icons.RocketLaunch size={verticalScale(16)} color="#b45309" weight="fill" />
+                            </View>
+                            <Typo size={16} fontWeight="800" color={primaryTextColor} textProps={{ numberOfLines: 1 }}>20+ Tools</Typo>
+                            <Typo size={11} color={subtleTextColor} textProps={{ numberOfLines: 1 }}>Flagship Suite</Typo>
+                        </View>
+
+                        <View style={[styles.metricTile, { backgroundColor: isDark ? colors.neutral800 : colors.white, borderColor: isDark ? colors.neutral700 : colors.neutral200 }]}>
+                            <View style={[styles.metricIconWrap, { backgroundColor: "#dcfce7" }]}>
+                                <Icons.PhoneCall size={verticalScale(16)} color="#15803d" weight="fill" />
+                            </View>
+                            <Typo size={16} fontWeight="800" color={primaryTextColor} textProps={{ numberOfLines: 1 }}>Agora HD</Typo>
+                            <Typo size={11} color={subtleTextColor} textProps={{ numberOfLines: 1 }}>Voice & Video</Typo>
+                        </View>
+
+                        <View style={[styles.metricTile, { backgroundColor: isDark ? colors.neutral800 : colors.white, borderColor: isDark ? colors.neutral700 : colors.neutral200 }]}>
+                            <View style={[styles.metricIconWrap, { backgroundColor: "#dbeafe" }]}>
+                                <Icons.Lightning size={verticalScale(16)} color="#1d4ed8" weight="fill" />
+                            </View>
+                            <Typo size={16} fontWeight="800" color={primaryTextColor} textProps={{ numberOfLines: 1 }}>Real-Time</Typo>
+                            <Typo size={11} color={subtleTextColor} textProps={{ numberOfLines: 1 }}>Socket + Push</Typo>
+                        </View>
+
+                        <View style={[styles.metricTile, { backgroundColor: isDark ? colors.neutral800 : colors.white, borderColor: isDark ? colors.neutral700 : colors.neutral200 }]}>
+                            <View style={[styles.metricIconWrap, { backgroundColor: "#fae8ff" }]}>
+                                <Icons.ShieldCheck size={verticalScale(16)} color="#9333ea" weight="fill" />
+                            </View>
+                            <Typo size={16} fontWeight="800" color={primaryTextColor} textProps={{ numberOfLines: 1 }}>Protected</Typo>
+                            <Typo size={11} color={subtleTextColor} textProps={{ numberOfLines: 1 }}>Biometric Vault</Typo>
+                        </View>
+                    </Animated.View>
+
+                    {/* ── About Mission ── */}
+                    <SectionLabel label="Vision & Release Notes" isDark={isDark} />
+                    <SectionCard isDark={isDark}>
+                        <Typo
+                            size={13.5}
+                            color={isDark ? colors.neutral200 : colors.neutral700}
+                            style={styles.aboutText}
+                        >
+                            Bubbly v{APP_VERSION} unifies resilient real-time Socket.IO messaging, native high-priority notifications, Agora HD audio & video calling, Story Studio, collaborative checklists, and deep tactile haptics in one focused app with zero ads or trackers.
+                        </Typo>
+                    </SectionCard>
+
+                    {/* ── Interactive What's New Explorer ── */}
+                    <SectionLabel
+                        label={`What's New in v${APP_VERSION}`}
+                        rightHint={`${filteredFeatures.length} features`}
+                        isDark={isDark}
+                    />
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.filterTabsScroll}
                     >
-                        Bubbly v4.0.1 is a real-time communication app built for seamless
-                        connection. Send messages, share Stories, run live checklists & mini-games,
-                        organize smart chat folders, set message alarms, and jump into Agora HD calls.
-                    </Typo>
-                </SectionCard>
-
-                {/* ── What's New in v4.0.1 (20 Flagship Features) ── */}
-                <SectionLabel label="What's New in v4.0.1 (20 Features)" isDark={isDark} />
-                <SectionCard isDark={isDark}>
-                    <View style={{ padding: spacingX._15, gap: verticalScale(6) }}>
-                        {[
-                            "1. Quick Formatting Toolbar & > Blockquotes",
-                            "2. Slash Command Quick Replies (/templates)",
-                            "3. Multi-Message Bulk Selection Dock",
-                            "4. Silent Send Mode (Quiet Delivery)",
-                            "5. Message Reminder Alarms (expo-notifications)",
-                            "6. Inline Phone, Email & @Mention Chips",
-                            "7. Interactive Shared Checklist Cards",
-                            "8. Chat Icebreaker Mini-Games (Dice/Coin/8-Ball/RPS)",
-                            "9. Multi-Pinned Message Carousel & Jump",
-                            "10. Live Event Countdown Stickers",
-                            "11. Chat Archive & Collapsible Drawer",
-                            "12. Smart Chat Folders (Work/Friends/Family/VIP)",
-                            "13. Private Contact Nicknames & Personal Notes",
-                            "14. In-Chat Analytics & Insights Dashboard",
-                            "15. Live Custom Activity Status Badge",
-                            "16. Focus / Quiet Mode Countdown Timer",
-                            "17. Appearance & Bubble Corner Studio",
-                            "18. Lock-Screen Private Notification Shield",
-                            "19. Story Typography Fonts & Mood Stickers",
-                            "20. Quick Jump Switcher & Offline Outbox Dock",
-                        ].map((feat) => (
-                            <Typo key={feat} size={12.5} fontWeight="600" color={isDark ? colors.neutral200 : colors.neutral700}>
-                                {feat}
-                            </Typo>
-                        ))}
-                    </View>
-                </SectionCard>
-
-                {/* ── Built With ── */}
-                <SectionLabel label="Built With" isDark={isDark} />
-                <SectionCard isDark={isDark}>
-                    <View style={styles.techGrid}>
-                        {TECH_STACK.map((tech) => {
-                            const iconData = getIcon(tech.iconKey);
+                        {CATEGORY_TABS.map((tab) => {
+                            const active = selectedCat === tab.key;
                             return (
-                                <View key={tech.label} style={styles.techItem}>
+                                <TouchableOpacity
+                                    key={tab.key}
+                                    activeOpacity={0.75}
+                                    onPress={() => {
+                                        hapticTap("light");
+                                        setSelectedCat(tab.key);
+                                    }}
+                                    style={[
+                                        styles.filterTab,
+                                        {
+                                            backgroundColor: active
+                                                ? colors.primary
+                                                : isDark ? colors.neutral800 : colors.white,
+                                            borderColor: active
+                                                ? colors.primaryDark
+                                                : isDark ? colors.neutral700 : colors.neutral200,
+                                        },
+                                    ]}
+                                >
+                                    <Typo
+                                        size={12}
+                                        fontWeight={active ? "800" : "600"}
+                                        color={active ? colors.neutral900 : subtleTextColor}
+                                        textProps={{ numberOfLines: 1 }}
+                                    >
+                                        {tab.label}
+                                    </Typo>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+
+                    <SectionCard isDark={isDark} noPadding>
+                        {visibleFeatures.map((feat, idx) => {
+                            const isLastItem = idx === visibleFeatures.length - 1 && (selectedCat !== "all" || showAllFeatures);
+                            return (
+                                <View
+                                    key={feat.id}
+                                    style={[
+                                        styles.featureRow,
+                                        !isLastItem && {
+                                            borderBottomWidth: StyleSheet.hairlineWidth,
+                                            borderBottomColor: isDark ? colors.neutral700 : colors.neutral200,
+                                        },
+                                    ]}
+                                >
                                     <View
                                         style={[
-                                            styles.techIconBox,
-                                            {
-                                                backgroundColor: isDark
-                                                    ? colors.neutral700
-                                                    : colors.neutral100,
-                                                borderColor: isDark
-                                                    ? colors.neutral600
-                                                    : colors.neutral200,
-                                            },
+                                            styles.featureEmojiBox,
+                                            { backgroundColor: isDark ? colors.neutral700 : "#fef3c7" },
                                         ]}
                                     >
-                                        <BrandIcon
-                                            icon={iconData}
-                                            fallbackEmoji={tech.fallbackEmoji}
-                                            size={20}
-                                        />
+                                        <Typo size={16}>{feat.emoji}</Typo>
                                     </View>
-                                    <Typo
-                                        size={10.5}
-                                        fontWeight="500"
-                                        color={isDark ? colors.neutral400 : colors.neutral500}
-                                        style={styles.techLabel}
-                                    >
-                                        {tech.label}
-                                    </Typo>
+                                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                                        <View style={styles.featureTitleRow}>
+                                            <Typo
+                                                size={13.5}
+                                                fontWeight="700"
+                                                color={primaryTextColor}
+                                                style={{ flex: 1 }}
+                                                textProps={{ numberOfLines: 1 }}
+                                            >
+                                                {feat.id}. {feat.title}
+                                            </Typo>
+                                        </View>
+                                        <Typo
+                                            size={11.5}
+                                            color={subtleTextColor}
+                                            textProps={{ numberOfLines: 2 }}
+                                        >
+                                            {feat.subtitle}
+                                        </Typo>
+                                    </View>
                                 </View>
                             );
                         })}
+
+                        {selectedCat === "all" && !showAllFeatures && (
+                            <TouchableOpacity
+                                style={[
+                                    styles.expandFeaturesBtn,
+                                    { borderTopColor: isDark ? colors.neutral700 : colors.neutral200 },
+                                ]}
+                                activeOpacity={0.75}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    setShowAllFeatures(true);
+                                }}
+                            >
+                                <Typo size={12.5} fontWeight="800" color={colors.primaryDark}>
+                                    Show All 20 Features
+                                </Typo>
+                                <Icons.CaretDown size={14} color={colors.primaryDark} weight="bold" />
+                            </TouchableOpacity>
+                        )}
+                        {selectedCat === "all" && showAllFeatures && (
+                            <TouchableOpacity
+                                style={[
+                                    styles.expandFeaturesBtn,
+                                    { borderTopColor: isDark ? colors.neutral700 : colors.neutral200 },
+                                ]}
+                                activeOpacity={0.75}
+                                onPress={() => {
+                                    hapticTap("light");
+                                    setShowAllFeatures(false);
+                                }}
+                            >
+                                <Typo size={12.5} fontWeight="700" color={subtleTextColor}>
+                                    Show Less
+                                </Typo>
+                                <Icons.CaretUp size={14} color={subtleTextColor} weight="bold" />
+                            </TouchableOpacity>
+                        )}
+                    </SectionCard>
+
+                    {/* ── Built With Tech Stack ── */}
+                    <SectionLabel label="Architecture Stack" isDark={isDark} />
+                    <SectionCard isDark={isDark} noPadding>
+                        <View style={styles.techGrid}>
+                            {TECH_STACK.map((tech) => {
+                                const iconData = getIcon(tech.iconKey);
+                                return (
+                                    <TouchableOpacity
+                                        key={tech.label}
+                                        activeOpacity={0.75}
+                                        onPress={() => hapticTap("light")}
+                                        style={[
+                                            styles.techPillCard,
+                                            {
+                                                backgroundColor: isDark ? colors.neutral900 : colors.neutral50,
+                                                borderColor: isDark ? colors.neutral700 : colors.neutral200,
+                                            },
+                                        ]}
+                                    >
+                                        <View
+                                            style={[
+                                                styles.techIconBox,
+                                                {
+                                                    backgroundColor: isDark ? colors.neutral800 : colors.white,
+                                                    borderColor: isDark ? colors.neutral700 : colors.neutral200,
+                                                },
+                                            ]}
+                                        >
+                                            <BrandIcon icon={iconData} fallbackEmoji={tech.fallbackEmoji} size={18} />
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 0 }}>
+                                            <Typo size={12.5} fontWeight="700" color={primaryTextColor} textProps={{ numberOfLines: 1 }}>
+                                                {tech.label}
+                                            </Typo>
+                                            <Typo size={10.5} color={subtleTextColor} textProps={{ numberOfLines: 1 }}>
+                                                {tech.role}
+                                            </Typo>
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    </SectionCard>
+
+                    {/* ── Developer & Community Links ── */}
+                    <SectionLabel label="Developer & Feedback" isDark={isDark} />
+                    <SectionCard isDark={isDark} noPadding>
+                        <LinkRow
+                            icon={<BrandIcon icon={getIcon("siGithub")} fallbackEmoji="🐙" size={16} monochrome={isDark ? colors.white : colors.neutral800} />}
+                            label="GitHub Repository"
+                            subtitle="Inspect source code & releases"
+                            url={GITHUB_URL}
+                            isDark={isDark}
+                        />
+                        <LinkRow
+                            icon={<Icons.Bug size={16} color="#dc2626" weight="bold" />}
+                            iconBg={isDark ? "rgba(220,38,38,0.18)" : "#fee2e2"}
+                            label="Report a Bug"
+                            subtitle="Send diagnostics straight to Arnav"
+                            url={BUG_REPORT_URL}
+                            isDark={isDark}
+                        />
+                        <LinkRow
+                            icon={<Icons.EnvelopeSimple size={16} color="#b45309" weight="bold" />}
+                            iconBg={isDark ? "rgba(245,158,11,0.18)" : "#fef3c7"}
+                            label="Send Feedback"
+                            subtitle="Feature requests & UI ideas"
+                            url={FEEDBACK_EMAIL}
+                            isDark={isDark}
+                            isLast
+                        />
+                    </SectionCard>
+
+                    {/* ── Legal & Trust ── */}
+                    <SectionLabel label="Legal & Trust" isDark={isDark} />
+                    <SectionCard isDark={isDark} noPadding>
+                        <LinkRow
+                            icon={<Icons.FileText size={16} color="#2563eb" weight="bold" />}
+                            iconBg={isDark ? "rgba(37,99,235,0.18)" : "#dbeafe"}
+                            label="Privacy Policy"
+                            subtitle="How Bubbly respects your data"
+                            onPress={() => router.push("/(legal)/privacyPolicy" as any)}
+                            isDark={isDark}
+                        />
+                        <LinkRow
+                            icon={<Icons.LockKey size={16} color="#16a34a" weight="bold" />}
+                            iconBg={isDark ? "rgba(22,163,74,0.18)" : "#dcfce7"}
+                            label="Security & Data Safety"
+                            subtitle="Permissions, vault & encryption overview"
+                            onPress={() => router.push("/(legal)/security" as any)}
+                            isDark={isDark}
+                            isLast
+                        />
+                    </SectionCard>
+
+                    {/* ── Footer ── */}
+                    <View style={styles.footer}>
+                        <Typo size={12} fontWeight="700" color={subtleTextColor}>
+                            Bubbly v{APP_VERSION} · Build {Platform.OS === "android" ? "7" : "6"}
+                        </Typo>
+                        <Typo size={11} color={subtleTextColor} style={{ marginTop: 2 }}>
+                            © 2026 Bubbly · Designed & Built by Arnav
+                        </Typo>
                     </View>
-                </SectionCard>
-
-                {/* ── Links ── */}
-                <SectionLabel label="Developer" isDark={isDark} />
-                <SectionCard isDark={isDark}>
-                    <LinkRow
-                        icon={
-                            <BrandIcon
-                                icon={getIcon("siGithub")}
-                                fallbackEmoji="🐙"
-                                size={16}
-                                monochrome={isDark ? colors.neutral200 : colors.neutral700}
-                            />
-                        }
-                        label="GitHub"
-                        url={GITHUB_URL}
-                        isDark={isDark}
-                    />
-                    <LinkRow
-                        icon={
-                            <Typo size={15} color={isDark ? colors.neutral200 : colors.neutral700}>
-                                🐛
-                            </Typo>
-                        }
-                        label="Report a Bug"
-                        url={BUG_REPORT_URL}
-                        isDark={isDark}
-                    />
-                    <LinkRow
-                        icon={
-                            <Typo size={15} color={isDark ? colors.neutral200 : colors.neutral700}>
-                                ✉️
-                            </Typo>
-                        }
-                        label="Send Feedback"
-                        url={FEEDBACK_EMAIL}
-                        isDark={isDark}
-                        isLast
-                    />
-                </SectionCard>
-
-                {/* ── Legal & Trust ── */}
-                <SectionLabel label="Legal & Trust" isDark={isDark} />
-                <SectionCard isDark={isDark}>
-                    <LinkRow
-                        icon={
-                            <Typo size={15} color={isDark ? colors.neutral200 : colors.neutral700}>
-                                📄
-                            </Typo>
-                        }
-                        label="Privacy Policy"
-                        onPress={() => router.push("/(legal)/privacyPolicy" as any)}
-                        isDark={isDark}
-                    />
-                    <LinkRow
-                        icon={
-                            <Typo size={15} color={isDark ? colors.neutral200 : colors.neutral700}>
-                                🛡️
-                            </Typo>
-                        }
-                        label="Security & Data Safety"
-                        onPress={() => router.push("/(legal)/security" as any)}
-                        isDark={isDark}
-                        isLast
-                    />
-                </SectionCard>
-
-                {/* ── Footer ── */}
-                <View style={styles.footer}>
-                    <Typo size={11.5} color={subtleTextColor}>
-                        © 2026 Bubbly · Built by Arnav
-                    </Typo>
-                </View>
-            </ScrollView>
+                </ScrollView>
+            </View>
         </ScreenWrapper>
     );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const AVATAR_SIZE = scale(76);
-const AVATAR_RING = AVATAR_SIZE + scale(6);
-
 const styles = StyleSheet.create({
-    header: {
+    topHeader: {
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: spacingX._15,
-        paddingTop:
-            Platform.OS === "android" ? verticalScale(8) : verticalScale(4),
-        paddingBottom: verticalScale(10),
-        borderBottomWidth: StyleSheet.hairlineWidth,
+        paddingTop: Platform.OS === "android" ? verticalScale(8) : verticalScale(4),
+        paddingBottom: verticalScale(14),
+        gap: scale(10),
     },
-    headerTitle: {
+    headerCenter: {
         flex: 1,
-        textAlign: "center",
-    },
-    headerSpacer: {
-        width: scale(36),
-    },
-
-    scrollContent: {
-        paddingHorizontal: spacingX._20,
-        paddingTop: spacingY._20,
-        paddingBottom: spacingY._40,
-    },
-
-    // Profile card
-    profileCard: {
+        minWidth: 0,
         alignItems: "center",
-        borderRadius: radius._15,
-        borderWidth: StyleSheet.hairlineWidth,
-        paddingVertical: spacingY._25,
-        paddingHorizontal: spacingX._20,
-        marginBottom: spacingY._10,
-        ...Platform.select({
-            ios: {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.05,
-                shadowRadius: 8,
-            },
-            android: { elevation: 1 },
-        }),
     },
-    avatarRing: {
-        width: AVATAR_RING,
-        height: AVATAR_RING,
-        borderRadius: AVATAR_RING / 2,
-        borderWidth: 1.5,
+    shareTopBtn: {
+        width: verticalScale(38),
+        height: verticalScale(38),
+        borderRadius: radius.full,
+        backgroundColor: "rgba(255,255,255,0.12)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.2)",
         alignItems: "center",
         justifyContent: "center",
-        marginBottom: spacingY._12,
+    },
+    surfaceSheet: {
+        flex: 1,
+        borderTopLeftRadius: radius._30,
+        borderTopRightRadius: radius._30,
         overflow: "hidden",
     },
-    avatar: {
-        width: AVATAR_SIZE,
-        height: AVATAR_SIZE,
-        borderRadius: AVATAR_SIZE / 2,
+    scrollContent: {
+        paddingHorizontal: spacingX._15,
+        paddingTop: spacingY._17,
+        paddingBottom: verticalScale(40),
+        gap: verticalScale(12),
     },
-    devName: {
-        marginBottom: verticalScale(4),
+
+    // Hero Card
+    heroCard: {
+        backgroundColor: "#181412",
+        borderRadius: radius._24,
+        padding: spacingX._15,
+        borderWidth: 1,
+        borderColor: "rgba(245, 158, 11, 0.28)",
+        gap: verticalScale(14),
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 14,
+        elevation: 6,
     },
-    devTitle: {
-        letterSpacing: 0.6,
-        marginBottom: verticalScale(4),
-    },
-    devSubtitle: {
-        marginBottom: spacingY._17,
-    },
-    divider: {
-        width: "100%",
-        height: StyleSheet.hairlineWidth,
-        marginBottom: spacingY._15,
-    },
-    appRow: {
+    heroTopRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: scale(8),
+        justifyContent: "space-between",
+        gap: scale(10),
     },
-    versionBadge: {
-        paddingVertical: verticalScale(3),
-        paddingHorizontal: scale(8),
-        borderRadius: radius._6,
+    heroBrandRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(10),
+        flex: 1,
+        minWidth: 0,
+    },
+    heroLogoBox: {
+        width: verticalScale(40),
+        height: verticalScale(40),
+        borderRadius: radius._12,
+        backgroundColor: colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+    },
+    heroVersionPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        backgroundColor: colors.primaryLight,
+        borderRadius: radius.full,
+        paddingHorizontal: scale(10),
+        paddingVertical: verticalScale(4),
+        flexShrink: 0,
+    },
+    heroCreatorRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(12),
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderRadius: radius._17,
+        padding: spacingX._12,
         borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.1)",
+    },
+    heroAvatarRing: {
+        width: verticalScale(58),
+        height: verticalScale(58),
+        borderRadius: radius.full,
+        padding: 2.5,
+        backgroundColor: colors.primary,
+        flexShrink: 0,
+    },
+    heroAvatar: {
+        width: "100%",
+        height: "100%",
+        borderRadius: radius.full,
+    },
+    heroActionRow: {
+        flexDirection: "row",
+        gap: scale(10),
+    },
+    heroActionBtnPrimary: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: scale(6),
+        backgroundColor: colors.primary,
+        paddingVertical: verticalScale(10),
+        borderRadius: radius._12,
+    },
+    heroActionBtnSecondary: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: scale(6),
+        backgroundColor: "rgba(255,255,255,0.11)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.2)",
+        paddingVertical: verticalScale(10),
+        borderRadius: radius._12,
     },
 
-    // Section label
-    sectionLabel: {
-        marginTop: spacingY._20,
-        marginBottom: spacingY._8,
-        marginLeft: spacingX._4,
-        letterSpacing: 0.6,
-    },
-
-    // Card
-    card: {
-        borderRadius: radius._15,
-        borderWidth: StyleSheet.hairlineWidth,
-        overflow: "hidden",
-        ...Platform.select({
-            ios: {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.04,
-                shadowRadius: 4,
-            },
-            android: { elevation: 1 },
-        }),
-    },
-
-    aboutText: {
-        lineHeight: verticalScale(21),
-        padding: spacingX._15,
-    },
-
-    // Tech grid
-    techGrid: {
+    // Metrics 2x2 Grid
+    metricsGrid: {
         flexDirection: "row",
         flexWrap: "wrap",
-        padding: spacingX._15,
-        justifyContent: "flex-start",
+        gap: scale(10),
     },
-    techItem: {
+    metricTile: {
+        width: "48%",
+        flexGrow: 1,
+        borderRadius: radius._17,
+        borderWidth: 1,
+        padding: spacingX._12,
+        gap: verticalScale(4),
+    },
+    metricIconWrap: {
+        width: verticalScale(32),
+        height: verticalScale(32),
+        borderRadius: radius._10,
         alignItems: "center",
-        width: "25%",
-        marginBottom: spacingY._15,
+        justifyContent: "center",
+        marginBottom: verticalScale(2),
     },
-    techIconBox: {
-        width: scale(42),
-        height: scale(42),
+
+    // Section Label & Cards
+    sectionHeaderRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: spacingX._5,
+        marginTop: verticalScale(6),
+    },
+    sectionLabel: {
+        letterSpacing: 0.7,
+    },
+    card: {
+        borderRadius: radius._20,
+        borderWidth: 1,
+        overflow: "hidden",
+    },
+    aboutText: {
+        lineHeight: verticalScale(20),
+    },
+
+    // Filter Tabs & Features
+    filterTabsScroll: {
+        gap: scale(8),
+        paddingVertical: verticalScale(2),
+    },
+    filterTab: {
+        paddingHorizontal: scale(13),
+        paddingVertical: verticalScale(7),
+        borderRadius: radius.full,
+        borderWidth: 1,
+    },
+    featureRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(12),
+        paddingHorizontal: spacingX._15,
+        paddingVertical: verticalScale(11),
+    },
+    featureEmojiBox: {
+        width: verticalScale(36),
+        height: verticalScale(36),
         borderRadius: radius._12,
         alignItems: "center",
         justifyContent: "center",
-        borderWidth: 1,
-        marginBottom: verticalScale(6),
+        flexShrink: 0,
     },
-    techLabel: {
-        textAlign: "center",
-        lineHeight: verticalScale(13),
+    featureTitleRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(6),
+    },
+    expandFeaturesBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: scale(6),
+        paddingVertical: verticalScale(12),
+        borderTopWidth: StyleSheet.hairlineWidth,
     },
 
-    // Link rows
+    // Tech Stack
+    techGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        padding: spacingX._12,
+        gap: scale(8),
+    },
+    techPillCard: {
+        width: "48%",
+        flexGrow: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(9),
+        paddingHorizontal: spacingX._10,
+        paddingVertical: verticalScale(9),
+        borderRadius: radius._12,
+        borderWidth: 1,
+    },
+    techIconBox: {
+        width: verticalScale(32),
+        height: verticalScale(32),
+        borderRadius: radius._10,
+        borderWidth: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+    },
+
+    // Link Rows
     linkRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingVertical: verticalScale(12),
         paddingHorizontal: spacingX._15,
-        minHeight: verticalScale(54),
+        paddingVertical: verticalScale(12),
+        gap: scale(10),
     },
     linkRowLeft: {
-        flex: 1,
-        minWidth: 0,
         flexDirection: "row",
         alignItems: "center",
         gap: scale(12),
-        marginRight: spacingX._8,
+        flex: 1,
+        minWidth: 0,
     },
     linkIconBadge: {
-        width: scale(32),
-        height: scale(32),
+        width: verticalScale(36),
+        height: verticalScale(36),
         borderRadius: radius._10,
+        borderWidth: 1,
         alignItems: "center",
         justifyContent: "center",
-        borderWidth: 1,
+        flexShrink: 0,
     },
 
     // Footer
     footer: {
         alignItems: "center",
-        marginTop: spacingY._30,
-        paddingBottom: spacingY._10,
+        paddingTop: verticalScale(14),
+        paddingBottom: verticalScale(10),
     },
 });

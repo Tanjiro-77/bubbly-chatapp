@@ -73,13 +73,14 @@ export async function acceptCallById(io: SocketIOServer, callId: string, userId:
     }
 
     const channelName = updatedCall._id.toString();
+    const callIdStr = updatedCall._id.toString();
 
     io.to(userRoom(updatedCall.callerId.toString())).emit("call:accepted", {
-        callId: updatedCall._id,
+        callId: callIdStr,
         channelName,
     });
     io.to(userRoom(updatedCall.calleeId.toString())).emit("call:accepted", {
-        callId: updatedCall._id,
+        callId: callIdStr,
         channelName,
     });
 
@@ -115,8 +116,8 @@ export async function rejectCallById(io: SocketIOServer, callId: string, userId:
         skipPermissionCheck: true,
     });
 
-    io.to(userRoom(updated.callerId.toString())).emit("call:ended", { callId: updated._id, reason: "rejected" });
-    io.to(userRoom(updated.calleeId.toString())).emit("call:ended", { callId: updated._id, reason: "rejected" });
+    io.to(userRoom(updated.callerId.toString())).emit("call:ended", { callId: updated._id.toString(), reason: "rejected" });
+    io.to(userRoom(updated.calleeId.toString())).emit("call:ended", { callId: updated._id.toString(), reason: "rejected" });
 
     return updated;
 }
@@ -188,38 +189,46 @@ export async function handleUserDisconnectCalls(io: SocketIOServer, userId: stri
 export function registerCallEvents(io: SocketIOServer, socket: Socket) {
     socket.on("call:invite", async (data: {
         conversationId: string;
-        calleeId: string;
+        calleeId?: string;
         kind: "voice" | "video";
     }) => {
         try {
             const callerId = socket.data.userId;
             if (!data || !["voice", "video"].includes(data.kind)) throw new Error("Invalid call type");
-            if (!data.calleeId || !isValidObjectId(data.calleeId) || data.calleeId === callerId) {
-                throw new Error("Invalid callee");
-            }
             const { conversation, isMember } = await getMembership(data.conversationId, callerId);
             if (!conversation || !isMember) throw new Error("Conversation not found");
-            if (!conversation.participants.some((p) => p.toString() === data.calleeId)) {
+
+            let resolvedCalleeId = data.calleeId;
+            if ((!resolvedCalleeId || !isValidObjectId(resolvedCalleeId)) && conversation.type === "direct") {
+                const other = conversation.participants.find((p) => p.toString() !== callerId.toString());
+                if (other) resolvedCalleeId = other.toString();
+            }
+
+            if (!resolvedCalleeId || !isValidObjectId(resolvedCalleeId) || resolvedCalleeId === callerId) {
+                throw new Error("Invalid callee");
+            }
+            if (!conversation.participants.some((p) => p.toString() === resolvedCalleeId)) {
                 throw new Error("User is not in this conversation");
             }
-            if (await areBlocked(callerId, data.calleeId)) throw new Error("Unable to call this user");
+            if (await areBlocked(callerId, resolvedCalleeId)) throw new Error("Unable to call this user");
 
             const calleeSockets = Array.from(io.sockets.sockets.values()).filter(
-                (s) => s.data.userId === data.calleeId
+                (s) => s.data.userId === resolvedCalleeId
             );
-            const calleeUser = await User.findById(data.calleeId)
-                .select("pushTokens notificationsEnabled")
+            const calleeUser = await User.findById(resolvedCalleeId)
+                .select("pushTokens notificationsEnabled isOnline")
                 .lean();
             const hasPushTokens =
                 calleeUser?.notificationsEnabled !== false &&
                 Array.isArray(calleeUser?.pushTokens) &&
                 calleeUser.pushTokens.some(isValidExpoPushToken);
+            const recentlyOnline = Boolean(calleeUser?.isOnline);
 
-            if (calleeSockets.length === 0 && !hasPushTokens) {
+            if (calleeSockets.length === 0 && !hasPushTokens && !recentlyOnline) {
                 const missed = await Call.create({
                     conversationId: data.conversationId,
                     callerId,
-                    calleeId: data.calleeId,
+                    calleeId: resolvedCalleeId,
                     kind: data.kind,
                     status: "missed",
                     endedAt: new Date(),
@@ -233,12 +242,12 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                     skipRateLimit: true,
                     skipPermissionCheck: true,
                 });
-                socket.emit("call:failed", { success: false, msg: "User is unavailable", callId: missed._id, reason: "offline" });
+                socket.emit("call:failed", { success: false, msg: "User is unavailable", callId: missed._id.toString(), reason: "offline" });
                 return;
             }
 
             const existing = [...activeCalls.values()].find(
-                (c) => c.callerId === data.calleeId || c.calleeId === data.calleeId || c.callerId === callerId || c.calleeId === callerId
+                (c) => c.callerId === resolvedCalleeId || c.calleeId === resolvedCalleeId || c.callerId === callerId || c.calleeId === callerId
             );
             if (existing) {
                 socket.emit("call:failed", { success: false, msg: "User is busy", reason: "busy" });
@@ -248,7 +257,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             const call = await Call.create({
                 conversationId: data.conversationId,
                 callerId,
-                calleeId: data.calleeId,
+                calleeId: resolvedCalleeId,
                 kind: data.kind,
                 status: "ringing",
             });
@@ -276,7 +285,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                         });
 
                         sendMissedCallPushNotification({
-                            calleeId: data.calleeId,
+                            calleeId: resolvedCalleeId!,
                             callerId,
                             callerName,
                             callerAvatar: socket.data.avatar,
@@ -285,31 +294,31 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                             conversationId: pendingCall.conversationId.toString(),
                         }).catch((err) => console.error("Missed call push error:", err));
 
-                        io.to(userRoom(data.calleeId)).emit("call:ended", { callId: call._id, reason: "timeout" });
-                        io.to(userRoom(callerId)).emit("call:ended", { callId: call._id, reason: "timeout" });
+                        io.to(userRoom(resolvedCalleeId!)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
+                        io.to(userRoom(callerId)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
                     }
                 } catch (timeoutErr) {
                     console.error("Error timing out ringing call:", timeoutErr);
                 }
             }, 60_000);
 
-            activeCalls.set(call._id.toString(), { callerId, calleeId: data.calleeId, ringingTimer });
+            activeCalls.set(call._id.toString(), { callerId, calleeId: resolvedCalleeId, ringingTimer });
 
             const payload = {
-                callId: call._id,
+                callId: call._id.toString(),
                 conversationId: data.conversationId,
                 kind: data.kind,
                 caller: { id: callerId, name: callerName, avatar: socket.data.avatar },
-                calleeId: data.calleeId,
+                calleeId: resolvedCalleeId,
             };
 
             if (calleeSockets.length > 0) {
-                io.to(userRoom(data.calleeId)).emit("call:incoming", payload);
+                io.to(userRoom(resolvedCalleeId)).emit("call:incoming", payload);
             }
 
             if (hasPushTokens) {
                 sendCallPushNotification({
-                    calleeId: data.calleeId,
+                    calleeId: resolvedCalleeId,
                     caller: { id: callerId, name: callerName, avatar: socket.data.avatar },
                     callId: call._id.toString(),
                     kind: data.kind,
@@ -352,8 +361,8 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             );
             if (!call) return;
             cleanupCall(call._id.toString());
-            io.to(userRoom(call.calleeId.toString())).emit("call:ended", { callId: call._id, reason: "cancelled" });
-            io.to(userRoom(call.callerId.toString())).emit("call:ended", { callId: call._id, reason: "cancelled" });
+            io.to(userRoom(call.calleeId.toString())).emit("call:ended", { callId: call._id.toString(), reason: "cancelled" });
+            io.to(userRoom(call.callerId.toString())).emit("call:ended", { callId: call._id.toString(), reason: "cancelled" });
         } catch (error) {
             console.log("call:cancel", error);
         }
@@ -379,8 +388,8 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             call.status = "connected";
             call.startedAt = call.startedAt || new Date();
             await call.save();
-            io.to(userRoom(call.callerId.toString())).emit("call:connected", { callId: call._id });
-            io.to(userRoom(call.calleeId.toString())).emit("call:connected", { callId: call._id });
+            io.to(userRoom(call.callerId.toString())).emit("call:connected", { callId: call._id.toString() });
+            io.to(userRoom(call.calleeId.toString())).emit("call:connected", { callId: call._id.toString() });
         } catch (error) {
             console.log("call:connected", error);
         }
@@ -497,7 +506,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             io.to(
                 userRoom(finalizedCall.callerId.toString())
             ).emit("call:ended", {
-                callId: finalizedCall._id,
+                callId: finalizedCall._id.toString(),
                 reason: endReason,
                 duration: finalizedCall.duration,
             });
@@ -505,7 +514,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             io.to(
                 userRoom(finalizedCall.calleeId.toString())
             ).emit("call:ended", {
-                callId: finalizedCall._id,
+                callId: finalizedCall._id.toString(),
                 reason: endReason,
                 duration: finalizedCall.duration,
             });

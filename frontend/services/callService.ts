@@ -98,6 +98,9 @@ async function callActionRequest(
 export const getCallStatus = (callId: string) =>
     callActionRequest(`/api/call/${callId}/status`, "GET");
 
+export const getPendingIncomingCall = () =>
+    callActionRequest(`/api/call/pending`, "GET");
+
 export const acceptCallHttp = (callId: string) =>
     callActionRequest(`/api/call/${callId}/accept`, "POST");
 

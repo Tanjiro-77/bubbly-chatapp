@@ -2,7 +2,7 @@
  * frontend/utils/featureStorage.ts
  *
  * Persistent local storage, event pub/sub, and rich card codecs
- * for Bubbly v4.0.1 flagship features with offline & backward compatibility.
+ * for Bubbly v4.0.2 flagship features with offline & backward compatibility.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";

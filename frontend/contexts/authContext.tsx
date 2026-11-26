@@ -145,7 +145,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const sessionKeys = keys.filter(k =>
                 k.startsWith('@bubbly_draft_') ||
                 k.startsWith('@bubbly_outbox_') ||
-                k.startsWith('@bubbly_scheduled_')
+                k.startsWith('@bubbly_scheduled_') ||
+                k.startsWith('@bubbly_synced_contacts_')
             );
             if (sessionKeys.length > 0) {
                 await AsyncStorage.multiRemove(sessionKeys);

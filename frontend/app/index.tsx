@@ -100,7 +100,7 @@ const SplashScreen = () => {
           <Text style={styles.footerText} maxFontSizeMultiplier={1.3} numberOfLines={1}>End-to-End Encrypted</Text>
         </View>
 
-        <Text style={styles.versionText} maxFontSizeMultiplier={1.3} numberOfLines={1}>v4.0.1</Text>
+        <Text style={styles.versionText} maxFontSizeMultiplier={1.3} numberOfLines={1}>v4.0.2</Text>
       </Animated.View>
     </View>
   );

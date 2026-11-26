@@ -29,7 +29,10 @@ import BackButton from "../../components/BackButton";
 import { scale, verticalScale } from "../../utils/styling";
 import { hapticTap } from "../../utils/haptics";
 import { useAuth } from "../../contexts/authContext";
-import { syncNotificationPreference } from "../../services/notificationService";
+import {
+    registerForPushNotificationsAsync,
+    syncNotificationPreference,
+} from "../../services/notificationService";
 import { getBlockedUsers, blockUser, isSocketConnected, updateProfile } from "../../socket/socketEvents";
 import {
     ACCENT_SWATCHES,
@@ -353,14 +356,19 @@ export default function SettingsScreen() {
     );
 
     const toggleNotifications = useCallback(async (value: boolean) => {
+        hapticTap("medium");
         setNotificationsEnabled(value);
         try {
             await AsyncStorage.setItem(NOTIF_KEY, String(value));
             syncNotificationPreference(value).catch(() => {});
+            if (value) {
+                registerForPushNotificationsAsync().catch(() => {});
+            }
         } catch (_) { }
     }, []);
 
     const toggleSound = useCallback(async (value: boolean) => {
+        hapticTap("medium");
         setSoundEnabled(value);
         try {
             await AsyncStorage.setItem(SOUND_KEY, String(value));
@@ -681,7 +689,7 @@ export default function SettingsScreen() {
                                         maxWidth: "82%",
                                     }, borderStyle]}>
                                         <Typo size={previewFontSize} color={colors.neutral800}>
-                                            Bubbly v4.0.1 looks super crisp! ✨
+                                            Bubbly v4.0.2 looks super crisp! ✨
                                         </Typo>
                                     </View>
                                     <View style={[{
@@ -1025,7 +1033,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={12} color={colors.neutral400} fontWeight="600">
-                        Bubbly v4.0.1 · Flagship Edition
+                        Bubbly v4.0.2 · Flagship Edition
                     </Typo>
                     <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
                         Made with care for seamless connection

@@ -2,7 +2,7 @@ import {
     StyleSheet, View, Modal, FlatList,
     TouchableOpacity, TouchableWithoutFeedback,
     Pressable, TextInput, Dimensions, ScrollView, Linking,
-    PanResponder, Animated as RNAnimated, Platform, Vibration,
+    PanResponder, Animated as RNAnimated, Platform,
     KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -38,6 +38,7 @@ import {
     parseBubblyCard,
     toggleLocalChecklistOverride,
 } from "../utils/featureStorage"
+import { hapticTap } from "../utils/haptics"
 import { scheduleMessageReminder } from "../services/reminderService"
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -2186,9 +2187,7 @@ const MessageItem = ({
     const [showHeartBurst, setShowHeartBurst] = useState(false);
 
     const triggerHeartBurst = () => {
-        if (Platform.OS !== 'web') {
-            try { Vibration.vibrate(35); } catch (_) {}
-        }
+        hapticTap("heartbeat");
         setShowHeartBurst(true);
         heartScale.setValue(0.2);
         heartOpacity.setValue(1);
@@ -2267,14 +2266,13 @@ const MessageItem = ({
             return;
         }
         if (isDeleted || isPollMessage) return;
-        if (Platform.OS !== 'web') {
-            try { Vibration.vibrate(30); } catch (_) {}
-        }
+        hapticTap("heavy");
         setShowActions(true);
     };
     const handleDismiss = () => setShowActions(false);
 
     const handleCopy = async () => {
+        hapticTap("medium");
         if (item.content) {
             try { await Clipboard.setStringAsync(formatRichPreviewText(item.content)); } catch {}
         }
@@ -2314,9 +2312,10 @@ const MessageItem = ({
         }, 90);
     };
 
-    const handleReply = () => { setShowActions(false); onReply(item); };
-    const handleForward = () => { setShowActions(false); onForward?.(item); };
+    const handleReply = () => { hapticTap("medium"); setShowActions(false); onReply(item); };
+    const handleForward = () => { hapticTap("medium"); setShowActions(false); onForward?.(item); };
     const handleToggleStar = () => {
+        hapticTap("medium");
         setShowActions(false);
         if (onToggleStar) {
             onToggleStar(item.id);
@@ -2325,6 +2324,7 @@ const MessageItem = ({
         }
     };
     const handlePinToggle = () => {
+        hapticTap("medium");
         setShowActions(false);
         if (item.isPinned) {
             if (onUnpin) onUnpin(item.id);
@@ -2336,6 +2336,7 @@ const MessageItem = ({
     };
     const handleViewOncePress = () => {
         if (isViewOnceOpened && !isViewOnceSessionOpen) return;
+        hapticTap("heavy");
         setIsViewOnceSessionOpen(true);
         setShowImageViewer(true);
         if (!isMe && item.conversationId) {
@@ -2343,13 +2344,14 @@ const MessageItem = ({
         }
     };
     const handleOpenEmojiGrid = () => {
+        hapticTap("light");
         setShowActions(false);
         if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
         pendingTimerRef.current = setTimeout(() => setShowEmojiGrid(true), 150);
     };
-    const handleEmojiSelect = (emoji: string) => { setShowEmojiGrid(false); onReact(item.id, emoji); };
-    const handleQuickEmoji = (emoji: string) => { setShowActions(false); onReact(item.id, emoji); };
-    const handleReactionPill = (emoji: string) => { if (isDeleted) return; onReact(item.id, emoji); };
+    const handleEmojiSelect = (emoji: string) => { hapticTap("medium"); setShowEmojiGrid(false); onReact(item.id, emoji); };
+    const handleQuickEmoji = (emoji: string) => { hapticTap("medium"); setShowActions(false); onReact(item.id, emoji); };
+    const handleReactionPill = (emoji: string) => { if (isDeleted) return; hapticTap("medium"); onReact(item.id, emoji); };
     const handleImagePress = () => setShowImageViewer(true);
 
     const handleDelete = () => {

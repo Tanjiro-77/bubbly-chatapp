@@ -27,13 +27,13 @@ import { sounds } from "@/lib/sound";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Bubbly v4.0.1 — Connect Beyond Messages | Real-Time Chat & Calls" },
+      { title: "Bubbly v4.0.2 — Connect Beyond Messages | Real-Time Chat & Calls" },
       {
         name: "description",
         content:
           "Bubbly is a full-stack, real-time messaging application with instant chat, 20 new flagship features (Checklists, Reminders, Focus Mode, Chat Insights, Archives, Games), Agora voice & video calls, Story Studio, and Biometric Vault.",
       },
-      { property: "og:title", content: "Bubbly v4.0.1 — Connect Beyond Messages" },
+      { property: "og:title", content: "Bubbly v4.0.2 — Connect Beyond Messages" },
       {
         property: "og:description",
         content:
@@ -131,7 +131,7 @@ function IndexPage() {
             {/* Quick feature tick badges */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 20 New v4.0.1 Features
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 20 New v4.0.2 Features
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora HD Calling
@@ -268,7 +268,7 @@ function IndexPage() {
                 </span>
                 <div>
                   <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-emerald-400">
-                    v4.0.1 Superpowers
+                    v4.0.2 Superpowers
                   </span>
                   <h3 className="font-display text-2xl font-extrabold text-foreground">
                     6-Language Translation, Checklists & Chat Insights

@@ -375,6 +375,7 @@ const Home = () => {
     };
 
     const handleTabChange = (tab: number) => {
+        hapticTap("light");
         setSelectedTab(tab);
         setSearchQuery("");
         setFilterCategory("all");
@@ -382,6 +383,7 @@ const Home = () => {
 
     // ── Long-Press Action Sheet Handlers ──
     const handleLongPress = useCallback((item: ConversationProps) => {
+        hapticTap("heavy");
         setActionConv(item);
         setActionModalVisible(true);
     }, []);
@@ -561,7 +563,7 @@ const Home = () => {
                             <View style={styles.brandRow}>
                                 <View style={styles.brandBadge}>
                                     <Typo size={9.5} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
-                                        V4.0.1
+                                        V4.0.2
                                     </Typo>
                                 </View>
                                 <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="500" style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1 }}>
@@ -606,7 +608,10 @@ const Home = () => {
                                 <Icons.Lightning size={18} color={colors.primary} weight="fill" />
                             </TouchableOpacity>
                             <TouchableOpacity
-                                onPress={handleToggleFocusMenu}
+                                onPress={() => {
+                                    hapticTap("heavy");
+                                    handleToggleFocusMenu();
+                                }}
                                 activeOpacity={0.8}
                                 style={{
                                     width: verticalScale(38),
@@ -671,7 +676,10 @@ const Home = () => {
                     {/* Quick Actions Pill Bar */}
                     <View style={styles.headerQuickRow}>
                         <TouchableOpacity
-                            onPress={() => router.push("/(main)/qrCode")}
+                            onPress={() => {
+                                hapticTap("medium");
+                                router.push("/(main)/qrCode");
+                            }}
                             style={styles.headerQuickPill}
                             activeOpacity={0.75}
                         >
@@ -680,7 +688,10 @@ const Home = () => {
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            onPress={() => router.push("/(main)/callLogs")}
+                            onPress={() => {
+                                hapticTap("medium");
+                                router.push("/(main)/callLogs");
+                            }}
                             style={styles.headerQuickPill}
                             activeOpacity={0.75}
                         >
@@ -689,7 +700,10 @@ const Home = () => {
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            onPress={() => router.push("/(main)/vault")}
+                            onPress={() => {
+                                hapticTap("medium");
+                                router.push("/(main)/vault");
+                            }}
                             style={styles.headerQuickPill}
                             activeOpacity={0.75}
                         >
@@ -698,7 +712,10 @@ const Home = () => {
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            onPress={() => router.push("/(main)/settings")}
+                            onPress={() => {
+                                hapticTap("medium");
+                                router.push("/(main)/settings");
+                            }}
                             style={styles.headerQuickPill}
                             activeOpacity={0.75}
                         >
@@ -872,7 +889,7 @@ const Home = () => {
                                 styles.filterChip,
                                 filterCategory === "all" && styles.filterChipActive,
                             ]}
-                            onPress={() => setFilterCategory("all")}
+                            onPress={() => { hapticTap("light"); setFilterCategory("all"); }}
                             activeOpacity={0.7}
                         >
                             <Typo
@@ -889,7 +906,7 @@ const Home = () => {
                                 styles.filterChip,
                                 filterCategory === "unread" && styles.filterChipActive,
                             ]}
-                            onPress={() => setFilterCategory("unread")}
+                            onPress={() => { hapticTap("light"); setFilterCategory("unread"); }}
                             activeOpacity={0.7}
                         >
                             <Typo
@@ -906,7 +923,7 @@ const Home = () => {
                                 styles.filterChip,
                                 filterCategory === "pinned" && styles.filterChipActive,
                             ]}
-                            onPress={() => setFilterCategory("pinned")}
+                            onPress={() => { hapticTap("light"); setFilterCategory("pinned"); }}
                             activeOpacity={0.7}
                         >
                             <Icons.PushPin
@@ -933,7 +950,7 @@ const Home = () => {
                                         styles.filterChip,
                                         isAct && styles.filterChipActive,
                                     ]}
-                                    onPress={() => setFilterCategory(tagKey)}
+                                    onPress={() => { hapticTap("medium"); setFilterCategory(tagKey); }}
                                     activeOpacity={0.7}
                                 >
                                     <Typo
@@ -953,7 +970,7 @@ const Home = () => {
                                     styles.filterChip,
                                     filterCategory === "archived" && styles.filterChipActive,
                                 ]}
-                                onPress={() => setFilterCategory("archived")}
+                                onPress={() => { hapticTap("medium"); setFilterCategory("archived"); }}
                                 activeOpacity={0.7}
                             >
                                 <Icons.Archive
@@ -1055,15 +1072,18 @@ const Home = () => {
                                 <TouchableOpacity
                                     style={styles.notesSelfCard}
                                     activeOpacity={0.8}
-                                    onPress={() => router.push({
-                                        pathname: "/(main)/conversation",
-                                        params: {
-                                            id: `notes_${currentUser?.id}`,
-                                            name: "Notes to Self 📝",
-                                            type: "direct",
-                                            participants: JSON.stringify([currentUser]),
-                                        }
-                                    })}
+                                    onPress={() => {
+                                        hapticTap("medium");
+                                        router.push({
+                                            pathname: "/(main)/conversation",
+                                            params: {
+                                                id: `notes_${currentUser?.id}`,
+                                                name: "Notes to Self 📝",
+                                                type: "direct",
+                                                participants: JSON.stringify([currentUser]),
+                                            }
+                                        });
+                                    }}
                                 >
                                     <View style={styles.notesSelfLeft}>
                                         <View style={styles.notesSelfIcon}>
@@ -1181,10 +1201,13 @@ const Home = () => {
             >
                 <Button
                     style={styles.fab}
-                    onPress={() => router.push({
-                        pathname: "/(main)/newConversationModal",
-                        params: { isGroup: selectedTab }
-                    })}
+                    onPress={() => {
+                        hapticTap("heavy");
+                        router.push({
+                            pathname: "/(main)/newConversationModal",
+                            params: { isGroup: selectedTab }
+                        });
+                    }}
                 >
                     <Icons.Plus
                         color={colors.black}

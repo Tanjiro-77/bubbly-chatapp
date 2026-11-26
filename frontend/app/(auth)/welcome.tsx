@@ -44,7 +44,7 @@ const Welcome = () => {
 
           <View style={styles.versionBadge}>
             <Typo size={10} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
-              V4.0.1 RELEASE
+              V4.0.2 RELEASE
             </Typo>
           </View>
         </Animated.View>

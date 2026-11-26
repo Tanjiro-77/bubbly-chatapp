@@ -6,6 +6,7 @@ import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState } from 'react';
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
@@ -58,9 +59,11 @@ const ProfileModal = () => {
     const processUpdateProfile = async (res: any) => {
         setLoading(false);
         if (res.success) {
+            hapticTap("success");
             await updateToken(res.data.token);
             router.back();
         } else {
+            hapticTap("error");
             BubblyAlert.alert('Profile Update', res.msg || 'Failed to update profile');
         }
     };
@@ -162,7 +165,7 @@ const ProfileModal = () => {
                             Account & Profile
                         </Typo>
                         <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
-                            Bubbly v4.0.1 Profile
+                            Bubbly v4.0.2 Profile
                         </Typo>
                     </View>
                     <View style={{ width: verticalScale(36) }} />
@@ -337,7 +340,7 @@ const ProfileModal = () => {
                                     return (
                                         <TouchableOpacity
                                             key={preset.text}
-                                            onPress={() => { setStatusEmoji(preset.emoji); setStatusText(preset.text); }}
+                                            onPress={() => { hapticTap("light"); setStatusEmoji(preset.emoji); setStatusText(preset.text); }}
                                             style={{
                                                 flexDirection: 'row',
                                                 alignItems: 'center',
@@ -455,7 +458,7 @@ const ProfileModal = () => {
                                 </View>
                                 <View style={styles.actionTextWrap}>
                                     <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
-                                        About Bubbly v4.0.1
+                                        About Bubbly v4.0.2
                                     </Typo>
                                     <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Build info, credits & terms

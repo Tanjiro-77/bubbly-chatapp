@@ -216,6 +216,45 @@ export const acceptCallHttp = async (req: Request, res: Response) => {
     }
 };
 
+export const getPendingIncomingCall = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: "Unauthorized" });
+        }
+
+        const pendingCall: any = await Call.findOne({
+            calleeId: userId,
+            status: "ringing",
+            createdAt: { $gte: new Date(Date.now() - 65_000) },
+        })
+            .populate("callerId", "name avatar")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (!pendingCall) {
+            return res.status(200).json({ success: true, data: null });
+        }
+
+        const callerDoc = pendingCall.callerId as any;
+        return res.status(200).json({
+            success: true,
+            data: {
+                callId: pendingCall._id.toString(),
+                conversationId: pendingCall.conversationId.toString(),
+                kind: pendingCall.kind,
+                caller: {
+                    id: callerDoc?._id ? callerDoc._id.toString() : pendingCall.callerId.toString(),
+                    name: callerDoc?.name || "Someone",
+                    avatar: callerDoc?.avatar || "",
+                },
+            },
+        });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, msg: "Failed to check pending calls" });
+    }
+};
+
 export const rejectCallHttp = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;

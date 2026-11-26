@@ -1,6 +1,7 @@
 import { KeyboardAvoidingView, Linking, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
 import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
@@ -11,6 +12,7 @@ import Typo from "../../components/Typo";
 import { useAuth } from "../../contexts/authContext";
 import Button from "../../components/Button";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import { getContacts, newConversation, isSocketConnected } from "../../socket/socketEvents";
 import { uploadFileToCloudinary } from "../../services/imageService";
 import { fetchDevicePhoneContacts, syncContactsWithBackend, findUserByPhoneNumber, PhoneContactItem, MatchedContactItem } from "../../services/contactService";
@@ -29,15 +31,60 @@ const NewConversationModal = () => {
     const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    // ── Phone Contacts Sync State ──
+    // ── Phone Contacts Sync State (Persisted across modal close/reopen) ──
     const [phoneContacts, setPhoneContacts] = useState<PhoneContactItem[]>([]);
     const [matchedPhoneContacts, setMatchedPhoneContacts] = useState<MatchedContactItem[]>([]);
     const [isSyncingPhone, setIsSyncingPhone] = useState(false);
     const [hasSyncedPhone, setHasSyncedPhone] = useState(false);
+    const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
     const [contactsTab, setContactsTab] = useState<'all' | 'phone'>('all');
     const [lookupPhone, setLookupPhone] = useState('');
     const [isLookingUpPhone, setIsLookingUpPhone] = useState(false);
     const awaitingCreateRef = useRef(false);
+
+    const syncCacheKey = currentUser?.id
+        ? `@bubbly_synced_contacts_${currentUser.id}`
+        : '@bubbly_synced_contacts_default';
+
+    // Restore persisted synced contacts immediately on open, and quietly refresh matches
+    useEffect(() => {
+        let cancelled = false;
+        AsyncStorage.getItem(syncCacheKey).then(async (raw) => {
+            if (!raw || cancelled) return;
+            try {
+                const parsed = JSON.parse(raw);
+                const cachedPhone: PhoneContactItem[] = Array.isArray(parsed?.phoneContacts) ? parsed.phoneContacts : [];
+                const cachedMatched: MatchedContactItem[] = Array.isArray(parsed?.matchedPhoneContacts) ? parsed.matchedPhoneContacts : [];
+                if (cachedPhone.length > 0 || cachedMatched.length > 0) {
+                    setPhoneContacts(cachedPhone);
+                    setMatchedPhoneContacts(cachedMatched);
+                    setHasSyncedPhone(true);
+                    if (typeof parsed.syncedAt === 'number') setLastSyncedAt(parsed.syncedAt);
+
+                    if (token && cachedPhone.length > 0) {
+                        const fresh = await syncContactsWithBackend(
+                            cachedPhone.map((c) => c.phoneNumber),
+                            token
+                        ).catch(() => null);
+                        if (!cancelled && fresh?.matchedContacts) {
+                            const nowTs = Date.now();
+                            setMatchedPhoneContacts(fresh.matchedContacts);
+                            setLastSyncedAt(nowTs);
+                            AsyncStorage.setItem(
+                                syncCacheKey,
+                                JSON.stringify({
+                                    phoneContacts: cachedPhone,
+                                    matchedPhoneContacts: fresh.matchedContacts,
+                                    syncedAt: nowTs,
+                                })
+                            ).catch(() => {});
+                        }
+                    }
+                }
+            } catch {}
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [syncCacheKey, token]);
 
     useEffect(() => {
         getContacts(processGetContacts);
@@ -90,6 +137,7 @@ const NewConversationModal = () => {
     };
 
     const toggleParticipant = (user: any) => {
+        hapticTap("light");
         setSelectedParticipants((prev: string[]) =>
             prev.includes(user.id)
                 ? prev.filter((id: string) => id !== user.id)
@@ -102,6 +150,7 @@ const NewConversationModal = () => {
             BubblyAlert.alert("Authentication", "Please login to start a conversation");
             return;
         }
+        hapticTap("medium");
         if (isGroupMode) {
             toggleParticipant(user);
         } else {
@@ -211,9 +260,20 @@ const NewConversationModal = () => {
 
             const numbers = fetchedList.map(c => c.phoneNumber);
             const syncResult = await syncContactsWithBackend(numbers, token);
+            const syncedAt = Date.now();
             setMatchedPhoneContacts(syncResult.matchedContacts);
             setHasSyncedPhone(true);
+            setLastSyncedAt(syncedAt);
             setContactsTab('phone');
+            await AsyncStorage.setItem(
+                syncCacheKey,
+                JSON.stringify({
+                    phoneContacts: fetchedList,
+                    matchedPhoneContacts: syncResult.matchedContacts,
+                    syncedAt,
+                })
+            ).catch(() => {});
+            hapticTap("success");
 
             if (syncResult.matchedContacts.length > 0) {
                 BubblyAlert.alert(
@@ -434,7 +494,7 @@ const NewConversationModal = () => {
                         </Typo>
                         <Typo size={11} color={colors.neutral500}>
                             {hasSyncedPhone
-                                ? `${matchedPhoneContacts.length} friends found on Bubbly`
+                                ? `${matchedPhoneContacts.length} friends found on Bubbly${lastSyncedAt ? " · saved" : ""}`
                                 : "Discover which friends in your address book use Bubbly"}
                         </Typo>
                     </View>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-    View, StyleSheet, TouchableOpacity, StatusBar, Platform, useWindowDimensions,
+    View, StyleSheet, TouchableOpacity, StatusBar, Platform, useWindowDimensions, BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from '../../components/BubblyAlert';
@@ -23,11 +23,13 @@ import { verticalScale, scale } from '../../utils/styling';
 import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
 import { getAgoraToken, rejectCallHttp } from '../../services/callService';
+import { hapticTap } from '../../utils/haptics';
 import {
     callCancel,
     callEnd,
     callReject,
     callConnected,
+    onCallAccepted,
     onCallEnded,
     onCallConnected,
 } from '../../socket/socketEvents';
@@ -152,12 +154,23 @@ const CallScreen = () => {
 
     useEffect(() => {
         initAgora();
+        onCallAccepted(handleRemoteAccepted);
         onCallEnded(handleRemoteCallEnded);
         onCallConnected(handleRemoteConnected);
 
+        const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+            handleCallEnd();
+            return true;
+        });
+
         return () => {
+            backSub.remove();
+            onCallAccepted(handleRemoteAccepted, true);
             onCallEnded(handleRemoteCallEnded, true);
             onCallConnected(handleRemoteConnected, true);
+            if (!hasCleanedUp.current && callIdStr) {
+                callEnd(callIdStr);
+            }
             cleanup();
         };
     }, []);
@@ -181,11 +194,14 @@ const CallScreen = () => {
                 safeBack();
                 return;
             }
+            let videoAllowed = isVideo;
             if (isVideo) {
                 const ImagePicker = require("expo-image-picker");
                 const camPerm = await ImagePicker.requestCameraPermissionsAsync();
                 if (!camPerm?.granted) {
-                    BubblyAlert.alert("Camera Permission", "Camera access is required for video calls.");
+                    videoAllowed = false;
+                    setIsVideoOff(true);
+                    BubblyAlert.alert("Camera Permission", "Camera denied — continuing call with voice audio.");
                 }
             }
 
@@ -206,7 +222,14 @@ const CallScreen = () => {
                 return;
             }
 
+            if (typeof createAgoraRtcEngine !== "function") {
+                throw new Error("AGORA_NATIVE_UNAVAILABLE");
+            }
+
             const engine = createAgoraRtcEngine();
+            if (!engine) {
+                throw new Error("AGORA_NATIVE_UNAVAILABLE");
+            }
             if (hasCleanedUp.current) {
                 try { engine.release(); } catch {}
                 return;
@@ -233,10 +256,11 @@ const CallScreen = () => {
                     console.log("Agora joined channel successfully:", {
                         channel: connection.channelId, uid: connection.localUid, elapsed,
                     });
-                    setCallState(isOutgoingCall ? "ringing" : "connecting");
+                    setCallState((prev) => (prev === "connected" ? "connected" : isOutgoingCall ? "ringing" : "connecting"));
                 },
                 onUserJoined: (_connection, rUid) => {
                     console.log("Agora remote user joined:", rUid);
+                    hapticTap("success");
                     setRemoteUid(rUid);
                     setCallState("connected");
                     callConnected(currentCallId);
@@ -265,8 +289,9 @@ const CallScreen = () => {
                 },
             });
 
+            engine.enableAudio?.();
             engine.enableLocalAudio(true);
-            if (isVideo) {
+            if (videoAllowed) {
                 engine.enableVideo();
                 engine.enableLocalVideo(true);
                 engine.startPreview();
@@ -278,8 +303,8 @@ const CallScreen = () => {
                 clientRoleType: ClientRoleType.ClientRoleBroadcaster,
                 publishMicrophoneTrack: true,
                 autoSubscribeAudio: true,
-                publishCameraTrack: isVideo,
-                autoSubscribeVideo: true,
+                publishCameraTrack: videoAllowed,
+                autoSubscribeVideo: isVideo,
             });
 
             if (hasCleanedUp.current) {
@@ -290,29 +315,45 @@ const CallScreen = () => {
 
             engine.setEnableSpeakerphone(true);
             setIsSpeakerOn(true);
-        } catch (error) {
+        } catch (error: any) {
             if (hasCleanedUp.current) return;
             console.error("initAgora error:", error);
-            BubblyAlert.alert("Call Error", "Could not initialize the call");
+            const msg = String(error?.message || "");
+            const isNativeMissing = msg.includes("AGORA_NATIVE_UNAVAILABLE") || msg.includes("AgoraRtc") || msg.includes("null");
+            if (callIdStr) callEnd(callIdStr);
+            BubblyAlert.alert(
+                "Call Unavailable",
+                isNativeMissing
+                    ? "Native voice & video SDK is unavailable in Expo Go. Please run the Bubbly Android/iOS APK or Dev Build."
+                    : (msg || "Could not initialize the call")
+            );
             cleanup();
             safeBack();
         }
     };
 
+    const handleRemoteAccepted = useCallback((data: { callId: string }) => {
+        if (String(data?.callId) !== callIdStr) return;
+        hapticTap("medium");
+        setCallState((prev) => (prev === "ringing" ? "connecting" : prev));
+    }, [callIdStr]);
+
     const handleRemoteCallEnded = useCallback((data: {
         callId: string;
         reason: string;
     }) => {
-        if (data.callId !== callIdStr) return;
+        if (String(data?.callId) !== callIdStr) return;
         if (hasCleanedUp.current) return;
 
+        hapticTap("warning");
         setCallState("ended");
         cleanup();
         safeBack();
     }, [callIdStr, safeBack]);
 
     const handleRemoteConnected = useCallback((data: { callId: string }) => {
-        if (data.callId !== callIdStr) return;
+        if (String(data?.callId) !== callIdStr) return;
+        hapticTap("success");
         setCallState('connected');
         startDurationTimer();
     }, [callIdStr]);
@@ -345,17 +386,20 @@ const CallScreen = () => {
 
     const handleCallEnd = () => {
         if (hasCleanedUp.current) return;
+        hapticTap("heavy");
         callEnd(callIdStr);
         cleanup();
         safeBack();
     };
 
     const toggleMute = () => {
+        hapticTap("medium");
         engineRef.current?.muteLocalAudioStream(!isMuted);
         setIsMuted(prev => !prev);
     };
 
     const toggleVideo = () => {
+        hapticTap("medium");
         const next = !isVideoOff;
         engineRef.current?.muteLocalVideoStream(next);
         if (next) setLocalVideoReady(false);
@@ -363,12 +407,14 @@ const CallScreen = () => {
     };
 
     const toggleSpeaker = () => {
+        hapticTap("light");
         const next = !isSpeakerOn;
         engineRef.current?.setEnableSpeakerphone(next);
         setIsSpeakerOn(next);
     };
 
     const switchCamera = () => {
+        hapticTap("light");
         engineRef.current?.switchCamera();
         setIsFrontCamera(prev => !prev);
     };

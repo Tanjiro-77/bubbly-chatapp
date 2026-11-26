@@ -48,6 +48,7 @@ import {
     onChecklistUpdated,
     isSocketConnected, onSocketConnectionChange,
 } from "../../socket/socketEvents"
+import { connectSocket } from "../../socket/socket"
 import {
     MessageProps, ReplyToProps, ResponseProps,
     TypingPayload, UserStatusPayload, SelectedFileProps, ChecklistProps,
@@ -440,34 +441,6 @@ const GroupMentionBar = ({
     );
 };
 
-// ── In-App Toast Dropdown Banner ──
-const InAppToastBanner = ({
-    toast,
-    onPress,
-    onDismiss,
-}: {
-    toast: { convId: string; senderName: string; text: string; avatar?: string } | null;
-    onPress: () => void;
-    onDismiss: () => void;
-}) => {
-    if (!toast) return null;
-
-    return (
-        <Animated.View entering={FadeInDown.duration(280).springify()} exiting={FadeOut.duration(200)} style={inAppToastStyles.banner}>
-            <TouchableOpacity style={inAppToastStyles.touchable} onPress={onPress} activeOpacity={0.85}>
-                <Avatar uri={toast.avatar} size={36} />
-                <View style={{ flex: 1, gap: 2 }}>
-                    <Typo size={13} fontWeight="700" color={colors.neutral900}>{toast.senderName}</Typo>
-                    <Typo size={11.5} color={colors.neutral600} textProps={{ numberOfLines: 1 }}>{toast.text}</Typo>
-                </View>
-                <TouchableOpacity onPress={onDismiss} style={inAppToastStyles.closeBtn} activeOpacity={0.7}>
-                    <Icons.X size={14} color={colors.neutral500} weight="bold" />
-                </TouchableOpacity>
-            </TouchableOpacity>
-        </Animated.View>
-    );
-};
-
 const themeModalStyles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
     sheet: {
@@ -530,12 +503,6 @@ const mentionStyles = StyleSheet.create({
     container: { backgroundColor: colors.white, paddingVertical: verticalScale(6), paddingHorizontal: spacingX._12, borderTopWidth: 1, borderTopColor: colors.neutral200 },
     scroll: { gap: scale(8) },
     pill: { flexDirection: 'row', alignItems: 'center', gap: scale(6), backgroundColor: colors.neutral100, borderRadius: radius.full, paddingHorizontal: scale(8), paddingVertical: verticalScale(4), borderWidth: 1, borderColor: colors.neutral200 },
-});
-
-const inAppToastStyles = StyleSheet.create({
-    banner: { position: 'absolute', top: spacingY._8, left: spacingX._15, right: spacingX._15, zIndex: 999 },
-    touchable: { flexDirection: 'row', alignItems: 'center', gap: scale(10), backgroundColor: colors.white, borderRadius: radius._20, paddingHorizontal: spacingX._12, paddingVertical: verticalScale(10), shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, borderWidth: 1, borderColor: colors.primaryLight },
-    closeBtn: { width: scale(24), height: scale(24), borderRadius: radius.full, backgroundColor: colors.neutral100, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 });
 
 // ── Format duration ──
@@ -1503,7 +1470,6 @@ const Conversation = () => {
             if (getActiveConversationId() === idStr) {
                 setActiveConversationId(null);
             }
-            if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
         };
     }, [conversationId]);
 
@@ -1829,10 +1795,6 @@ const Conversation = () => {
         }, 90);
     };
 
-    // ── In-App Toast Dropdown Banner (Feature 9) ──
-    const [incomingToast, setIncomingToast] = useState<{ convId: string; senderName: string; text: string; avatar?: string } | null>(null);
-    const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
     // ── Group Mention Candidates (Feature 7) ──
     const mentionCandidates = useMemo(() => {
         if (type !== 'group' || !message) return [];
@@ -1993,6 +1955,7 @@ const Conversation = () => {
     };
 
     const scrollToBottom = () => {
+        hapticTap("light");
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         setNewMessagesBelow(0);
         setIsScrolledUp(false);
@@ -2231,14 +2194,25 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     // CALL HANDLERS
     // ─────────────────────────────────────────────
-    const handleStartCall = useCallback((callKind: 'voice' | 'video') => {
-        if (!otherParticipant || !currentUser) return;
+    const handleStartCall = useCallback(async (callKind: 'voice' | 'video') => {
+        hapticTap("heavy");
+        if (!currentUser || !conversationId || isNotesToSelf) return;
+        const targetCalleeId = otherParticipant?._id || "";
+        if (!targetCalleeId && !isDirect) return;
+
         if (!isSocketConnected()) {
-            BubblyAlert.alert("Offline", "Connect to the internet to start a call.");
+            try {
+                await connectSocket();
+                await new Promise(resolve => setTimeout(resolve, 450));
+            } catch (_) {}
+        }
+
+        if (!isSocketConnected()) {
+            BubblyAlert.alert("Connecting...", "Reconnecting your real-time session. Please try again in a moment.");
             return;
         }
-        callInvite({ conversationId: conversationId as string, calleeId: otherParticipant._id, kind: callKind });
-    }, [otherParticipant, currentUser, conversationId]);
+        callInvite({ conversationId: conversationId as string, calleeId: targetCalleeId, kind: callKind });
+    }, [otherParticipant, currentUser, conversationId, isDirect, isNotesToSelf]);
 
     const callRingingHandler = useCallback((data: any) => {
         if (data?.conversationId && data.conversationId.toString() !== conversationId?.toString()) return;
@@ -2333,27 +2307,6 @@ const Conversation = () => {
             res.data.conversationId?.toString() !==
             conversationId?.toString()
         ) {
-            Promise.all([getFocusMode(), getPrivacyShield()]).then(([f, p]) => {
-                focusActiveRef.current = f.enabled;
-                hideNotifPreviewRef.current = p.hideNotificationPreview;
-                if (f.enabled || res.data.isSilent) return;
-                if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-                const previewText = p.hideNotificationPreview
-                    ? "🔒 New encrypted message"
-                    : (formatRichPreviewText(res.data.content) || (res.data.attachement ? "📷 Attachment" : "New message"));
-                setIncomingToast({
-                    convId: res.data.conversationId,
-                    senderName: p.hideNotificationPreview ? "Bubbly" : (res.data.sender?.name || "New Message"),
-                    text: previewText,
-                    avatar: p.hideNotificationPreview ? undefined : res.data.sender?.avatar,
-                    senderId: res.data.sender?.id,
-                    conversationType: (res as any).conversationType || "direct",
-                    conversationName: (res as any).conversationName || undefined,
-                } as any);
-                toastTimeoutRef.current = setTimeout(() => {
-                    setIncomingToast(null);
-                }, 4000);
-            }).catch(() => {});
             return;
         }
 
@@ -2844,6 +2797,7 @@ const Conversation = () => {
             await audioRecorder.prepareToRecordAsync();
             if (!isMountedRef.current) return;
             audioRecorder.record();
+            hapticTap("heavy");
             recordingRef.current = audioRecorder;
             setIsRecording(true);
             recordingDurationRef.current = 0;
@@ -2867,6 +2821,7 @@ const Conversation = () => {
     };
 
     const pauseForReview = async () => {
+        hapticTap("light");
         try {
             if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
             micScale.value = withSpring(1);
@@ -2892,6 +2847,7 @@ const Conversation = () => {
     };
 
     const stopRecording = async (cancel = false) => {
+        hapticTap(cancel ? "warning" : "success");
         try {
             if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
             micScale.value = withSpring(1);
@@ -3621,31 +3577,6 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.5}>
-            {/* ── In-App Toast Dropdown Banner (Feature 9) ── */}
-            <InAppToastBanner
-                toast={incomingToast}
-                onPress={() => {
-                    const t = incomingToast;
-                    setIncomingToast(null);
-                    if (t) {
-                        const participantsPayload = (t as any).senderId
-                            ? JSON.stringify([{ _id: (t as any).senderId, name: t.senderName, avatar: t.avatar || "" }])
-                            : "[]";
-                        router.replace({
-                            pathname: "/(main)/conversation",
-                            params: {
-                                id: t.convId,
-                                name: (t as any).conversationName || t.senderName,
-                                avatar: t.avatar || "",
-                                type: (t as any).conversationType || "direct",
-                                participants: participantsPayload,
-                            }
-                        });
-                    }
-                }}
-                onDismiss={() => setIncomingToast(null)}
-            />
-
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : "height"} style={styles.container}>
 
                 {/* ── Header ── */}
@@ -4066,7 +3997,10 @@ const Conversation = () => {
                                 <>
                                     <TouchableOpacity
                                         style={[styles.actionBtn, showAttachOptions && { backgroundColor: colors.primaryLight }]}
-                                        onPress={() => setShowAttachOptions(prev => !prev)}
+                                        onPress={() => {
+                                            hapticTap("medium");
+                                            setShowAttachOptions(prev => !prev);
+                                        }}
                                         activeOpacity={0.75}
                                     >
                                         <Icons.Paperclip color={showAttachOptions ? colors.primaryDark : colors.neutral600} weight="bold" size={verticalScale(20)} />
@@ -4074,7 +4008,10 @@ const Conversation = () => {
 
                                     <TouchableOpacity
                                         style={[styles.actionBtn, { width: verticalScale(38), height: verticalScale(44) }, showFormatBar && { backgroundColor: colors.primaryLight }]}
-                                        onPress={() => setShowFormatBar(prev => !prev)}
+                                        onPress={() => {
+                                            hapticTap("light");
+                                            setShowFormatBar(prev => !prev);
+                                        }}
                                         activeOpacity={0.75}
                                     >
                                         <Typo size={13} fontWeight="800" color={showFormatBar ? colors.primaryDark : colors.neutral600}>Aa</Typo>

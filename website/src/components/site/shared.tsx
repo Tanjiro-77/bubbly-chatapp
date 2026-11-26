@@ -53,14 +53,14 @@ import {
 } from "lucide-react";
 import { sounds } from "@/lib/sound";
 
-export const APP_VERSION = "v4.0.1";
+export const APP_VERSION = "v4.0.2";
 export const PACKAGE_ID = "com.arnav5569.chat";
 export const APK_DOWNLOAD_LINK = "https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest";
 export const APK_BACKUP_DOWNLOAD_LINK =
   "https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest";
 export const GITHUB_URL = "https://github.com/Tanjiro-77/bubbly-chatapp";
 export const FEEDBACK_EMAIL =
-  "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.0.1%20Feedback&body=Hi%20Arnav%2C%0A%0AHere%27s%20my%20feedback%20on%20Bubbly%20v4.0.1%3A%0A%0A-%20%5BDescribe%20the%20feedback%2C%20idea%20or%20bug%5D%0A%0ADevice%3A%20%5BYour%20phone%20model%5D%0AAndroid%20%2F%20iOS%20version%3A%20%5BVersion%5D%0A%0AThanks%21";
+  "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.0.2%20Feedback&body=Hi%20Arnav%2C%0A%0AHere%27s%20my%20feedback%20on%20Bubbly%20v4.0.2%3A%0A%0A-%20%5BDescribe%20the%20feedback%2C%20idea%20or%20bug%5D%0A%0ADevice%3A%20%5BYour%20phone%20model%5D%0AAndroid%20%2F%20iOS%20version%3A%20%5BVersion%5D%0A%0AThanks%21";
 export const DEVELOPER_NAME = "Arnav Khari";
 
 export const featureGroups = [
@@ -271,8 +271,8 @@ export const featureGroups = [
     ],
   },
   {
-    name: "v4.0.1 Rich Messaging & Play",
-    badge: "New in 4.0.1",
+    name: "v4.0.2 Rich Messaging & Play",
+    badge: "New in 4.0.2",
     color: "from-amber-500/25 to-yellow-500/10",
     textCol: "text-amber-500",
     items: [

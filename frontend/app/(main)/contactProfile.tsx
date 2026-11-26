@@ -26,6 +26,7 @@ import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 import {
     callInvite,
     toggleMuteConversation,
@@ -135,6 +136,7 @@ const ContactProfileScreen = () => {
             BubblyAlert.alert("Offline", "Connect to the internet to place a call.");
             return;
         }
+        hapticTap("heavy");
         callInvite({
             conversationId: conversationIdStr,
             calleeId: userIdStr,
@@ -158,6 +160,7 @@ const ContactProfileScreen = () => {
             if (isLocked) {
                 list = list.filter((id) => id !== conversationIdStr);
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
+                hapticTap("medium");
                 setIsLocked(false);
                 BubblyAlert.alert("Chat Unlocked", "Conversation removed from your Secret Vault.");
             } else {
@@ -165,6 +168,7 @@ const ContactProfileScreen = () => {
                     list.push(conversationIdStr);
                 }
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
+                hapticTap("heavy");
                 setIsLocked(true);
                 BubblyAlert.alert("Chat Locked 🔒", "Conversation is now hidden in your Secret Vault.");
             }
@@ -391,6 +395,7 @@ const ContactProfileScreen = () => {
                                         <TouchableOpacity
                                             key={t}
                                             onPress={async () => {
+                                                hapticTap("medium");
                                                 const nextTag = active ? null : t;
                                                 setFolderTag(nextTag);
                                                 await setChatTag(conversationIdStr, nextTag);
@@ -422,6 +427,7 @@ const ContactProfileScreen = () => {
                             onPress={async () => {
                                 await setEntityNickname(entityKey, nicknameInput);
                                 await setContactNote(entityKey, noteInput);
+                                hapticTap("success");
                                 BubblyAlert.alert("Saved ✨", "Private nickname and note updated.");
                             }}
                         >

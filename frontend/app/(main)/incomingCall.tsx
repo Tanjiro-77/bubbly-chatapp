@@ -16,6 +16,7 @@ import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
 import { callAccept, callReject, onCallEnded } from '../../socket/socketEvents';
 import { acceptCallHttp, getCallStatus, rejectCallHttp } from '../../services/callService';
+import { hapticTap } from '../../utils/haptics';
 
 // ── Multi-Layer Pulsing Rings ──
 const IncomingPulsingRings = ({ size, color }: { size: number; color: string }) => {
@@ -131,9 +132,9 @@ const IncomingCall = () => {
 
         let timerId: any = null;
         const vibrate = () => {
-            if (vibrationRef.current) {
-                Vibration.vibrate([0, 500, 500]);
-                timerId = setTimeout(vibrate, 2000);
+            if (vibrationRef.current && Platform.OS !== "web") {
+                Vibration.vibrate([0, 650, 350]);
+                timerId = setTimeout(vibrate, 1600);
             }
         };
         vibrate();
@@ -162,10 +163,11 @@ const IncomingCall = () => {
     }, []);
 
     const handleCallEndedByOther = (data: { callId: string; reason: string }) => {
-        if (data.callId !== callIdStr) return;
+        if (String(data?.callId) !== callIdStr) return;
         hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
+        hapticTap("warning");
         safeBack();
     };
 
@@ -183,6 +185,7 @@ const IncomingCall = () => {
         isAcceptingRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
+        hapticTap("heavy");
         try {
             callAccept(callIdStr);
             const res = await acceptCallHttp(callIdStr);
@@ -217,6 +220,7 @@ const IncomingCall = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
+        hapticTap("heavy");
         callReject(callIdStr);
         rejectCallHttp(callIdStr).catch(() => {});
         safeBack();
@@ -226,6 +230,7 @@ const IncomingCall = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
+        hapticTap("heavy");
         callReject(callIdStr);
         rejectCallHttp(callIdStr).catch(() => {});
         if (conversationIdStr) {

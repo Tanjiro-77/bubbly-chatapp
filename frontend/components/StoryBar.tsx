@@ -8,6 +8,7 @@ import * as Icons from 'phosphor-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, radius, spacingX, spacingY } from '../constants/theme';
 import { verticalScale, scale } from '../utils/styling';
+import { hapticTap } from '../utils/haptics';
 import Typo from './Typo';
 import Avatar from './Avatar';
 import { useAuth } from '../contexts/authContext';
@@ -51,6 +52,7 @@ const StoryBar = () => {
     };
 
     const openStory = (groupIndex: number) => {
+        hapticTap("medium");
         router.push({
             pathname: '/(main)/storyViewer',
             params: {
@@ -104,6 +106,7 @@ const StoryBar = () => {
                             style={styles.addBtn}
                             onPress={(e) => {
                                 e.stopPropagation?.();
+                                hapticTap("medium");
                                 router.push('/(main)/createStory');
                             }}
                             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}

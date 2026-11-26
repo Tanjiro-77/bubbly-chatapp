@@ -7,6 +7,7 @@ import {
   generateAgoraToken,
   getCallHistory,
   getCallStatus,
+  getPendingIncomingCall,
   rejectCallHttp,
 } from "../controllers/call.controller";
 import { syncContacts, updatePhoneNumber, findUserByPhone } from "../controllers/contact.controller";
@@ -52,6 +53,7 @@ router.post("/translate", translateLimiter, authMiddleware, translateText);
 // ── Call routes ──
 router.post("/call/token", callTokenLimiter, authMiddleware, generateAgoraToken);
 router.get("/call/history", callHistoryLimiter, authMiddleware, getCallHistory);
+router.get("/call/pending", authMiddleware, getPendingIncomingCall);
 router.get("/call/:callId/status", authMiddleware, getCallStatus);
 router.post("/call/:callId/accept", authMiddleware, acceptCallHttp);
 router.post("/call/:callId/reject", authMiddleware, rejectCallHttp);

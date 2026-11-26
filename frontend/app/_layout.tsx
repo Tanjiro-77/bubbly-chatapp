@@ -5,13 +5,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import * as Sentry from '@sentry/react-native';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from "../contexts/authContext";
-import { onCallIncoming } from '../socket/socketEvents';
-import { IncomingCallProps } from '../types';
 import { isOnboardingCompleted } from '../hooks/useOnboarding';
 import { initSentry, setupGlobalErrorHandlers, setSentryUser } from '../services/errorReporter';
 import AppErrorBoundary from '../components/ErrorBoundary';
 import { BubblyAlertHost } from '../components/BubblyAlert';
 import { AppLockGate } from '../components/AppLockGate';
+import { RealtimeNotifier } from '../components/RealtimeNotifier';
 import {
     claimIncomingCallScreen,
     configureNotificationHandler,
@@ -127,19 +126,6 @@ const StackLayout = () => {
     useEffect(() => {
         if (!user) return;
 
-        const handleIncomingCall = (data: IncomingCallProps) => {
-            openIncomingCallScreen({
-                callId: data.callId,
-                callerId: data?.caller?.id || '',
-                callerName: data?.caller?.name || "Unknown",
-                callerAvatar: data?.caller?.avatar || '',
-                kind: data.kind,
-                conversationId: data.conversationId,
-            });
-        };
-
-        onCallIncoming(handleIncomingCall);
-
         // Foreground push fallback if socket missed incoming call event
         const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
             const data = (notification.request.content.data || {}) as Record<string, any>;
@@ -169,7 +155,6 @@ const StackLayout = () => {
         });
 
         return () => {
-            onCallIncoming(handleIncomingCall, true);
             receivedSub.remove();
             responseSub.remove();
         };
@@ -257,6 +242,7 @@ const RootLayout = () => {
                 <AuthProvider>
                     <StackLayout />
                     <NavigationGuard />
+                    <RealtimeNotifier />
                     <AppLockGate />
                     <BubblyAlertHost />
                 </AuthProvider>
