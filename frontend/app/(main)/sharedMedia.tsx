@@ -15,8 +15,8 @@ import {
     Modal,
     Dimensions,
     Linking,
-    Alert,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useLocalSearchParams } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import { Image } from "expo-image";
@@ -57,6 +57,7 @@ const SharedMediaScreen = () => {
 
         const timer = setTimeout(() => setLoading(false), 6000);
         const handler = (res: ResponseProps) => {
+            if ((res as any).conversationId && (res as any).conversationId !== convIdStr) return;
             clearTimeout(timer);
             setLoading(false);
             if (res.success) {
@@ -74,17 +75,32 @@ const SharedMediaScreen = () => {
         };
     }, [conversationId]);
 
-    // Media list (Images + Videos)
+    // Media list (Images + Videos) — exclude View-Once & deleted messages
     const mediaList = useMemo(() => {
         return messages.filter(
-            m => m.type === "image" || m.type === "video" || (m.attachement && (m.attachmentMeta?.mimeType?.startsWith("image/") || m.attachmentMeta?.mimeType?.startsWith("video/")))
+            m =>
+                !m.isDeleted &&
+                !m.isViewOnce &&
+                (m.type === "image" ||
+                    m.type === "video" ||
+                    (m.attachement &&
+                        (m.attachmentMeta?.mimeType?.startsWith("image/") ||
+                            m.attachmentMeta?.mimeType?.startsWith("video/"))))
         );
     }, [messages]);
 
     // Docs list
     const docsList = useMemo(() => {
         return messages.filter(
-            m => m.type === "file" || (m.attachement && !m.attachmentMeta?.mimeType?.startsWith("image/"))
+            m =>
+                !m.isDeleted &&
+                !m.isViewOnce &&
+                (m.type === "file" ||
+                    (m.attachement &&
+                        m.type !== "image" &&
+                        m.type !== "video" &&
+                        !m.attachmentMeta?.mimeType?.startsWith("image/") &&
+                        !m.attachmentMeta?.mimeType?.startsWith("video/")))
         );
     }, [messages]);
 
@@ -92,7 +108,7 @@ const SharedMediaScreen = () => {
     const linksList = useMemo(() => {
         const links: Array<{ url: string; context: string; date: string; id: string }> = [];
         messages.forEach(m => {
-            if (m.content) {
+            if (!m.isDeleted && m.content) {
                 const matches = m.content.match(URL_REGEX);
                 if (matches) {
                     matches.forEach((u, i) => {
@@ -113,9 +129,9 @@ const SharedMediaScreen = () => {
         try {
             const can = await Linking.canOpenURL(url);
             if (can) await Linking.openURL(url);
-            else Alert.alert("Cannot open link", "No browser available to open this link.");
+            else BubblyAlert.alert("Cannot open link", "No browser available to open this link.");
         } catch (_) {
-            Alert.alert("Error", "Could not open link.");
+            BubblyAlert.alert("Error", "Could not open link.");
         }
     };
 
@@ -124,22 +140,34 @@ const SharedMediaScreen = () => {
         try {
             const can = await Linking.canOpenURL(url);
             if (can) await Linking.openURL(url);
-            else Alert.alert("Cannot open file", "No application available to open this document.");
+            else BubblyAlert.alert("Cannot open file", "No application available to open this document.");
         } catch (_) {
-            Alert.alert("Error", "Could not open file.");
+            BubblyAlert.alert("Error", "Could not open file.");
         }
     };
 
     const renderMediaItem = useCallback(({ item }: { item: MessageProps }) => {
         const uri = item.attachmentMeta?.url || item.attachement;
         if (!uri) return null;
+        const isVideo = item.type === "video" || item.attachmentMeta?.mimeType?.startsWith("video/");
         return (
             <TouchableOpacity
                 style={styles.gridItem}
                 activeOpacity={0.8}
-                onPress={() => setPreviewImageUri(uri)}
+                onPress={() => {
+                    if (isVideo) {
+                        Linking.openURL(uri).catch(() => BubblyAlert.alert("Error", "Could not open video."));
+                    } else {
+                        setPreviewImageUri(uri);
+                    }
+                }}
             >
                 <Image source={{ uri }} style={styles.gridImage} contentFit="cover" />
+                {isVideo && (
+                    <View style={{ position: "absolute", top: 6, right: 6, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 12, padding: 4 }}>
+                        <Icons.Play size={14} color="#fff" weight="fill" />
+                    </View>
+                )}
             </TouchableOpacity>
         );
     }, []);

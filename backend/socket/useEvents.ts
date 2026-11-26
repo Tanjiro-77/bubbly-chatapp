@@ -11,30 +11,36 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
     socket.on("updateProfile", async (data: { name?: string; avatar?: string }) => {
         console.log('updateprofile event:', data);
 
-        const userId = socket.data.userId;
-        if (!userId) {
-            return socket.emit('updateProfile', {
-                success: false, msg: "Unauthorized"
-            });
-        }
-
-        const updateData: { name?: string; avatar?: string } = {};
-
-        if (typeof data.name === "string") {
-            const trimmedName = data.name.trim();
-            if (!trimmedName || trimmedName.length > 70) {
+        try {
+            const userId = socket.data.userId;
+            if (!userId) {
                 return socket.emit('updateProfile', {
-                    success: false, msg: "Name must be between 1 and 70 characters"
+                    success: false, msg: "Unauthorized"
                 });
             }
-            updateData.name = trimmedName;
-        }
 
-        if (typeof data.avatar === "string") {
-            updateData.avatar = data.avatar.slice(0, 500);
-        }
+            if (!data || typeof data !== "object") {
+                return socket.emit('updateProfile', {
+                    success: false, msg: "Invalid profile data"
+                });
+            }
 
-        try {
+            const updateData: { name?: string; avatar?: string } = {};
+
+            if (typeof data.name === "string") {
+                const trimmedName = data.name.trim();
+                if (!trimmedName || trimmedName.length > 70) {
+                    return socket.emit('updateProfile', {
+                        success: false, msg: "Name must be between 1 and 70 characters"
+                    });
+                }
+                updateData.name = trimmedName;
+            }
+
+            if (typeof data.avatar === "string") {
+                updateData.avatar = data.avatar.slice(0, 500);
+            }
+
             const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
 
             if (!updatedUser) {

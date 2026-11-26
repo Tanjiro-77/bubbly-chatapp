@@ -1,9 +1,10 @@
 import {
     FlatList, KeyboardAvoidingView, Platform,
-    StyleSheet, TouchableOpacity, View, Alert,
+    StyleSheet, TouchableOpacity, View,
     ActivityIndicator, Modal, TouchableWithoutFeedback,
     TextInput, ScrollView, BackHandler, Share,
 } from 'react-native'
+import { BubblyAlert } from "../../components/BubblyAlert"
 import * as Clipboard from 'expo-clipboard'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -40,8 +41,8 @@ import {
     openViewOnce, onViewOnceOpened,
     toggleStarMessage, onMessageStarred,
     forwardMessage, toggleMuteConversation,
-    setGroupAdmin, getConversations, onGroupUpdated,
-    setDisappearingTimer, scheduleMessage, getScheduledMessages, cancelScheduledMessage,
+    setGroupAdmin, removeGroupMember, leaveGroup, getConversations, onGroupUpdated, onRemovedFromGroup,
+    setDisappearingTimer, scheduleMessage, getScheduledMessages, cancelScheduledMessage, onScheduledMessageSent,
     onMessageAck,
     isSocketConnected, onSocketConnectionChange,
 } from "../../socket/socketEvents"
@@ -963,6 +964,8 @@ const GroupInfoModal = ({
     mediaItems = [],
     onPromote,
     onDemote,
+    onRemoveMember,
+    onLeaveGroup,
     onClose,
 }: {
     visible: boolean;
@@ -975,9 +978,11 @@ const GroupInfoModal = ({
     mediaItems?: MessageProps[];
     onPromote: (userId: string) => void;
     onDemote: (userId: string) => void;
+    onRemoveMember?: (userId: string) => void;
+    onLeaveGroup?: () => void;
     onClose: () => void;
 }) => {
-    const isAdmin = admins?.some((a: any) => (a._id || a).toString() === currentUserId);
+    const isAdmin = admins?.some((a: any) => (a._id || a).toString() === currentUserId) || createdBy?.toString() === currentUserId;
     const [infoTab, setInfoTab] = useState<'members' | 'media'>('members');
 
     return (
@@ -1039,18 +1044,34 @@ const GroupInfoModal = ({
                                                     )}
                                                 </View>
                                                 {isAdmin && item._id !== currentUserId && !userIsCreator && (
-                                                    <TouchableOpacity
-                                                        onPress={() => userIsAdmin ? onDemote(item._id) : onPromote(item._id)}
-                                                        style={groupInfoStyles.roleBtn}
-                                                    >
-                                                        <Typo size={11} fontWeight="600" color={colors.primaryDark}>
-                                                            {userIsAdmin ? "Demote" : "Make Admin"}
-                                                        </Typo>
-                                                    </TouchableOpacity>
+                                                    <View style={groupInfoStyles.memberActions}>
+                                                        <TouchableOpacity
+                                                            onPress={() => userIsAdmin ? onDemote(item._id) : onPromote(item._id)}
+                                                            style={groupInfoStyles.roleBtn}
+                                                        >
+                                                            <Typo size={11} fontWeight="600" color={colors.primaryDark}>
+                                                                {userIsAdmin ? "Demote" : "Make Admin"}
+                                                            </Typo>
+                                                        </TouchableOpacity>
+                                                        {onRemoveMember && (
+                                                            <TouchableOpacity
+                                                                onPress={() => onRemoveMember(item._id)}
+                                                                style={groupInfoStyles.removeBtn}
+                                                            >
+                                                                <Icons.UserMinus size={14} color={colors.rose} weight="bold" />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
                                                 )}
                                             </View>
                                         );
                                     }}
+                                    ListFooterComponent={onLeaveGroup ? (
+                                        <TouchableOpacity onPress={onLeaveGroup} style={groupInfoStyles.leaveBtn} activeOpacity={0.8}>
+                                            <Icons.SignOut size={16} color={colors.rose} weight="bold" />
+                                            <Typo size={13} fontWeight="700" color={colors.rose}>Leave Group</Typo>
+                                        </TouchableOpacity>
+                                    ) : null}
                                 />
                             ) : (
                                 <ScrollView contentContainerStyle={groupInfoStyles.mediaScroll} showsVerticalScrollIndicator={false}>
@@ -1111,7 +1132,10 @@ const groupInfoStyles = StyleSheet.create({
     list: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
     memberRow: { flexDirection: 'row', alignItems: 'center', gap: spacingX._12, paddingVertical: spacingY._10 },
     memberInfo: { flex: 1, gap: 2 },
+    memberActions: { flexDirection: 'row', alignItems: 'center', gap: spacingX._6 },
     roleBtn: { paddingHorizontal: spacingX._10, paddingVertical: spacingY._5, backgroundColor: colors.primaryLight, borderRadius: radius.full },
+    removeBtn: { padding: spacingX._7, backgroundColor: '#fef2f2', borderRadius: radius.full },
+    leaveBtn: { marginTop: spacingY._12, paddingVertical: spacingY._12, borderRadius: radius._15, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacingX._8 },
     mediaScroll: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._20 },
     emptyMedia: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacingY._30, gap: spacingY._7 },
     mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(8) },
@@ -1201,28 +1225,19 @@ const Conversation = () => {
     const [name, setName] = useState(initialName || "");
     const [avatar, setAvatar] = useState(initialAvatar || "");
     const [message, setMessage] = useState('');
-    const [participants, setParticipants] = useState<any[]>(() => {
+    const parseParamArray = (raw?: string) => {
         try {
-            if (typeof stringifiedParticipants === "string" && stringifiedParticipants.trim()) {
-                const parsed = JSON.parse(stringifiedParticipants);
+            if (typeof raw === "string" && raw.trim()) {
+                const parsed = JSON.parse(raw);
                 return Array.isArray(parsed) ? parsed : [];
             }
             return [];
         } catch {
             return [];
         }
-    });
-    const [groupAdmins, setGroupAdmins] = useState<any[]>(() => {
-        try {
-            if (typeof stringifiedAdmins === "string" && stringifiedAdmins.trim()) {
-                const parsed = JSON.parse(stringifiedAdmins);
-                return Array.isArray(parsed) ? parsed : [];
-            }
-            return [];
-        } catch {
-            return [];
-        }
-    });
+    };
+    const [participants, setParticipants] = useState<any[]>(() => parseParamArray(stringifiedParticipants));
+    const [groupAdmins, setGroupAdmins] = useState<any[]>(() => parseParamArray(stringifiedAdmins));
     const [groupCreatedBy, setGroupCreatedBy] = useState<string | undefined>(initialCreatedBy || undefined);
     const [selectedFile, setSelectedFile] = useState<SelectedFileProps | null>(null);
     const [loading, setLoading] = useState(false);
@@ -1232,6 +1247,22 @@ const Conversation = () => {
     const [typingUser, setTypingUser] = useState<string | null>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isTypingRef = useRef(false);
+    const isMountedRef = useRef(true);
+    const isStartingRecordingRef = useRef(false);
+    const pendingSchedAckRef = useRef<((res: any) => void) | null>(null);
+    const pendingForwardListRef = useRef<((res: any) => void) | null>(null);
+    const currentUserRef = useRef(currentUser);
+    currentUserRef.current = currentUser;
+    const isDirectRef = useRef(type === 'direct');
+    isDirectRef.current = type === 'direct';
+    const prevConvIdRef = useRef(conversationId);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     // ── Attachment picker ──
     const [showAttachOptions, setShowAttachOptions] = useState(false);
@@ -1241,12 +1272,17 @@ const Conversation = () => {
     const [pollQuestion, setPollQuestion] = useState('');
     const [pollOptions, setPollOptions] = useState(['', '']);
     const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
+    const [pollError, setPollError] = useState('');
 
     // ── Pagination ──
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const isLoadingMoreRef = useRef(false);
+    const minLoadedPageRef = useRef(0);
+    const loadingNewerRef = useRef(false);
+    const pendingJumpIdRef = useRef<string | null>(null);
+    const prevDisappearingRef = useRef(0);
 
     // ── Online Status ──
     const [contactIsOnline, setContactIsOnline] = useState(false);
@@ -1265,6 +1301,10 @@ const Conversation = () => {
 
     const isDirect = type === 'direct';
     const isNotesToSelf = typeof conversationId === 'string' && conversationId.startsWith('notes_');
+    const isGroupAdmin =
+        type === 'group' &&
+        (groupAdmins?.some((a: any) => (a._id || a).toString() === currentUser?.id) ||
+            groupCreatedBy?.toString() === currentUser?.id);
     const otherParticipant = useMemo(() => {
         if (isNotesToSelf) return null;
         const fromParticipants = isDirect ? participants.find((p: any) => (p._id || p.id) !== currentUser?.id) : null;
@@ -1317,6 +1357,34 @@ const Conversation = () => {
     // ── Draft Restoration (V3.1.2) ──
     useEffect(() => {
         if (!conversationId) return;
+        if (prevConvIdRef.current !== conversationId) {
+            prevConvIdRef.current = conversationId;
+            setName(initialName || "");
+            setAvatar(initialAvatar || "");
+            setParticipants(parseParamArray(stringifiedParticipants));
+            setGroupAdmins(parseParamArray(stringifiedAdmins));
+            setGroupCreatedBy(initialCreatedBy || undefined);
+            setMessages([]);
+            setMessageStatuses({});
+            setPinnedMessages([]);
+            setMessage('');
+            setReplyTo(null);
+            setSelectedFile(null);
+            setTypingUser(null);
+            setContactIsOnline(false);
+            setContactLastSeen(null);
+            setPage(0);
+            setHasMore(true);
+            isLoadingMoreRef.current = false;
+            minLoadedPageRef.current = 0;
+            loadingNewerRef.current = false;
+            pendingJumpIdRef.current = null;
+            setPollError('');
+            const parsedDisappearing = parseInt(String(initialDisappearing || "0"), 10);
+            setDisappearingSeconds(isNaN(parsedDisappearing) ? 0 : parsedDisappearing);
+            setSelectedTheme(CHAT_THEMES[0]);
+            setCustomWallpaperUri(null);
+        }
         AsyncStorage.getItem(`@bubbly_draft_${conversationId}`).then((draft) => {
             if (draft && draft.trim()) {
                 setMessage(draft);
@@ -1368,38 +1436,85 @@ const Conversation = () => {
     useEffect(() => {
         if (!conversationId || scheduledMessages.length === 0 || (!isNotesToSelf && isSocketConnected())) return;
         const interval = setInterval(() => {
+            if (!isNotesToSelf && !isSocketConnected()) return;
             const now = Date.now();
             const due = scheduledMessages.filter(m => m.sendAt <= now);
             if (due.length > 0) {
                 const remaining = scheduledMessages.filter(m => m.sendAt > now);
                 saveScheduled(remaining);
-                due.forEach((item) => {
-                    newMessage({
-                        conversationId,
-                        sender: { id: currentUser?.id, name: currentUser?.name, avatar: currentUser?.avatar },
+                if (isNotesToSelf) {
+                    const noteItems: MessageProps[] = due.map((item) => ({
+                        id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        conversationId: conversationId as string,
+                        sender: { id: currentUser?.id as string, name: currentUser?.name || "You", avatar: currentUser?.avatar || null },
                         content: item.content,
                         attachement: null,
                         attachmentMeta: null,
                         type: 'text',
                         replyTo: null,
+                        reactions: [],
+                        createdAt: new Date().toISOString(),
+                    }));
+                    setMessages(prev => {
+                        const updated = [...noteItems, ...prev];
+                        AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                        return updated;
                     });
-                });
+                } else {
+                    due.forEach((item) => {
+                        newMessage({
+                            conversationId,
+                            sender: { id: currentUser?.id, name: currentUser?.name, avatar: currentUser?.avatar },
+                            content: item.content,
+                            attachement: null,
+                            attachmentMeta: null,
+                            type: 'text',
+                            replyTo: null,
+                        });
+                    });
+                }
             }
         }, 5000);
         return () => clearInterval(interval);
     }, [scheduledMessages, conversationId, currentUser, saveScheduled, isNotesToSelf]);
 
+    const flushOfflineScheduled = useCallback(async () => {
+        if (!conversationId || isNotesToSelf || !isSocketConnected()) return;
+        try {
+            const raw = await AsyncStorage.getItem(`@bubbly_scheduled_${conversationId}`);
+            if (!raw) return;
+            const list = JSON.parse(raw);
+            if (!Array.isArray(list) || list.length === 0) return;
+            for (const item of list) {
+                const sendAtIso = new Date(Math.max(Number(item.sendAt) || Date.now(), Date.now() + 20_000)).toISOString();
+                scheduleMessage({
+                    conversationId,
+                    content: item.content,
+                    sendAt: sendAtIso,
+                });
+            }
+            await AsyncStorage.removeItem(`@bubbly_scheduled_${conversationId}`).catch(() => {});
+            getScheduledMessages({ conversationId });
+        } catch (_) {}
+    }, [conversationId, isNotesToSelf]);
+
     const handleConfirmSchedule = (delayMs: number, label: string) => {
         if (!message.trim()) {
-            Alert.alert("Empty Message", "Please type a message before scheduling.");
             setShowScheduleModal(false);
+            setTimeout(() => {
+                BubblyAlert.alert("Empty Message", "Please type a message before scheduling.");
+            }, 90);
             return;
         }
         const safeDelay = Math.max(delayMs, 20_000);
         if (!isNotesToSelf && isSocketConnected()) {
             const sendAtIso = new Date(Date.now() + safeDelay).toISOString();
+            if (pendingSchedAckRef.current) {
+                scheduleMessage(pendingSchedAckRef.current, true);
+            }
             const onSchedAck = (res: any) => {
                 scheduleMessage(onSchedAck, true);
+                pendingSchedAckRef.current = null;
                 if (res?.success && res.data) {
                     setScheduledMessages(prev => [...prev, {
                         id: res.data._id || `sched_${Date.now()}`,
@@ -1409,9 +1524,10 @@ const Conversation = () => {
                         label,
                     }]);
                 } else {
-                    Alert.alert("Schedule Error", res?.msg || "Could not schedule message.");
+                    BubblyAlert.alert("Schedule Error", res?.msg || "Could not schedule message.");
                 }
             };
+            pendingSchedAckRef.current = onSchedAck;
             scheduleMessage(onSchedAck);
             scheduleMessage({
                 conversationId,
@@ -1420,7 +1536,9 @@ const Conversation = () => {
             });
             setMessage("");
             setShowScheduleModal(false);
-            Alert.alert("Message Scheduled ⏱️", `Your message will be automatically delivered in ${label.toLowerCase()}.`);
+            setTimeout(() => {
+                BubblyAlert.alert("Message Scheduled ⏱️", `Your message will be automatically delivered in ${label.toLowerCase()}.`);
+            }, 90);
             return;
         }
         const item = {
@@ -1434,7 +1552,9 @@ const Conversation = () => {
         saveScheduled(updated);
         setMessage("");
         setShowScheduleModal(false);
-        Alert.alert("Message Scheduled ⏱️", `Your message will be automatically sent in ${label.toLowerCase()}.`);
+        setTimeout(() => {
+            BubblyAlert.alert("Message Scheduled ⏱️", `Your message will be automatically sent in ${label.toLowerCase()}.`);
+        }, 90);
     };
 
     const handleCancelScheduled = (id: string) => {
@@ -1503,30 +1623,46 @@ const Conversation = () => {
     const [showDisappearingModal, setShowDisappearingModal] = useState<boolean>(false);
 
     useEffect(() => {
-        if (!conversationId) return;
+        if (!conversationId || !isNotesToSelf) return;
         AsyncStorage.getItem(`@bubbly_disappearing_${conversationId}`).then((saved) => {
             if (saved) {
                 const sec = parseInt(saved, 10);
                 if (!isNaN(sec)) setDisappearingSeconds(sec);
             }
         }).catch(() => {});
-    }, [conversationId]);
+    }, [conversationId, isNotesToSelf]);
 
     const handleSelectDisappearing = async (seconds: number) => {
-        setDisappearingSeconds(seconds);
         setShowDisappearingModal(false);
+        if (type === 'group' && !isGroupAdmin) {
+            setTimeout(() => {
+                BubblyAlert.alert("Admin Only", "Only group admins can change disappearing messages.");
+            }, 90);
+            return;
+        }
+        prevDisappearingRef.current = disappearingSeconds;
+        setDisappearingSeconds(seconds);
         if (conversationId) {
-            await AsyncStorage.setItem(`@bubbly_disappearing_${conversationId}`, seconds.toString()).catch(() => {});
-            if (!isNotesToSelf && isSocketConnected()) {
+            if (isNotesToSelf) {
+                await AsyncStorage.setItem(`@bubbly_disappearing_${conversationId}`, seconds.toString()).catch(() => {});
+            } else if (isSocketConnected()) {
                 setDisappearingTimer({ conversationId, seconds });
+            } else {
+                setDisappearingSeconds(prevDisappearingRef.current);
+                setTimeout(() => {
+                    BubblyAlert.alert("Offline", "Connect to the internet to update disappearing messages.");
+                }, 90);
+                return;
             }
         }
-        Alert.alert(
-            "Disappearing Messages",
-            seconds === 0
-                ? "Disappearing messages turned off."
-                : `New messages will now disappear after ${seconds === 86400 ? "24 hours" : seconds === 604800 ? "7 days" : "90 days"}.`
-        );
+        setTimeout(() => {
+            BubblyAlert.alert(
+                "Disappearing Messages",
+                seconds === 0
+                    ? "Disappearing messages turned off."
+                    : `New messages will now disappear after ${seconds === 86400 ? "24 hours" : seconds === 604800 ? "7 days" : "90 days"}.`
+            );
+        }, 90);
     };
 
     // ── In-App Toast Dropdown Banner (Feature 9) ──
@@ -1647,13 +1783,17 @@ const Conversation = () => {
 
     // ── Connection Status Listener ──
     useEffect(() => {
+        if (isSocketConnected()) {
+            flushOfflineScheduled();
+        }
         return onSocketConnectionChange((connected) => {
             setIsOnlineNetwork(connected);
             if (connected) {
                 flushOutbox();
+                flushOfflineScheduled();
             }
         });
-    }, [flushOutbox]);
+    }, [flushOutbox, flushOfflineScheduled]);
 
     const handleScroll = (event: any) => {
         const offsetY = event.nativeEvent.contentOffset.y;
@@ -1661,6 +1801,16 @@ const Conversation = () => {
         setIsScrolledUp(scrolled);
         if (!scrolled) {
             setNewMessagesBelow(0);
+        }
+        if (
+            !isNotesToSelf &&
+            offsetY < 80 &&
+            minLoadedPageRef.current > 0 &&
+            !loadingNewerRef.current &&
+            isSocketConnected()
+        ) {
+            loadingNewerRef.current = true;
+            getMessages({ conversationId, page: minLoadedPageRef.current - 1, limit: 30 });
         }
     };
 
@@ -1686,8 +1836,14 @@ const Conversation = () => {
             }).catch(() => {});
             return () => {
                 if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                stopRecording(true);
-                try { reviewPlayer.pause(); } catch (_) {}
+                if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+                if (recordingRef.current) {
+                    try { recordingRef.current.stop(); } catch {}
+                    recordingRef.current = null;
+                }
+                if (voiceReview?.uri) {
+                    try { reviewPlayer.pause(); } catch (_) {}
+                }
             };
         }
 
@@ -1703,8 +1859,31 @@ const Conversation = () => {
         };
 
         const disappearingHandler = (res: any) => {
+            if (res?.success === false) {
+                setDisappearingSeconds(prevDisappearingRef.current);
+                BubblyAlert.alert("Permission Denied", res.msg || "Could not update disappearing messages.");
+                return;
+            }
             if (res?.success && res.data?.conversationId === conversationId) {
                 setDisappearingSeconds(res.data.disappearingSeconds || 0);
+            }
+        };
+
+        const removedFromGroupHandler = (data: { conversationId?: string }) => {
+            if (data?.conversationId?.toString() === conversationId?.toString()) {
+                setGroupInfoVisible(false);
+                BubblyAlert.alert(
+                    "Removed from Group",
+                    "You are no longer a member of this group.",
+                    [{ text: "OK", onPress: () => router.replace("/(main)/home") }],
+                    { cancelable: false }
+                );
+            }
+        };
+
+        const scheduledSentHandler = (data: { id?: string; conversationId?: string }) => {
+            if (data?.conversationId?.toString() === conversationId?.toString() && data?.id) {
+                setScheduledMessages(prev => prev.filter(s => s.id !== data.id));
             }
         };
 
@@ -1754,10 +1933,17 @@ const Conversation = () => {
         onViewOnceOpened(viewOnceOpenedHandler);
         onMessageStarred(starMessageHandler);
         onGroupUpdated(groupUpdatedHandler);
+        onRemovedFromGroup(removedFromGroupHandler);
         setDisappearingTimer(disappearingHandler);
+        onScheduledMessageSent(scheduledSentHandler);
         onMessageAck(messageAckHandler);
 
-        getMessages({ conversationId, page: 0, limit: 30 });
+        getMessages({
+            conversationId,
+            page: 0,
+            limit: 30,
+            ...(highlightMessageId ? { aroundMessageId: highlightMessageId } : {}),
+        });
         markAsRead(conversationId as string);
 
         return () => {
@@ -1779,11 +1965,27 @@ const Conversation = () => {
             onViewOnceOpened(viewOnceOpenedHandler, true);
             onMessageStarred(starMessageHandler, true);
             onGroupUpdated(groupUpdatedHandler, true);
+            onRemovedFromGroup(removedFromGroupHandler, true);
             setDisappearingTimer(disappearingHandler, true);
+            onScheduledMessageSent(scheduledSentHandler, true);
             onMessageAck(messageAckHandler, true);
+            if (pendingSchedAckRef.current) {
+                scheduleMessage(pendingSchedAckRef.current, true);
+                pendingSchedAckRef.current = null;
+            }
+            if (pendingForwardListRef.current) {
+                getConversations(pendingForwardListRef.current, true);
+                pendingForwardListRef.current = null;
+            }
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-            stopRecording(true);
-            try { reviewPlayer.pause(); } catch (_) {}
+            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+            if (recordingRef.current) {
+                try { recordingRef.current.stop(); } catch {}
+                recordingRef.current = null;
+            }
+            if (voiceReview?.uri) {
+                try { reviewPlayer.pause(); } catch (_) {}
+            }
         };
     }, [conversationId, isNotesToSelf]);
 
@@ -1853,7 +2055,7 @@ const Conversation = () => {
     }, [isDirect]);
 
     const callFailedHandler = useCallback((data: any) => {
-        Alert.alert(data.reason === 'busy' ? '🔴 User Busy' : '❌ Call Failed', data.msg || 'Could not connect the call');
+        BubblyAlert.alert(data.reason === 'busy' ? '🔴 User Busy' : '❌ Call Failed', data.msg || 'Could not connect the call');
     }, []);
 
     // ─────────────────────────────────────────────
@@ -1883,9 +2085,22 @@ const Conversation = () => {
     }, [conversationId]);
 
     const handleCreatePoll = () => {
+        if (isNotesToSelf) {
+            setShowPollModal(false);
+            setTimeout(() => {
+                BubblyAlert.alert('Notes to Self', 'Polls are only available in group or direct chats.');
+            }, 90);
+            return;
+        }
         const validOptions = pollOptions.filter(o => o.trim());
-        if (!pollQuestion.trim()) { Alert.alert('Error', 'Please enter a question'); return; }
-        if (validOptions.length < 2) { Alert.alert('Error', 'Please add at least 2 options'); return; }
+        if (!pollQuestion.trim()) {
+            setPollError('Please enter a poll question.');
+            return;
+        }
+        if (validOptions.length < 2) {
+            setPollError('Please provide at least 2 poll options.');
+            return;
+        }
 
         createPoll({
             conversationId,
@@ -1895,6 +2110,7 @@ const Conversation = () => {
         });
 
         setShowPollModal(false);
+        setPollError('');
         setPollQuestion('');
         setPollOptions(['', '']);
         setPollAllowMultiple(false);
@@ -1907,7 +2123,7 @@ const Conversation = () => {
         setLoading(false);
 
         if (!res.success) {
-            Alert.alert("Error", res.msg);
+            BubblyAlert.alert("Error", res.msg);
             return;
         }
 
@@ -1923,7 +2139,10 @@ const Conversation = () => {
                 senderName: res.data.sender?.name || "New Message",
                 text: res.data.content || (res.data.attachement ? "📷 Attachment" : "New message"),
                 avatar: res.data.sender?.avatar,
-            });
+                senderId: res.data.sender?.id,
+                conversationType: (res as any).conversationType || "direct",
+                conversationName: (res as any).conversationName || undefined,
+            } as any);
             toastTimeoutRef.current = setTimeout(() => {
                 setIncomingToast(null);
             }, 4000);
@@ -1981,6 +2200,7 @@ const Conversation = () => {
     };
 
     const messagesHandler = (res: ResponseProps) => {
+        if ((res as any).conversationId && (res as any).conversationId !== conversationId) return;
         if (res.success) {
             const incomingPage = res.page ?? 0;
             setHasMore(res.hasMore ?? false);
@@ -1993,7 +2213,7 @@ const Conversation = () => {
             setMessageStatuses(prev => {
                 const next = { ...prev };
                 for (const msg of pageMessages) {
-                    if (msg.sender?.id?.toString() === currentUser?.id?.toString() && !next[msg.id]) {
+                    if (msg.sender?.id?.toString() === currentUserRef.current?.id?.toString() && !next[msg.id]) {
                         next[msg.id] = "sent";
                     }
                 }
@@ -2004,11 +2224,57 @@ const Conversation = () => {
                 setPinnedMessages((res as any).pinnedMessages);
             }
 
-            if (incomingPage === 0) { setMessages(pageMessages); setPage(0); }
-            else { setMessages(prev => [...prev, ...pageMessages]); setPage(incomingPage); }
+            if ((res as any).aroundMessageId) {
+                setMessages(pageMessages);
+                setPage(incomingPage);
+                minLoadedPageRef.current = incomingPage;
+                loadingNewerRef.current = false;
+                if (pendingJumpIdRef.current) {
+                    const jumpTarget = pendingJumpIdRef.current;
+                    pendingJumpIdRef.current = null;
+                    setTimeout(() => {
+                        const jumpIdx = pageMessages.findIndex(m => m.id === jumpTarget);
+                        if (jumpIdx !== -1) {
+                            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                        }
+                    }, 200);
+                }
+            } else if (incomingPage === 0) {
+                setMessages(prev => {
+                    if (minLoadedPageRef.current > 0) {
+                        const existingIds = new Set(prev.map(m => m.id));
+                        const newer = pageMessages.filter(m => !existingIds.has(m.id));
+                        return [...newer, ...prev];
+                    }
+                    return pageMessages;
+                });
+                if (minLoadedPageRef.current > 0) {
+                    minLoadedPageRef.current = 0;
+                    loadingNewerRef.current = false;
+                } else {
+                    setPage(0);
+                    minLoadedPageRef.current = 0;
+                }
+            } else if (incomingPage < minLoadedPageRef.current) {
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m.id));
+                    const newer = pageMessages.filter(m => !existingIds.has(m.id));
+                    return [...newer, ...prev];
+                });
+                minLoadedPageRef.current = incomingPage;
+                loadingNewerRef.current = false;
+            } else {
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m.id));
+                    const older = pageMessages.filter(m => !existingIds.has(m.id));
+                    return [...prev, ...older];
+                });
+                setPage(incomingPage);
+            }
         } else {
             setIsLoadingMore(false);
             isLoadingMoreRef.current = false;
+            loadingNewerRef.current = false;
         }
     };
 
@@ -2090,11 +2356,11 @@ const Conversation = () => {
     // LOAD MORE
     // ─────────────────────────────────────────────
     const handleLoadMore = useCallback(() => {
-        if (isLoadingMoreRef.current || !hasMore) return;
+        if (messages.length === 0 || !isSocketConnected() || isLoadingMoreRef.current || !hasMore) return;
         isLoadingMoreRef.current = true;
         setIsLoadingMore(true);
         getMessages({ conversationId, page: page + 1, limit: 30 });
-    }, [page, hasMore, conversationId]);
+    }, [messages.length, page, hasMore, conversationId]);
 
     // ─────────────────────────────────────────────
     // REACTION
@@ -2132,7 +2398,7 @@ const Conversation = () => {
                 AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
             }
         }
-        if (!currentUser || !conversationId) return;
+        if (!currentUser || !conversationId || isNotesToSelf) return;
         if (!isTypingRef.current) {
             isTypingRef.current = true;
             emitTyping({ conversationId: conversationId as string, senderId: currentUser.id as string, senderName: currentUser.name });
@@ -2157,17 +2423,24 @@ const Conversation = () => {
     // VOICE RECORDING & REVIEW (V3.1.2)
     // ─────────────────────────────────────────────
     const startRecording = async () => {
+        if (isStartingRecordingRef.current || recordingRef.current) return;
+        isStartingRecordingRef.current = true;
         try {
             const { granted } = await AudioModule.requestRecordingPermissionsAsync();
-            if (!granted) { Alert.alert("Permission needed", "Microphone permission is required."); return; }
+            if (!granted || !isMountedRef.current) {
+                if (!granted) BubblyAlert.alert("Permission needed", "Microphone permission is required.");
+                return;
+            }
             await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
             await audioRecorder.prepareToRecordAsync();
+            if (!isMountedRef.current) return;
             audioRecorder.record();
             recordingRef.current = audioRecorder;
             setIsRecording(true);
             recordingDurationRef.current = 0;
             setRecordingDuration(0);
             micScale.value = withSpring(1.3);
+            if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
             recordingTimerRef.current = setInterval(() => {
                 const next = recordingDurationRef.current + 1;
                 recordingDurationRef.current = next;
@@ -2178,7 +2451,9 @@ const Conversation = () => {
             }, 1000);
         } catch (error) {
             console.log("startRecording error:", error);
-            Alert.alert("Error", "Could not start recording");
+            BubblyAlert.alert("Error", "Could not start recording");
+        } finally {
+            isStartingRecordingRef.current = false;
         }
     };
 
@@ -2236,13 +2511,40 @@ const Conversation = () => {
 
     const sendVoiceMessage = async (uri: string, duration: number) => {
         if (!currentUser) return;
+        if (isNotesToSelf) {
+            const noteMsg: MessageProps = {
+                id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: "",
+                attachement: null,
+                attachmentMeta: null,
+                type: 'voice',
+                voiceUrl: uri,
+                voiceDuration: duration,
+                replyTo: replyTo || null,
+                reactions: [],
+                createdAt: new Date().toISOString(),
+            };
+            setMessages(prev => {
+                const updated = [noteMsg, ...prev];
+                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                return updated;
+            });
+            setReplyTo(null);
+            return;
+        }
+        if (!isSocketConnected()) {
+            BubblyAlert.alert("Offline", "Connect to the internet to send voice messages.");
+            return;
+        }
         setIsUploadingVoice(true);
         try {
             const uploadResult = await uploadAudioToCloudinary(uri, "voice-messages");
-            if (!uploadResult.success || !uploadResult.data) { Alert.alert("Error", "Could not upload voice message"); return; }
+            if (!uploadResult.success || !uploadResult.data) { BubblyAlert.alert("Error", "Could not upload voice message"); return; }
             newMessage({ conversationId, sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }, content: "", attachement: null, replyTo: replyTo?.id || null, voiceUrl: uploadResult.data, voiceDuration: duration });
             setReplyTo(null);
-        } catch { Alert.alert("Error", "Failed to send voice message"); }
+        } catch { BubblyAlert.alert("Error", "Failed to send voice message"); }
         finally { setIsUploadingVoice(false); }
     };
 
@@ -2268,7 +2570,7 @@ const Conversation = () => {
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
                 if (asset.size && asset.size > 25 * 1024 * 1024) {
-                    Alert.alert("File too large", "Please select a file smaller than 25MB.");
+                    BubblyAlert.alert("File too large", "Please select a file smaller than 25MB.");
                     return;
                 }
                 const fileName = asset.name || 'file';
@@ -2296,12 +2598,12 @@ const Conversation = () => {
                     ? asset.mimeType
                     : (extMimeMap[ext] || '');
                 if (!mimeType) {
-                    Alert.alert("Unsupported File Type", "Supported formats: PDF, Word, Excel, PowerPoint, TXT, ZIP, Images, and Videos.");
+                    BubblyAlert.alert("Unsupported File Type", "Supported formats: PDF, Word, Excel, PowerPoint, TXT, ZIP, Images, and Videos.");
                     return;
                 }
                 setSelectedFile({ uri: asset.uri, name: fileName, mimeType, size: asset.size || 0, isImage: mimeType.startsWith('image/') });
             }
-        } catch { Alert.alert("Error", "Could not pick file"); }
+        } catch { BubblyAlert.alert("Error", "Could not pick file"); }
     };
 
     // ─────────────────────────────────────────────
@@ -2325,7 +2627,15 @@ const Conversation = () => {
                 sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
                 content: message.trim(),
                 attachement: selectedFile?.uri || null,
-                attachmentMeta: null,
+                attachmentMeta: selectedFile && !selectedFile.isImage
+                    ? {
+                        url: selectedFile.uri,
+                        name: selectedFile.name,
+                        size: selectedFile.size,
+                        mimeType: selectedFile.mimeType,
+                        resourceType: "raw",
+                    }
+                    : null,
                 type: selectedFile ? (selectedFile.isImage ? 'image' : 'file') : 'text',
                 replyTo: replyTo || null,
                 reactions: [],
@@ -2336,9 +2646,17 @@ const Conversation = () => {
                 AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
                 return updated;
             });
+            if (conversationId) {
+                AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+            }
             setMessage("");
             setSelectedFile(null);
             setReplyTo(null);
+            return;
+        }
+
+        if (selectedFile && (!isOnlineNetwork || !isSocketConnected())) {
+            BubblyAlert.alert("Offline", "Connect to the internet to send photos or files.");
             return;
         }
 
@@ -2397,13 +2715,13 @@ const Conversation = () => {
             if (selectedFile) {
                 if (selectedFile.isImage) {
                     const uploadResult = await uploadFileToCloudinary({ uri: selectedFile.uri }, "message-attachements");
-                    if (!uploadResult.success) { setLoading(false); Alert.alert("Error", "Could not send the image!"); return; }
+                    if (!uploadResult.success) { setLoading(false); BubblyAlert.alert("Error", "Could not send the image!"); return; }
                     attachement = uploadResult.data;
                     attachmentMeta = { url: uploadResult.data, name: selectedFile.name, size: selectedFile.size, mimeType: selectedFile.mimeType, isViewOnce, isHd };
                     messageType = 'image';
                 } else {
                     const uploadResult = await uploadDocumentToCloudinary(selectedFile.uri, selectedFile.mimeType, selectedFile.name, "chat-files");
-                    if (!uploadResult.success || !uploadResult.data) { setLoading(false); Alert.alert("Error", "Could not send the file!"); return; }
+                    if (!uploadResult.success || !uploadResult.data) { setLoading(false); BubblyAlert.alert("Error", "Could not send the file!"); return; }
                     attachement = uploadResult.data.url;
                     attachmentMeta = { url: uploadResult.data.url, name: uploadResult.data.name, mimeType: uploadResult.data.mimeType, size: uploadResult.data.size, resourceType: uploadResult.data.resourceType };
                     messageType = 'file';
@@ -2424,7 +2742,7 @@ const Conversation = () => {
                 AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
             }
             setMessage(""); setSelectedFile(null); setReplyTo(null); setIsViewOnce(false); setIsHd(false);
-        } catch { Alert.alert("Error", "Failed to send message"); }
+        } catch { BubblyAlert.alert("Error", "Failed to send message"); }
         finally { setLoading(false); }
     };
 
@@ -2432,7 +2750,7 @@ const Conversation = () => {
     // DATE SEPARATORS
     // ─────────────────────────────────────────────
     const mediaMessages = useMemo(() => {
-        return messages.filter(m => (!!m.attachement && !m.isViewOnce) || !!m.attachmentMeta);
+        return messages.filter(m => !m.isDeleted && !m.isViewOnce && (!!m.attachement || !!m.attachmentMeta));
     }, [messages]);
 
     const messagesWithSeparators = useMemo((): MessageListItem[] => {
@@ -2471,30 +2789,63 @@ const Conversation = () => {
         );
         if (idx !== -1) {
             flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+        } else if (!isNotesToSelf && isSocketConnected()) {
+            pendingJumpIdRef.current = messageId;
+            getMessages({ conversationId, page: 0, limit: 30, aroundMessageId: messageId });
         }
     };
 
+    const handleLocalDelete = useCallback((messageId: string) => {
+        if (!conversationId) return;
+        setMessages(prev => {
+            const updated = prev.map(m =>
+                m.id === messageId ? { ...m, isDeleted: true, content: "", attachement: null, attachmentMeta: null, voiceUrl: null } : m
+            );
+            AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+            return updated;
+        });
+    }, [conversationId]);
+
+    const handleLocalEdit = useCallback((messageId: string, newContent: string) => {
+        if (!conversationId) return;
+        setMessages(prev => {
+            const updated = prev.map(m =>
+                m.id === messageId ? { ...m, content: newContent, isEdited: true } : m
+            );
+            AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+            return updated;
+        });
+    }, [conversationId]);
+
     const handlePin = (messageId: string) => {
+        if (isNotesToSelf) return;
         pinMessage({ conversationId: conversationId as string, messageId });
     };
 
     const handleUnpin = (messageId: string) => {
+        if (isNotesToSelf) return;
         unpinMessage({ conversationId: conversationId as string, messageId });
     };
 
     const handleToggleStar = (messageId: string) => {
+        if (isNotesToSelf) return;
         toggleStarMessage({ messageId, conversationId: conversationId as string });
     };
 
     const handleOpenForward = (msg: MessageProps) => {
         setForwardingMessage(msg);
         if (isSocketConnected()) {
+            if (pendingForwardListRef.current) {
+                getConversations(pendingForwardListRef.current, true);
+            }
             const onForwardList = (res: any) => {
                 getConversations(onForwardList, true);
+                pendingForwardListRef.current = null;
                 if (res?.success && Array.isArray(res.data)) {
                     setRecentConversations(res.data.filter((c: any) => c._id !== conversationId));
                 }
             };
+            pendingForwardListRef.current = onForwardList;
             getConversations(onForwardList);
             getConversations(null);
         }
@@ -2506,19 +2857,21 @@ const Conversation = () => {
         forwardMessage({ messageId: forwardingMessage.id, targetConversationIds: targetConvIds });
         setForwardModalVisible(false);
         setForwardingMessage(null);
-        Alert.alert(
-            "Forwarded 🚀",
-            `Message forwarded to ${targetConvIds.length} ${targetConvIds.length === 1 ? 'chat' : 'chats'} successfully!`
-        );
+        setTimeout(() => {
+            BubblyAlert.alert(
+                "Forwarded 🚀",
+                `Message forwarded to ${targetConvIds.length} ${targetConvIds.length === 1 ? 'chat' : 'chats'} successfully!`
+            );
+        }, 90);
     };
 
     // ── Export Chat History (Feature 1) ──
     const handleExportChat = () => {
         if (messages.length === 0) {
-            Alert.alert("Export Chat", "No messages to export yet.");
+            BubblyAlert.alert("Export Chat", "No messages to export yet.");
             return;
         }
-        Alert.alert(
+        BubblyAlert.alert(
             "Export Chat History",
             "Choose export format:",
             [
@@ -2542,7 +2895,7 @@ const Conversation = () => {
                             }
                         } catch (e) {
                             await Clipboard.setStringAsync(chatText);
-                            Alert.alert("Copied to Clipboard", "Chat export copied to clipboard.");
+                            BubblyAlert.alert("Copied to Clipboard", "Chat export copied to clipboard.");
                         }
                     }
                 },
@@ -2570,7 +2923,7 @@ const Conversation = () => {
                             });
                         } catch (e) {
                             await Clipboard.setStringAsync(jsonStr);
-                            Alert.alert("Copied to Clipboard", "JSON chat export copied to clipboard.");
+                            BubblyAlert.alert("Copied to Clipboard", "JSON chat export copied to clipboard.");
                         }
                     }
                 },
@@ -2580,7 +2933,8 @@ const Conversation = () => {
     };
 
     const handleMuteOptions = () => {
-        Alert.alert(
+        if (isNotesToSelf) return;
+        BubblyAlert.alert(
             "Mute Notifications",
             "Select duration to mute notifications:",
             [
@@ -2605,7 +2959,7 @@ const Conversation = () => {
                 list.push(conversationId as string);
                 await AsyncStorage.setItem(lockedKey, JSON.stringify(list));
             }
-            Alert.alert(
+            BubblyAlert.alert(
                 "Chat Locked",
                 "This conversation is now hidden from the main chats list. You can view it anytime in your Secret Chat Vault.",
                 [
@@ -2614,7 +2968,7 @@ const Conversation = () => {
                 ]
             );
         } catch (_) {
-            Alert.alert("Error", "Could not lock chat");
+            BubblyAlert.alert("Error", "Could not lock chat");
         }
     };
 
@@ -2651,20 +3005,22 @@ const Conversation = () => {
                 text: "Chat Wallpaper & Theme",
                 onPress: () => setShowThemeModal(true),
             },
-            {
+        ];
+        if (type !== 'group' || isGroupAdmin) {
+            options.push({
                 text: disappearingSeconds > 0
                     ? `Disappearing Messages (${disappearingSeconds === 86400 ? '24h' : disappearingSeconds === 604800 ? '7d' : '90d'} ⏱️)`
                     : "Disappearing Messages",
                 onPress: () => setShowDisappearingModal(true),
-            },
-            { text: "Mute Notifications", onPress: handleMuteOptions },
-        ];
+            });
+        }
+        options.push({ text: "Mute Notifications", onPress: handleMuteOptions });
         if (type === 'group') {
             options.push({ text: "Group Members & Info", onPress: () => setGroupInfoVisible(true) });
         }
         options.push({ text: "Cancel", style: "cancel" });
 
-        Alert.alert("Chat Options", undefined, options);
+        BubblyAlert.alert("Chat Options", undefined, options);
     };
 
     const handlePromoteAdmin = (targetUserId: string) => {
@@ -2673,6 +3029,45 @@ const Conversation = () => {
 
     const handleDemoteAdmin = (targetUserId: string) => {
         setGroupAdmin({ conversationId: conversationId as string, targetUserId, promote: false });
+    };
+
+    const handleRemoveMember = (targetUserId: string) => {
+        setGroupInfoVisible(false);
+        setTimeout(() => {
+            BubblyAlert.alert(
+                "Remove Member",
+                "Remove this member from the group?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Remove",
+                        style: "destructive",
+                        onPress: () => removeGroupMember({ conversationId: conversationId as string, targetUserId }),
+                    },
+                ]
+            );
+        }, 90);
+    };
+
+    const handleLeaveGroup = () => {
+        setGroupInfoVisible(false);
+        setTimeout(() => {
+            BubblyAlert.alert(
+                "Leave Group",
+                "Are you sure you want to leave this group?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Leave",
+                        style: "destructive",
+                        onPress: () => {
+                            leaveGroup({ conversationId: conversationId as string });
+                            router.replace("/(main)/home");
+                        },
+                    },
+                ]
+            );
+        }, 90);
     };
 
     const searchMatches = useMemo(() => {
@@ -2738,16 +3133,22 @@ const Conversation = () => {
                 isTargetHighlight={highlightMessageId === item.message.id}
                 customBubbleMine={selectedTheme.bubbleMine}
                 customBubbleOther={selectedTheme.bubbleOther}
+                isNotesToSelf={isNotesToSelf}
+                onLocalDelete={handleLocalDelete}
+                onLocalEdit={handleLocalEdit}
             />
         );
     }, [
         isDirect,
+        isNotesToSelf,
         handleReply,
         handleReaction,
         handleOpenForward,
         handleToggleStar,
         handlePin,
         handleUnpin,
+        handleLocalDelete,
+        handleLocalEdit,
         messageStatuses,
         isSearching,
         searchQuery,
@@ -2768,14 +3169,17 @@ const Conversation = () => {
                     const t = incomingToast;
                     setIncomingToast(null);
                     if (t) {
+                        const participantsPayload = (t as any).senderId
+                            ? JSON.stringify([{ _id: (t as any).senderId, name: t.senderName, avatar: t.avatar || "" }])
+                            : "[]";
                         router.replace({
                             pathname: "/(main)/conversation",
                             params: {
                                 id: t.convId,
-                                name: t.senderName,
+                                name: (t as any).conversationName || t.senderName,
                                 avatar: t.avatar || "",
-                                type: "direct",
-                                participants: "[]",
+                                type: (t as any).conversationType || "direct",
+                                participants: participantsPayload,
                             }
                         });
                     }
@@ -2971,7 +3375,7 @@ const Conversation = () => {
                             </View>
                             <TouchableOpacity
                                 onPress={() => {
-                                    Alert.alert(
+                                    BubblyAlert.alert(
                                         "Scheduled Messages",
                                         `You have ${scheduledMessages.length} scheduled message(s) queued.`,
                                         [
@@ -3154,7 +3558,10 @@ const Conversation = () => {
                                         placeholder="Ask a question..."
                                         placeholderTextColor={colors.neutral400}
                                         value={pollQuestion}
-                                        onChangeText={setPollQuestion}
+                                        onChangeText={(val) => {
+                                            setPollQuestion(val);
+                                            if (pollError) setPollError('');
+                                        }}
                                         maxLength={200}
                                         multiline
                                     />
@@ -3175,6 +3582,7 @@ const Conversation = () => {
                                                     const updated = [...pollOptions];
                                                     updated[index] = text;
                                                     setPollOptions(updated);
+                                                    if (pollError) setPollError('');
                                                 }}
                                                 maxLength={100}
                                             />
@@ -3192,6 +3600,12 @@ const Conversation = () => {
                                             <Icons.Plus size={16} color={colors.primary} weight="bold" />
                                             <Typo size={13} fontWeight="600" color={colors.primaryDark}>Add Option</Typo>
                                         </TouchableOpacity>
+                                    )}
+
+                                    {!!pollError && (
+                                        <Typo size={12.5} fontWeight="600" color={colors.rose} style={{ marginBottom: spacingY._8 }}>
+                                            {pollError}
+                                        </Typo>
                                     )}
 
                                     {/* ── Multiple choice toggle ── */}
@@ -3245,6 +3659,8 @@ const Conversation = () => {
                 mediaItems={mediaMessages}
                 onPromote={handlePromoteAdmin}
                 onDemote={handleDemoteAdmin}
+                onRemoveMember={handleRemoveMember}
+                onLeaveGroup={handleLeaveGroup}
                 onClose={() => setGroupInfoVisible(false)}
             />
 

@@ -56,7 +56,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 changes.push("image");
             }
             if (typeof data.wallpaper === "string") conversation.wallpaper = data.wallpaper;
-            if (typeof data.disappearingSeconds === "number" && isAdmin) {
+            if (typeof data.disappearingSeconds === "number" && Number.isFinite(data.disappearingSeconds) && isAdmin) {
                 conversation.disappearingSeconds = Math.max(0, data.disappearingSeconds);
             }
             if (data.permissions && isAdmin) {
@@ -113,7 +113,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("addGroupMembers", { success: false, msg: "Group participant limit reached (max 500)" });
                 return;
             }
-            const addedUserIds: string[] = [];
+            const addedUsers: { id: string; name: string }[] = [];
             for (const id of ids) {
                 if (!isValidObjectId(id)) continue;
                 if (conversation.participants.some((p) => p.toString() === id.toString())) continue;
@@ -121,23 +121,25 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 if (!user) continue; // Ensure user exists before adding
                 conversation.participants.push(id as any);
                 conversation.unreadCounts.push({ userId: id as any, count: 0 });
-                addedUserIds.push(id.toString());
-                await createSystemMessage(data.conversationId, userId, "member_added", {
-                    targetId: id,
-                    content: `${socket.data.name} added ${user.name || "a member"}`,
-                });
-                const targetSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === id);
-                targetSockets.forEach((s) => s.join(data.conversationId));
-                io.to(userRoom(id)).emit("addedToGroup", { conversationId: data.conversationId });
+                addedUsers.push({ id: id.toString(), name: user.name || "a member" });
             }
             await conversation.save();
+            for (const added of addedUsers) {
+                await createSystemMessage(data.conversationId, userId, "member_added", {
+                    targetId: added.id,
+                    content: `${socket.data.name} added ${added.name}`,
+                });
+                const targetSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === added.id);
+                targetSockets.forEach((s) => s.join(data.conversationId));
+                io.to(userRoom(added.id)).emit("addedToGroup", { conversationId: data.conversationId });
+            }
             const populated = await Conversation.findById(conversation._id)
                 .populate({ path: "participants", select: "name avatar email" })
                 .populate({ path: "admins", select: "name avatar" })
                 .lean();
             emitGroupUpdate(io, populated);
-            for (const addedId of addedUserIds) {
-                io.to(userRoom(addedId)).emit("newConversation", { success: true, data: { ...populated, isNew: true, unreadCount: 0 } });
+            for (const added of addedUsers) {
+                io.to(userRoom(added.id)).emit("newConversation", { success: true, data: { ...populated, isNew: true, unreadCount: 0 } });
             }
             socket.emit("addGroupMembers", { success: true, data: populated });
         } catch (error: any) {
@@ -157,6 +159,15 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("removeGroupMember", { success: false, msg: "Only admins can remove members" });
                 return;
             }
+            if (!data?.targetUserId || !isValidObjectId(data.targetUserId)) {
+                socket.emit("removeGroupMember", { success: false, msg: "Invalid user" });
+                return;
+            }
+            const isTargetMember = conversation.participants.some((p) => p.toString() === data.targetUserId);
+            if (!isTargetMember) {
+                socket.emit("removeGroupMember", { success: false, msg: "User is not in this group" });
+                return;
+            }
             if (conversation.createdBy?.toString() === data.targetUserId && userId !== data.targetUserId) {
                 socket.emit("removeGroupMember", { success: false, msg: "Cannot remove the group creator" });
                 return;
@@ -165,6 +176,9 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
             conversation.participants = conversation.participants.filter((p) => p.toString() !== data.targetUserId);
             conversation.admins = conversation.admins.filter((p) => p.toString() !== data.targetUserId);
             conversation.unreadCounts = conversation.unreadCounts.filter((u) => u.userId.toString() !== data.targetUserId);
+            if (conversation.admins.length === 0 && conversation.participants.length > 0) {
+                conversation.admins.push(conversation.participants[0]);
+            }
             await conversation.save();
             await createSystemMessage(data.conversationId, userId, "member_removed", {
                 targetId: data.targetUserId,
@@ -203,7 +217,8 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
             await createSystemMessage(data.conversationId, userId, "member_left", {
                 content: `${socket.data.name} left the group`,
             });
-            socket.leave(data.conversationId);
+            const leavingSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === userId);
+            leavingSockets.forEach((s) => s.leave(data.conversationId));
             const populated = await Conversation.findById(conversation._id)
                 .populate({ path: "participants", select: "name avatar email" })
                 .populate({ path: "admins", select: "name avatar" })
@@ -218,8 +233,8 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("setGroupAdmin", async (data: { conversationId: string; targetUserId: string; promote: boolean }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isAdmin } = await getMembership(data.conversationId, userId);
-            if (!conversation || conversation.type !== "group" || !isAdmin) {
+            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            if (!conversation || conversation.type !== "group" || !isMember || !isAdmin) {
                 socket.emit("setGroupAdmin", { success: false, msg: "Only admins can change roles" });
                 return;
             }
@@ -263,8 +278,8 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("regenerateInvite", async (data: { conversationId: string }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isAdmin } = await getMembership(data.conversationId, userId);
-            if (!conversation || !isAdmin) {
+            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            if (!conversation || conversation.type !== "group" || !isMember || !isAdmin) {
                 socket.emit("regenerateInvite", { success: false, msg: "Only admins can manage invites" });
                 return;
             }
@@ -279,7 +294,12 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("joinByInvite", async (data: { inviteCode: string }) => {
         try {
             const userId = socket.data.userId;
-            const conversation = await Conversation.findOne({ inviteCode: data.inviteCode, type: "group" });
+            const inviteCode = typeof data?.inviteCode === "string" ? data.inviteCode.trim() : "";
+            if (!inviteCode) {
+                socket.emit("joinByInvite", { success: false, msg: "Invalid invite link" });
+                return;
+            }
+            const conversation = await Conversation.findOne({ inviteCode, type: "group" });
             if (!conversation) {
                 socket.emit("joinByInvite", { success: false, msg: "Invalid invite link" });
                 return;
@@ -288,10 +308,15 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("joinByInvite", { success: true, data: { conversationId: conversation._id, alreadyMember: true } });
                 return;
             }
+            if (conversation.participants.length >= 500) {
+                socket.emit("joinByInvite", { success: false, msg: "Group participant limit reached (max 500)" });
+                return;
+            }
             conversation.participants.push(userId);
             conversation.unreadCounts.push({ userId, count: 0 });
             await conversation.save();
-            socket.join(conversation._id.toString());
+            const userSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === userId);
+            userSockets.forEach((s) => s.join(conversation._id.toString()));
             await createSystemMessage(conversation._id.toString(), userId, "member_joined", {
                 content: `${socket.data.name} joined via invite`,
             });
@@ -300,7 +325,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 .populate({ path: "admins", select: "name avatar" })
                 .lean();
             emitGroupUpdate(io, populated);
-            socket.emit("newConversation", {
+            io.to(userRoom(userId)).emit("newConversation", {
                 success: true,
                 data: { ...populated, isNew: true, unreadCount: 0 },
             });
@@ -321,6 +346,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
             const media = await Message.find({
                 conversationId: data.conversationId,
                 isDeleted: { $ne: true },
+                isViewOnce: { $ne: true },
                 $or: [
                     { type: { $in: ["image", "video", "file"] } },
                     { attachement: { $exists: true, $nin: [null, ""] } },

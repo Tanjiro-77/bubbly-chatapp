@@ -1,8 +1,9 @@
 import {
     StyleSheet, View, KeyboardAvoidingView,
-    Platform, ScrollView, Pressable, Alert,
+    Platform, ScrollView, Pressable,
     TouchableOpacity, ActivityIndicator
 } from 'react-native'
+import { BubblyAlert } from "../../components/BubblyAlert"
 import React, { useRef, useState } from 'react'
 import ScreenWrapper from "../../components/ScreenWrapper"
 import Typo from "../../components/Typo"
@@ -36,26 +37,26 @@ const Register = () => {
         const cleanPassword = passwordRef.current;
 
         if (!cleanName || !cleanPassword) {
-            Alert.alert('Sign Up', "Please fill all required fields");
+            BubblyAlert.alert('Sign Up', "Please fill all required fields");
             return;
         }
 
         if (cleanPassword.length < 6) {
-            Alert.alert('Sign Up', "Password must be at least 6 characters");
+            BubblyAlert.alert('Sign Up', "Password must be at least 6 characters");
             return;
         }
 
         if (signupMethod === 'phone') {
             const cleanPhone = phoneRef.current.trim();
             if (!cleanPhone) {
-                Alert.alert('Sign Up', "Please enter your phone number");
+                BubblyAlert.alert('Sign Up', "Please enter your phone number");
                 return;
             }
             try {
                 setIsLoading(true);
                 await signUpWithPhone(cleanPhone, cleanPassword, cleanName, "");
             } catch (error: any) {
-                Alert.alert("Registration Error", error.message);
+                BubblyAlert.alert("Registration Error", error.message);
             } finally {
                 setIsLoading(false);
             }
@@ -64,7 +65,7 @@ const Register = () => {
 
         const cleanEmail = emailRef.current.trim().toLowerCase();
         if (!cleanEmail) {
-            Alert.alert('Sign Up', "Please enter your email address");
+            BubblyAlert.alert('Sign Up', "Please enter your email address");
             return;
         }
 
@@ -72,7 +73,7 @@ const Register = () => {
             setIsLoading(true);
             await signUp(cleanEmail, cleanPassword, cleanName, "");
         } catch (error: any) {
-            Alert.alert("Registration Error", error.message);
+            BubblyAlert.alert("Registration Error", error.message);
         } finally {
             setIsLoading(false);
         }
@@ -119,7 +120,10 @@ const Register = () => {
                             <View style={styles.methodTabs}>
                                 <TouchableOpacity
                                     style={[styles.methodTab, signupMethod === 'phone' && styles.methodTabActive]}
-                                    onPress={() => setSignupMethod('phone')}
+                                    onPress={() => {
+                                        emailRef.current = "";
+                                        setSignupMethod('phone');
+                                    }}
                                     activeOpacity={0.8}
                                 >
                                     <Icons.Phone size={15} color={signupMethod === 'phone' ? colors.neutral900 : colors.neutral500} weight="bold" />
@@ -129,7 +133,10 @@ const Register = () => {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.methodTab, signupMethod === 'email' && styles.methodTabActive]}
-                                    onPress={() => setSignupMethod('email')}
+                                    onPress={() => {
+                                        phoneRef.current = "";
+                                        setSignupMethod('email');
+                                    }}
                                     activeOpacity={0.8}
                                 >
                                     <Icons.At size={15} color={signupMethod === 'email' ? colors.neutral900 : colors.neutral500} weight="bold" />
@@ -159,11 +166,12 @@ const Register = () => {
                                 </View>
 
                                 {signupMethod === 'phone' ? (
-                                    <View style={styles.fieldGroup}>
+                                    <View key="signup-phone-group" style={styles.fieldGroup}>
                                         <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
                                             PHONE NUMBER
                                         </Typo>
                                         <Input
+                                            key="signup-phone-input"
                                             placeholder="+91 98765 43210"
                                             keyboardType="phone-pad"
                                             autoCapitalize="none"
@@ -178,11 +186,12 @@ const Register = () => {
                                         />
                                     </View>
                                 ) : (
-                                    <View style={styles.fieldGroup}>
+                                    <View key="signup-email-group" style={styles.fieldGroup}>
                                         <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
                                             EMAIL
                                         </Typo>
                                         <Input
+                                            key="signup-email-input"
                                             placeholder="you@email.com"
                                             keyboardType="email-address"
                                             autoCapitalize="none"

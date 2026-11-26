@@ -19,7 +19,7 @@ const getAgoraUid = (userId: string): number => {
 export const generateAgoraToken = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const { callId: rawCallId } = req.body;
+        const { callId: rawCallId } = req.body ?? {};
 
         const appId = process.env.AGORA_APP_ID || "";
         const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
@@ -84,12 +84,10 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
         const uid = getAgoraUid(userId);
 
         const expirationTimeInSeconds = 3600;
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        const privilegeExpiredTs =
-            currentTimestamp + expirationTimeInSeconds;
 
         // Generate token for the SAME numeric UID
         // that the frontend will use in joinChannel().
+        // agora-token v2 expects relative seconds from now for both tokenExpire and privilegeExpire.
         const token = RtcTokenBuilder.buildTokenWithUid(
             appId,
             appCertificate,
@@ -97,7 +95,7 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
             uid,
             RtcRole.PUBLISHER,
             expirationTimeInSeconds,
-            privilegeExpiredTs
+            expirationTimeInSeconds
         );
 
         return res.status(200).json({

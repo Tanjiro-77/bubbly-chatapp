@@ -12,10 +12,10 @@ import {
     FlatList,
     StyleSheet,
     TouchableOpacity,
-    Alert,
     Platform,
     Vibration,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -78,7 +78,7 @@ const VaultScreen = () => {
         return () => {
             getConversations(convHandler, true);
         };
-    }, []);
+    }, [PIN_STORAGE_KEY, LOCKED_CHATS_KEY]);
 
     // Filter conversations that are locked
     const lockedConversations = useMemo(() => {
@@ -133,7 +133,7 @@ const VaultScreen = () => {
                 setTimeout(() => {
                     setIsUnlocked(true);
                     setCurrentPin("");
-                    Alert.alert("Vault PIN Created", "Your Secret Chat Vault is now secured.");
+                    BubblyAlert.alert("Vault PIN Created", "Your Secret Chat Vault is now secured.");
                 }, 100);
             } else {
                 if (Platform.OS !== "web") Vibration.vibrate(100);
@@ -147,7 +147,7 @@ const VaultScreen = () => {
     };
 
     const handleUnlockConversation = async (convId: string) => {
-        Alert.alert(
+        BubblyAlert.alert(
             "Unlock Chat",
             "This chat will be moved back to your main chats screen.",
             [
@@ -165,7 +165,7 @@ const VaultScreen = () => {
     };
 
     const handleChangePin = () => {
-        Alert.alert(
+        BubblyAlert.alert(
             "Change Vault PIN",
             "Do you want to create a new 4-digit PIN for your vault?",
             [
@@ -367,6 +367,9 @@ const VaultScreen = () => {
                                         avatar: displayAvatar || "",
                                         type: item.type,
                                         participants: JSON.stringify(item.participants || []),
+                                        admins: JSON.stringify(item.admins || []),
+                                        createdBy: item.createdBy || "",
+                                        disappearingSeconds: String((item as any).disappearingSeconds || 0),
                                     },
                                 });
                             }}

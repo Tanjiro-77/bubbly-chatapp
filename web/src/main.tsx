@@ -5,6 +5,7 @@ import "./index.css";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { CallProvider } from "./context/CallContext";
+import { BubblyDialogHost } from "./components/common/BubblyDialog";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -12,6 +13,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <CallProvider>
           <App />
+          <BubblyDialogHost />
         </CallProvider>
       </AuthProvider>
     </ThemeProvider>

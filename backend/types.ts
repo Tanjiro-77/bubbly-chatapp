@@ -45,7 +45,7 @@ export interface UserProps extends Document {
         mode: "light" | "dark" | "system";
         accent: string;
         wallpaper: string;
-        bubbleStyle: "rounded" | "sharp";
+        bubbleStyle: "rounded" | "sharp" | "minimal";
     };
 }
 

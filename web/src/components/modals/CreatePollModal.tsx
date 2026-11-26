@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Plus, Trash2, BarChart2 } from "lucide-react";
+import { bubblyAlert } from "../common/BubblyDialog";
 
 interface CreatePollModalProps {
   onClose: () => void;
@@ -38,7 +39,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({ onClose, onSub
     if (!question.trim()) return;
     const validOptions = options.map((o) => o.trim()).filter((o) => o.length > 0);
     if (validOptions.length < 2) {
-      alert("Please provide at least 2 options for the poll");
+      bubblyAlert("Add Options", "Please provide at least 2 options for the poll.", { variant: "amber" });
       return;
     }
     onSubmit({

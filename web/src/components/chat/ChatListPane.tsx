@@ -27,6 +27,8 @@ interface ChatListPaneProps {
   activeConversationId: string | null;
   stories: StoryGroupProps[];
   currentUserId: string;
+  userAvatar?: string | null;
+  userName?: string;
   onlineMap: Record<string, boolean>;
   typingMap: Record<string, string>;
   draftMap: Record<string, string>;
@@ -60,6 +62,8 @@ export const ChatListPane: React.FC<ChatListPaneProps> = ({
   activeConversationId,
   stories,
   currentUserId,
+  userAvatar,
+  userName,
   onlineMap,
   typingMap,
   draftMap,
@@ -109,11 +113,7 @@ export const ChatListPane: React.FC<ChatListPaneProps> = ({
 
   // VIP Pinned Contacts (matching mobile home.tsx VIP carousel)
   const pinnedVIPs = useMemo(() => {
-    return conversations.filter(
-      (c) =>
-        !lockedChatIds.includes(c._id) &&
-        ((c.pinnedMessages && c.pinnedMessages.length > 0) || c.isPinned)
-    );
+    return conversations.filter((c) => !lockedChatIds.includes(c._id) && !!c.isPinned);
   }, [conversations, lockedChatIds]);
 
   // Unread counts
@@ -126,9 +126,7 @@ export const ChatListPane: React.FC<ChatListPaneProps> = ({
   }, [groupConversations]);
 
   const totalUnreadCurrent = selectedTab === 0 ? totalUnreadDirect : totalUnreadGroup;
-  const totalPinnedCurrent = activeList.filter(
-    (c) => (c.pinnedMessages && c.pinnedMessages.length > 0) || c.isPinned
-  ).length;
+  const totalPinnedCurrent = activeList.filter((c) => !!c.isPinned).length;
 
   // Filter category
   const categorizedList = useMemo(() => {
@@ -136,9 +134,7 @@ export const ChatListPane: React.FC<ChatListPaneProps> = ({
       return activeList.filter((c) => (c.unreadCount || 0) > 0);
     }
     if (filterCategory === "pinned") {
-      return activeList.filter(
-        (c) => (c.pinnedMessages && c.pinnedMessages.length > 0) || c.isPinned
-      );
+      return activeList.filter((c) => !!c.isPinned);
     }
     return activeList;
   }, [activeList, filterCategory]);
@@ -220,7 +216,7 @@ export const ChatListPane: React.FC<ChatListPaneProps> = ({
             title="Profile"
           >
             <div className="w-10 h-10 rounded-full border-2 border-white/30 overflow-hidden shadow-md">
-              <Avatar uri={null} size={40} isOnline={false} />
+              <Avatar uri={userAvatar} name={userName} size={40} isOnline={false} />
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#22c55e] border-2 border-[#1c1917]" />
           </button>

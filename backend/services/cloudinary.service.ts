@@ -15,7 +15,7 @@ cloudinary.config({
  */
 export async function uploadImageToCloudinary(imageUri: string, folder: string = "bubbly_reports"): Promise<string> {
     try {
-        if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY) {
+        if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
             console.warn("Cloudinary is not fully configured in environment variables.");
             return imageUri; // fallback: return data URI as-is if Cloudinary is unconfigured
         }

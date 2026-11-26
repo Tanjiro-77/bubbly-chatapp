@@ -27,7 +27,7 @@ export function ArchitectureSection() {
         senderId: "user_arnav",
         text: "Real-time communication active!",
         type: "text",
-        timestamp: new Date().toISOString(),
+        timestamp: "2026-04-12T10:30:00.000Z",
       },
       null,
       2,

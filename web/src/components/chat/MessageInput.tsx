@@ -15,6 +15,7 @@ import {
 import { useAudioRecorder } from "../../hooks/useAudioRecorder";
 import { uploadMediaToCloudinary } from "../../services/mediaService";
 import { MessageProps } from "../../types";
+import { bubblyAlert } from "../common/BubblyDialog";
 
 interface MessageInputProps {
   conversationId: string;
@@ -80,6 +81,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const typingTimerRef = useRef<any>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const {
     isRecording,
@@ -88,6 +90,17 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     stopRecording,
     cancelRecording,
   } = useAudioRecorder();
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
 
   // Populate text if editing
   useEffect(() => {
@@ -118,9 +131,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
       setSelectedFile(file);
       if (file.type.startsWith("image/")) {
-        setPreviewUrl(URL.createObjectURL(file));
+        const nextUrl = URL.createObjectURL(file);
+        previewUrlRef.current = nextUrl;
+        setPreviewUrl(nextUrl);
       } else {
         setPreviewUrl(null);
       }
@@ -129,6 +148,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const clearSelectedFile = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     setSelectedFile(null);
     setPreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -174,10 +197,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           setIsViewOnce(false);
           if (replyingTo) onCancelReply();
         } else {
-          alert("File upload failed");
+          bubblyAlert("Upload Failed", "File upload failed. Please try again.", { variant: "danger" });
         }
       } catch (e) {
-        alert("Upload error");
+        bubblyAlert("Upload Error", "An error occurred while uploading the file.", { variant: "danger" });
       } finally {
         setIsUploading(false);
       }
@@ -227,10 +250,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         });
         if (replyingTo) onCancelReply();
       } else {
-        alert("Failed to upload voice recording");
+        bubblyAlert("Upload Failed", "Failed to upload voice recording.", { variant: "danger" });
       }
     } catch {
-      alert("Error sending voice message");
+      bubblyAlert("Voice Message Error", "Error sending voice message.", { variant: "danger" });
     } finally {
       setIsUploading(false);
     }

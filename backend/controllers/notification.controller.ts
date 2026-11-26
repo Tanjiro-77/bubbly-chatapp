@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { isValidObjectId } from "mongoose";
 import { AuthRequest } from "../middleware/auth";
 import User from "../modals/User";
 import { isValidExpoPushToken } from "../services/pushNotificationService";
@@ -10,7 +11,7 @@ import { isValidExpoPushToken } from "../services/pushNotificationService";
 export const registerPushToken = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const userId = req.userId;
-        const { pushToken } = req.body;
+        const { pushToken } = req.body ?? {};
 
         if (!userId) {
             res.status(401).json({ success: false, msg: "Unauthorized" });
@@ -23,6 +24,14 @@ export const registerPushToken = async (req: AuthRequest, res: Response): Promis
         }
 
         const trimmedToken = pushToken.trim();
+
+        // Remove this device token from any previous user on the same device
+        if (isValidObjectId(userId)) {
+            await User.updateMany(
+                { _id: { $ne: userId }, pushTokens: trimmedToken },
+                { $pull: { pushTokens: trimmedToken } }
+            ).catch(() => {});
+        }
 
         await User.findByIdAndUpdate(userId, {
             $addToSet: { pushTokens: trimmedToken },
@@ -69,7 +78,7 @@ export const unregisterPushToken = async (req: AuthRequest, res: Response): Prom
 export const updateNotificationPreference = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const userId = req.userId;
-        const { enabled } = req.body;
+        const { enabled } = req.body ?? {};
 
         if (!userId) {
             res.status(401).json({ success: false, msg: "Unauthorized" });

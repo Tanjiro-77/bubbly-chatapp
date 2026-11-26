@@ -7,16 +7,31 @@ import ScheduledMessage from "../modals/ScheduledMessage";
 import Message from "../modals/Message";
 import Report from "../modals/Report";
 import Conversation from "../modals/Conversation";
-import { getMembership } from "../utils/permissions";
+import { getMembership, areBlocked, canSendInGroup, filterBlockedDirect } from "../utils/permissions";
 import { assertRateLimit } from "../utils/rateLimit";
 import { createAndBroadcastMessage } from "../services/messageService";
 import { getIO, userRoom } from "./io";
 
 function storyVisibleTo(story: any, viewerId: string, author: any) {
-    if (story.userId.toString() === viewerId) return true;
-    const hidden = [...(story.hiddenFrom || []), ...(author.privacy?.storyHiddenFrom || [])]
+    const storyAuthorId = (story.userId?._id || story.userId)?.toString();
+    if (storyAuthorId === viewerId) return true;
+    const hidden = [...(story.hiddenFrom || []), ...(author?.privacy?.storyHiddenFrom || [])]
         .map((id: any) => id.toString());
     if (hidden.includes(viewerId)) return false;
+    return true;
+}
+
+async function canAccessStory(story: any, viewerId: string, authorId: string, author: any): Promise<boolean> {
+    if (authorId === viewerId) return true;
+    if (await areBlocked(viewerId, authorId)) return false;
+    if (author && !storyVisibleTo(story, viewerId, author)) return false;
+    if (author?.privacy?.storyPrivacy === "contacts") {
+        const isContact = await Conversation.exists({
+            type: "direct",
+            participants: { $all: [viewerId, authorId], $size: 2 },
+        });
+        if (!isContact) return false;
+    }
     return true;
 }
 
@@ -32,14 +47,18 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
             if (typeof data.readReceipts === "boolean") update["privacy.readReceipts"] = data.readReceipts;
             if (typeof data.typingIndicators === "boolean") update["privacy.typingIndicators"] = data.typingIndicators;
             if (data.storyPrivacy && allowedStory.includes(data.storyPrivacy)) update["privacy.storyPrivacy"] = data.storyPrivacy;
-            if (Array.isArray(data.storyHiddenFrom)) update["privacy.storyHiddenFrom"] = data.storyHiddenFrom;
-            if (data.theme) {
-                if (data.theme.mode) update["theme.mode"] = data.theme.mode;
-                if (data.theme.accent) update["theme.accent"] = data.theme.accent;
-                if (typeof data.theme.wallpaper === "string") update["theme.wallpaper"] = data.theme.wallpaper;
-                if (data.theme.bubbleStyle) update["theme.bubbleStyle"] = data.theme.bubbleStyle;
+            const allowedModes = ["light", "dark", "system"];
+            const allowedBubbleStyles = ["rounded", "sharp", "minimal"];
+            if (Array.isArray(data.storyHiddenFrom)) {
+                update["privacy.storyHiddenFrom"] = data.storyHiddenFrom.filter((id: any) => isValidObjectId(id));
             }
-            const user = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).select("-password");
+            if (data.theme) {
+                if (data.theme.mode && allowedModes.includes(data.theme.mode)) update["theme.mode"] = data.theme.mode;
+                if (typeof data.theme.accent === "string") update["theme.accent"] = data.theme.accent.slice(0, 32);
+                if (typeof data.theme.wallpaper === "string") update["theme.wallpaper"] = data.theme.wallpaper;
+                if (data.theme.bubbleStyle && allowedBubbleStyles.includes(data.theme.bubbleStyle)) update["theme.bubbleStyle"] = data.theme.bubbleStyle;
+            }
+            const user = await User.findByIdAndUpdate(userId, { $set: update }, { new: true, runValidators: true }).select("-password");
             socket.emit("updatePrivacy", { success: true, data: { privacy: user?.privacy, theme: user?.theme } });
         } catch (error: any) {
             socket.emit("updatePrivacy", { success: false, msg: error.message || "Failed to update privacy" });
@@ -48,9 +67,12 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
 
     socket.on("setConversationWallpaper", async (data: { conversationId: string; wallpaper: string }) => {
         try {
-            const { conversation, isMember } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || !isMember) throw new Error("Not a member");
-            conversation.wallpaper = data.wallpaper || "";
+            if (conversation.type === "group" && conversation.permissions?.editInfo === "admins" && !isAdmin) {
+                throw new Error("Only admins can change group wallpaper");
+            }
+            conversation.wallpaper = typeof data?.wallpaper === "string" ? data.wallpaper.slice(0, 500) : "";
             await conversation.save();
             socket.emit("setConversationWallpaper", { success: true, data: { wallpaper: conversation.wallpaper } });
         } catch (error: any) {
@@ -60,12 +82,13 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
 
     socket.on("setDisappearingTimer", async (data: { conversationId: string; seconds: number }) => {
         try {
-            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || !isMember) throw new Error("Not a member");
             if (conversation.type === "group" && !isAdmin) {
                 throw new Error("Only group admins can change disappearing timer");
             }
-            const cleanSeconds = Math.max(0, Number(data.seconds) || 0);
+            const rawSec = Number(data?.seconds);
+            const cleanSeconds = Number.isFinite(rawSec) ? Math.max(0, rawSec) : 0;
             conversation.disappearingSeconds = cleanSeconds;
             await conversation.save();
             io.to(data.conversationId).emit("setDisappearingTimer", {
@@ -120,19 +143,28 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 "scam",
                 "other",
             ] as const;
-            const category = categories.find((item) => item === data.category);
+            const targetTypes = ["user", "message", "group"] as const;
+            const targetType = targetTypes.find((t) => t === data?.targetType);
+            if (!targetType) {
+                throw new Error("Invalid report target type");
+            }
+            const category = categories.find((item) => item === data?.category);
 
             if (!category) {
                 throw new Error("Invalid category");
             }
+            if (data.targetUserId && !isValidObjectId(data.targetUserId)) throw new Error("Invalid user ID");
+            if (data.targetMessageId && !isValidObjectId(data.targetMessageId)) throw new Error("Invalid message ID");
+            if (data.targetConversationId && !isValidObjectId(data.targetConversationId)) throw new Error("Invalid conversation ID");
+
             const report = await Report.create({
                 reporterId: userId,
-                targetType: data.targetType,
-                targetUserId: data.targetUserId,
-                targetMessageId: data.targetMessageId,
-                targetConversationId: data.targetConversationId,
-                category: data.category as typeof categories[number],
-                description: (data.description || "").slice(0, 1000),
+                targetType,
+                targetUserId: data.targetUserId || undefined,
+                targetMessageId: data.targetMessageId || undefined,
+                targetConversationId: data.targetConversationId || undefined,
+                category,
+                description: (typeof data.description === "string" ? data.description : "").slice(0, 1000),
             });
             socket.emit("reportContent", { success: true, data: { id: report._id } });
         } catch (error: any) {
@@ -210,16 +242,27 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
         id?: string;
     }) => {
         try {
-            const { isMember } = await getMembership(data.conversationId, userId);
-            if (!isMember) throw new Error("Not a member");
+            const { conversation, isMember } = await getMembership(data?.conversationId, userId);
+            if (!conversation || !isMember) throw new Error("Not a member");
+            if (await filterBlockedDirect(conversation, userId)) {
+                throw new Error("You cannot message this user");
+            }
+            if (!canSendInGroup(conversation, userId)) {
+                throw new Error("Only admins can send messages in this group");
+            }
+            const trimmedContent = typeof data?.content === "string" ? data.content.trim() : "";
+            if (!trimmedContent || trimmedContent.length > 5000) {
+                throw new Error("Scheduled message text must be between 1 and 5,000 characters");
+            }
             const sendAt = new Date(data.sendAt);
             if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 15_000) {
                 throw new Error("Pick a time at least 15 seconds in the future");
             }
             if (data.id) {
+                if (!isValidObjectId(data.id)) throw new Error("Invalid scheduled message ID");
                 const existing = await ScheduledMessage.findOne({ _id: data.id, senderId: userId, status: "pending" });
                 if (!existing) throw new Error("Scheduled message not found");
-                existing.content = (data.content || "").trim();
+                existing.content = trimmedContent;
                 existing.sendAt = sendAt;
                 existing.timezone = data.timezone || existing.timezone;
                 await existing.save();
@@ -229,7 +272,7 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
             const created = await ScheduledMessage.create({
                 conversationId: data.conversationId,
                 senderId: userId,
-                content: (data.content || "").trim(),
+                content: trimmedContent,
                 type: "text",
                 sendAt,
                 timezone: data.timezone || "UTC",
@@ -307,8 +350,20 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
 
     socket.on("getStories", async () => {
         try {
-            const me = await User.findById(userId).select("blockedUsers privacy").lean();
+            const [me, myConversations] = await Promise.all([
+                User.findById(userId).select("blockedUsers privacy").lean(),
+                Conversation.find({ participants: userId }).select("participants type").lean(),
+            ]);
             const blocked = new Set((me?.blockedUsers || []).map((id: any) => id.toString()));
+            const directPartnerIds = new Set<string>();
+            for (const c of myConversations) {
+                if (c.type === "direct") {
+                    for (const p of c.participants || []) {
+                        const pid = p.toString();
+                        if (pid !== userId) directPartnerIds.add(pid);
+                    }
+                }
+            }
             const stories = await Story.find({ expiresAt: { $gt: new Date() } })
                 .sort({ createdAt: -1 })
                 .populate({ path: "userId", select: "name avatar privacy blockedUsers" })
@@ -323,6 +378,9 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 const authorBlocked = (author.blockedUsers || []).some((id: any) => id.toString() === userId);
                 if (authorBlocked) continue;
                 if (!storyVisibleTo(story, userId, author)) continue;
+                if (authorId !== userId && author.privacy?.storyPrivacy === "contacts" && !directPartnerIds.has(authorId)) {
+                    continue;
+                }
                 if (!grouped[authorId]) {
                     grouped[authorId] = {
                         user: { id: authorId, name: author.name, avatar: author.avatar },
@@ -331,7 +389,10 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                     };
                 }
                 const seen = (story.viewers || []).some((v: any) => v.userId.toString() === userId);
-                grouped[authorId].stories.push({ ...story, seen });
+                const sanitizedStory = authorId === userId
+                    ? story
+                    : { ...story, viewers: [] };
+                grouped[authorId].stories.push({ ...sanitizedStory, seen });
                 if (!seen && authorId !== userId) grouped[authorId].hasUnseen = true;
             }
             socket.emit("getStories", { success: true, data: Object.values(grouped) });
@@ -347,15 +408,29 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
             const story = await Story.findById(data.storyId);
-            if (!story) {
+            if (!story || (story.expiresAt && story.expiresAt <= new Date())) {
                 socket.emit("viewStory", { success: false, msg: "Status expired" });
                 return;
             }
-            if (story.userId.toString() !== userId && !(story.viewers || []).some((v: any) => v.userId.toString() === userId)) {
-                story.viewers.push({ userId, viewedAt: new Date() });
-                await story.save();
+            const authorId = story.userId.toString();
+            const author: any = await User.findById(authorId).select("privacy blockedUsers").lean();
+            if (authorId !== userId) {
+                if (!(await canAccessStory(story, userId, authorId, author))) {
+                    socket.emit("viewStory", { success: false, msg: "Not allowed" });
+                    return;
+                }
+                if (!(story.viewers || []).some((v: any) => v.userId.toString() === userId)) {
+                    story.viewers.push({ userId, viewedAt: new Date() });
+                    await story.save();
+                }
             }
-            socket.emit("viewStory", { success: true, data: { viewers: story.viewers, reactions: story.reactions } });
+            socket.emit("viewStory", {
+                success: true,
+                data: {
+                    viewers: authorId === userId ? story.viewers : [],
+                    reactions: story.reactions,
+                },
+            });
         } catch {
             socket.emit("viewStory", { success: false, msg: "Failed to view story" });
         }
@@ -368,15 +443,23 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
             const story = await Story.findById(data.storyId);
-            if (!story) {
+            if (!story || (story.expiresAt && story.expiresAt <= new Date())) {
                 socket.emit("reactToStory", { success: false, msg: "Status expired" });
                 return;
+            }
+            const authorId = story.userId.toString();
+            if (authorId !== userId) {
+                const author: any = await User.findById(authorId).select("privacy blockedUsers").lean();
+                if (!(await canAccessStory(story, userId, authorId, author))) {
+                    socket.emit("reactToStory", { success: false, msg: "Not allowed" });
+                    return;
+                }
             }
             const idx = story.reactions.findIndex((r: any) => r.userId.toString() === userId);
             if (idx >= 0) story.reactions.splice(idx, 1);
             story.reactions.push({ emoji: data.emoji.trim().slice(0, 16), userId, userName: socket.data.name });
             await story.save();
-            io.to(userRoom(story.userId.toString())).emit("storyReaction", {
+            io.to(userRoom(authorId)).emit("storyReaction", {
                 storyId: story._id,
                 reactions: story.reactions,
             });
@@ -386,11 +469,28 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
         }
     });
 
-    socket.on("replyToStory", async (data: { storyId: string; content: string }) => {
+    socket.on("replyToStory", async (data: { storyId: string; content?: string; text?: string }) => {
         try {
+            if (!data?.storyId || !isValidObjectId(data.storyId)) {
+                throw new Error("Invalid status");
+            }
             const story = await Story.findById(data.storyId);
-            if (!story) throw new Error("Status expired");
+            if (!story || (story.expiresAt && story.expiresAt <= new Date())) {
+                throw new Error("Status expired");
+            }
             const authorId = story.userId.toString();
+            if (authorId === userId) {
+                throw new Error("You cannot reply to your own story");
+            }
+            const author: any = await User.findById(authorId).select("privacy blockedUsers").lean();
+            if (!(await canAccessStory(story, userId, authorId, author))) {
+                throw new Error("You cannot message this user");
+            }
+            const replyText = typeof data.content === "string"
+                ? data.content
+                : typeof data.text === "string"
+                ? data.text
+                : "";
             let conversation = await Conversation.findOne({
                 type: "direct",
                 participants: { $all: [userId, authorId], $size: 2 },
@@ -428,7 +528,7 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 conversationId: conversation._id.toString(),
                 senderId: userId,
                 sender: { id: userId, name: socket.data.name, avatar: socket.data.avatar },
-                content: data.content,
+                content: replyText,
                 type: "text",
                 storyId: story._id.toString(),
             });

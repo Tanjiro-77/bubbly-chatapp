@@ -15,6 +15,7 @@ interface ActiveCallEntry {
     callerId: string;
     calleeId: string;
     ringingTimer?: NodeJS.Timeout;
+    connectingTimer?: NodeJS.Timeout;
 }
 
 const activeCalls = new Map<string, ActiveCallEntry>();
@@ -24,65 +25,100 @@ function cleanupCall(callId: string) {
     if (entry?.ringingTimer) {
         clearTimeout(entry.ringingTimer);
     }
+    if (entry?.connectingTimer) {
+        clearTimeout(entry.connectingTimer);
+    }
     activeCalls.delete(callId);
 }
 
 export async function acceptCallById(io: SocketIOServer, callId: string, userId: string) {
-    const call = await Call.findById(callId);
-    if (!call || call.calleeId.toString() !== userId) {
-        throw new Error("Call not found");
-    }
-    if (!["ringing", "connecting"].includes(call.status)) {
-        throw new Error(`Call is already ${call.status}`);
+    const updatedCall = await Call.findOneAndUpdate(
+        { _id: callId, calleeId: userId, status: "ringing" },
+        { $set: { status: "connecting" } },
+        { new: true }
+    );
+
+    if (!updatedCall) {
+        const existing = await Call.findById(callId);
+        if (!existing || existing.calleeId.toString() !== userId) {
+            throw new Error("Call not found");
+        }
+        if (existing.status === "connecting") {
+            return existing;
+        }
+        throw new Error(`Call is already ${existing.status}`);
     }
 
-    const entry = activeCalls.get(call._id.toString());
+    const entry = activeCalls.get(updatedCall._id.toString());
     if (entry?.ringingTimer) {
         clearTimeout(entry.ringingTimer);
         entry.ringingTimer = undefined;
     }
+    if (entry) {
+        if (entry.connectingTimer) clearTimeout(entry.connectingTimer);
+        entry.connectingTimer = setTimeout(async () => {
+            try {
+                const stuck = await Call.findOneAndUpdate(
+                    { _id: updatedCall._id, status: "connecting" },
+                    { $set: { status: "failed", endedAt: new Date(), duration: 0 } },
+                    { new: true }
+                );
+                if (stuck) {
+                    cleanupCall(stuck._id.toString());
+                    io.to(userRoom(stuck.callerId.toString())).emit("call:ended", { callId: stuck._id, reason: "timeout" });
+                    io.to(userRoom(stuck.calleeId.toString())).emit("call:ended", { callId: stuck._id, reason: "timeout" });
+                }
+            } catch {}
+        }, 45_000);
+    }
 
-    call.status = "connecting";
-    await call.save();
+    const channelName = updatedCall._id.toString();
 
-    const channelName = call._id.toString();
-
-    io.to(userRoom(call.callerId.toString())).emit("call:accepted", {
-        callId: call._id,
+    io.to(userRoom(updatedCall.callerId.toString())).emit("call:accepted", {
+        callId: updatedCall._id,
         channelName,
     });
-    io.to(userRoom(call.calleeId.toString())).emit("call:accepted", {
-        callId: call._id,
+    io.to(userRoom(updatedCall.calleeId.toString())).emit("call:accepted", {
+        callId: updatedCall._id,
         channelName,
     });
 
-    return call;
+    return updatedCall;
 }
 
 export async function rejectCallById(io: SocketIOServer, callId: string, userId: string) {
-    const call = await Call.findById(callId);
-    if (!call) return null;
-    if (call.calleeId.toString() !== userId && call.callerId.toString() !== userId) return null;
-    if (!["ringing", "connecting"].includes(call.status)) return call;
+    const updated = await Call.findOneAndUpdate(
+        {
+            _id: callId,
+            $or: [{ calleeId: userId }, { callerId: userId }],
+            status: { $in: ["ringing", "connecting"] },
+        },
+        { $set: { status: "rejected", endedAt: new Date() } },
+        { new: true }
+    );
 
-    call.status = "rejected";
-    call.endedAt = new Date();
-    await call.save();
-    cleanupCall(call._id.toString());
+    if (!updated) {
+        const existing = await Call.findById(callId);
+        if (!existing) return null;
+        if (existing.calleeId.toString() !== userId && existing.callerId.toString() !== userId) return null;
+        return existing;
+    }
+
+    cleanupCall(updated._id.toString());
 
     await createAndBroadcastMessage({
-        conversationId: call.conversationId.toString(),
-        senderId: call.callerId.toString(),
+        conversationId: updated.conversationId.toString(),
+        senderId: updated.callerId.toString(),
         type: "call",
-        callMeta: { callId: call._id.toString(), kind: call.kind, status: "rejected", duration: 0 },
+        callMeta: { callId: updated._id.toString(), kind: updated.kind, status: "rejected", duration: 0 },
         skipRateLimit: true,
         skipPermissionCheck: true,
     });
 
-    io.to(userRoom(call.callerId.toString())).emit("call:ended", { callId: call._id, reason: "rejected" });
-    io.to(userRoom(call.calleeId.toString())).emit("call:ended", { callId: call._id, reason: "rejected" });
+    io.to(userRoom(updated.callerId.toString())).emit("call:ended", { callId: updated._id, reason: "rejected" });
+    io.to(userRoom(updated.calleeId.toString())).emit("call:ended", { callId: updated._id, reason: "rejected" });
 
-    return call;
+    return updated;
 }
 
 export async function handleUserDisconnectCalls(io: SocketIOServer, userId: string) {
@@ -154,7 +190,10 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
     }) => {
         try {
             const callerId = socket.data.userId;
-            if (!["voice", "video"].includes(data.kind)) throw new Error("Invalid call type");
+            if (!data || !["voice", "video"].includes(data.kind)) throw new Error("Invalid call type");
+            if (!data.calleeId || !isValidObjectId(data.calleeId) || data.calleeId === callerId) {
+                throw new Error("Invalid callee");
+            }
             const { conversation, isMember } = await getMembership(data.conversationId, callerId);
             if (!conversation || !isMember) throw new Error("Conversation not found");
             if (!conversation.participants.some((p) => p.toString() === data.calleeId)) {
@@ -189,6 +228,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                     content: "",
                     callMeta: { callId: missed._id.toString(), kind: data.kind, status: "missed", duration: 0 },
                     skipRateLimit: true,
+                    skipPermissionCheck: true,
                 });
                 socket.emit("call:failed", { success: false, msg: "User is unavailable", callId: missed._id, reason: "offline" });
                 return;
@@ -215,11 +255,12 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             // Auto-timeout ringing after 60 seconds if no answer
             const ringingTimer = setTimeout(async () => {
                 try {
-                    const pendingCall = await Call.findById(call._id);
-                    if (pendingCall && pendingCall.status === "ringing") {
-                        pendingCall.status = "missed";
-                        pendingCall.endedAt = new Date();
-                        await pendingCall.save();
+                    const pendingCall = await Call.findOneAndUpdate(
+                        { _id: call._id, status: "ringing" },
+                        { $set: { status: "missed", endedAt: new Date() } },
+                        { new: true }
+                    );
+                    if (pendingCall) {
                         cleanupCall(call._id.toString());
 
                         await createAndBroadcastMessage({
@@ -233,7 +274,9 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
 
                         sendMissedCallPushNotification({
                             calleeId: data.calleeId,
+                            callerId,
                             callerName,
+                            callerAvatar: socket.data.avatar,
                             callId: pendingCall._id.toString(),
                             kind: data.kind,
                             conversationId: pendingCall.conversationId.toString(),
@@ -299,12 +342,12 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
         try {
             const userId = socket.data.userId;
             if (!data?.callId || !isValidObjectId(data.callId)) return;
-            const call = await Call.findById(data.callId);
-            if (!call || call.callerId.toString() !== userId) return;
-            if (!["ringing", "connecting"].includes(call.status)) return;
-            call.status = "cancelled";
-            call.endedAt = new Date();
-            await call.save();
+            const call = await Call.findOneAndUpdate(
+                { _id: data.callId, callerId: userId, status: { $in: ["ringing", "connecting"] } },
+                { $set: { status: "cancelled", endedAt: new Date() } },
+                { new: true }
+            );
+            if (!call) return;
             cleanupCall(call._id.toString());
             io.to(userRoom(call.calleeId.toString())).emit("call:ended", { callId: call._id, reason: "cancelled" });
             io.to(userRoom(call.callerId.toString())).emit("call:ended", { callId: call._id, reason: "cancelled" });
@@ -321,6 +364,11 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             const userId = socket.data.userId;
             if (call.callerId.toString() !== userId && call.calleeId.toString() !== userId) return;
             if (!["ringing", "connecting", "connected"].includes(call.status)) return;
+            const entry = activeCalls.get(call._id.toString());
+            if (entry?.connectingTimer) {
+                clearTimeout(entry.connectingTimer);
+                entry.connectingTimer = undefined;
+            }
             call.status = "connected";
             call.startedAt = call.startedAt || new Date();
             await call.save();
@@ -419,6 +467,21 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 skipPermissionCheck: true,
             });
 
+            if (finalStatus === "missed") {
+                const callerDoc = await User.findById(finalizedCall.callerId)
+                    .select("name avatar")
+                    .lean();
+                sendMissedCallPushNotification({
+                    calleeId: finalizedCall.calleeId.toString(),
+                    callerId: finalizedCall.callerId.toString(),
+                    callerName: callerDoc?.name || "Someone",
+                    callerAvatar: callerDoc?.avatar || undefined,
+                    callId: finalizedCall._id.toString(),
+                    kind: finalizedCall.kind,
+                    conversationId: finalizedCall.conversationId.toString(),
+                }).catch((err) => console.error("Missed call push error:", err));
+            }
+
             io.to(
                 userRoom(finalizedCall.callerId.toString())
             ).emit("call:ended", {
@@ -441,6 +504,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
     });
 
     socket.on("call:signal", (data: { callId: string; targetUserId: string; payload: unknown }) => {
+        if (!data?.callId || !data?.targetUserId) return;
         const userId = socket.data.userId;
         const active = activeCalls.get(data.callId);
         if (!active) return;

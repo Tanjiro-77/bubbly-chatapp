@@ -4,10 +4,23 @@ import Conversation from "../modals/Conversation";
 import Message from "../modals/Message";
 import User from "../modals/User";
 import { createAndBroadcastMessage } from "../services/messageService";
-import { formatMessagePayload } from "../utils/messageFormat";
-import { sanitizeLastSeen } from "../utils/permissions";
+import { formatMessagePayload, maskAnonymousPoll } from "../utils/messageFormat";
+import { sendMessagePushNotifications } from "../services/pushNotificationService";
+import { areBlocked, canSendInGroup, filterBlockedDirect, sanitizeLastSeen } from "../utils/permissions";
 import SavedMessage from "../modals/SavedMessage";
 import { userRoom } from "./io";
+
+function sanitizeLastMessage(lastMessage: any) {
+    if (!lastMessage || !lastMessage.isViewOnce) return lastMessage;
+    return {
+        ...lastMessage,
+        attachement: null,
+        voiceUrl: null,
+        attachmentMeta: lastMessage.attachmentMeta
+            ? { ...lastMessage.attachmentMeta, url: undefined }
+            : null,
+    };
+}
 
 export function registerChatEvents(io: SocketIOServer, socket: Socket) {
 
@@ -24,7 +37,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 deletedFor: { $ne: userId },
             })
                 .sort({ updatedAt: -1 })
-                .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta" })
+                .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll isViewOnce viewOnceOpenedBy" })
                 .populate({ path: "participants", select: "name avatar email isOnline lastSeen" })
                 .populate({ path: "admins", select: "name avatar" })
                 .populate({
@@ -48,6 +61,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 );
                 return {
                     ...conv,
+                    lastMessage: sanitizeLastMessage(conv.lastMessage),
                     unreadCount: unreadEntry?.count || 0,
                     isMuted,
                     mutedUntil: muteEntry?.until || null,
@@ -65,32 +79,58 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
     socket.on("newConversation", async (data) => {
         try {
             const userId = socket.data.userId;
-            if (!Array.isArray(data?.participants) || !data.participants.includes(userId)) {
+            if (!data || (data.type !== "direct" && data.type !== "group")) {
+                socket.emit("newConversation", { success: false, msg: "Invalid conversation type" });
+                return;
+            }
+            if (!Array.isArray(data.participants)) {
+                socket.emit("newConversation", { success: false, msg: "Invalid participants" });
+                return;
+            }
+            const uniqueParticipants: string[] = Array.from(
+                new Set<string>(data.participants.map((p: any) => String(p)))
+            );
+            if (!uniqueParticipants.includes(userId) || uniqueParticipants.some((p) => !isValidObjectId(p))) {
                 socket.emit("newConversation", { success: false, msg: "Invalid participants" });
                 return;
             }
 
             if (data.type == "direct") {
-                if (data.participants.length !== 2) {
-                    socket.emit("newConversation", { success: false, msg: "Direct chats need 2 participants" });
+                if (uniqueParticipants.length !== 2) {
+                    socket.emit("newConversation", { success: false, msg: "Direct chats need 2 distinct participants" });
                     return;
                 }
-                const existingConversation = await Conversation.findOne({
-                    type: "direct",
-                    participants: { $all: data.participants, $size: 2 },
-                })
+                const otherId = uniqueParticipants.find((p) => p !== userId)!;
+                if (await areBlocked(userId, otherId)) {
+                    socket.emit("newConversation", { success: false, msg: "Cannot start conversation with this user" });
+                    return;
+                }
+                const existingConversation = await Conversation.findOneAndUpdate(
+                    {
+                        type: "direct",
+                        participants: { $all: uniqueParticipants, $size: 2 },
+                    },
+                    { $pull: { deletedFor: userId } },
+                    { new: true }
+                )
                     .populate({ path: "participants", select: "name avatar email isOnline lastSeen" })
                     .populate({ path: "admins", select: "name avatar" })
-                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta" })
+                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll isViewOnce viewOnceOpenedBy" })
                     .lean();
 
                 if (existingConversation) {
                     const unreadEntry = (existingConversation.unreadCounts || []).find(
                         (u: any) => u.userId.toString() === userId.toString()
                     );
+                    socket.join(existingConversation._id.toString());
                     socket.emit("newConversation", {
                         success: true,
-                        data: { ...existingConversation, isNew: false, unreadCount: unreadEntry?.count || 0 }
+                        data: {
+                            ...existingConversation,
+                            lastMessage: sanitizeLastMessage(existingConversation.lastMessage),
+                            isNew: false,
+                            unreadCount: unreadEntry?.count || 0,
+                        }
                     });
                     return;
                 }
@@ -101,25 +141,31 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     socket.emit("newConversation", { success: false, msg: "Group name is required" });
                     return;
                 }
-                if (data.participants.length < 2) {
+                if (uniqueParticipants.length < 2) {
                     socket.emit("newConversation", { success: false, msg: "Add at least two members" });
                     return;
                 }
             }
 
+            const existingUsersCount = await User.countDocuments({ _id: { $in: uniqueParticipants } });
+            if (existingUsersCount !== uniqueParticipants.length) {
+                socket.emit("newConversation", { success: false, msg: "One or more participants do not exist" });
+                return;
+            }
+
             const conversation = await Conversation.create({
                 type: data.type,
-                participants: data.participants,
+                participants: uniqueParticipants,
                 name: data.name || "",
                 description: data.description || "",
                 avatar: data.avatar || "",
                 createdBy: userId,
                 admins: data.type === "group" ? [userId] : [],
-                unreadCounts: data.participants.map((pId: string) => ({ userId: pId, count: 0 })),
+                unreadCounts: uniqueParticipants.map((pId: string) => ({ userId: pId, count: 0 })),
             });
 
             const connectedSockets = Array.from(io.sockets.sockets.values()).filter(
-                s => data.participants.includes(s.data.userId)
+                s => uniqueParticipants.includes(s.data.userId)
             );
             connectedSockets.forEach(participantSocket => {
                 participantSocket.join(conversation._id.toString());
@@ -168,6 +214,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 location: data.location || null,
                 type: data.type,
                 storyId: data.storyId || null,
+                isViewOnce: !!(data.isViewOnce ?? data.attachmentMeta?.isViewOnce),
             });
 
             socket.emit("messageAck", { success: true, data: payload, clientId: data.clientId });
@@ -237,15 +284,19 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            const PAGE_LIMIT = Math.min(data.limit || 30, 50);
-            let page = data.page || 0;
+            const PAGE_LIMIT = Math.max(1, Math.min(Number(data.limit) || 30, 50));
+            let page = Math.max(0, Number(data.page) || 0);
             let skip = page * PAGE_LIMIT;
+            const notExpiredFilter = {
+                $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+            };
 
-            if (data.aroundMessageId) {
+            if (data.aroundMessageId && isValidObjectId(data.aroundMessageId)) {
                 const target = await Message.findById(data.aroundMessageId).select("createdAt conversationId").lean();
                 if (target && target.conversationId.toString() === data.conversationId) {
                     const newerCount = await Message.countDocuments({
                         conversationId: data.conversationId,
+                        ...notExpiredFilter,
                         createdAt: { $gt: target.createdAt },
                     });
                     page = Math.floor(newerCount / PAGE_LIMIT);
@@ -255,8 +306,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
 
             // High-speed parallel execution for count, message batch, and pinned messages
             const [totalCount, messages, conversationDoc] = await Promise.all([
-                Message.countDocuments({ conversationId: data.conversationId }),
-                Message.find({ conversationId: data.conversationId })
+                Message.countDocuments({ conversationId: data.conversationId, ...notExpiredFilter }),
+                Message.find({ conversationId: data.conversationId, ...notExpiredFilter })
                     .sort({ createdAt: -1 })
                     .skip(skip)
                     .limit(PAGE_LIMIT)
@@ -294,8 +345,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             }).select("messageId").lean();
             const savedSet = new Set(saved.map((s) => s.messageId.toString()));
 
-            const messagesWithSender = messages.map(message => ({
-                ...formatMessagePayload(message, {
+            const messagesWithSender = messages.map(message => {
+                const formatted = formatMessagePayload(message, {
                     sender: {
                         id: (message.senderId as any)?._id,
                         name: (message.senderId as any)?.name,
@@ -308,18 +359,35 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         voiceUrl: (message.replyTo as any).voiceUrl || null,
                         type: (message.replyTo as any).type,
                     } : null,
-                }),
-                isSaved: savedSet.has(message._id.toString()),
-            }));
+                });
+                const openedViewOnce = formatted.isViewOnce && formatted.viewOnceOpenedBy.includes(userId);
+                if (openedViewOnce) {
+                    formatted.attachement = null;
+                    formatted.voiceUrl = null;
+                    if (formatted.attachmentMeta) {
+                        formatted.attachmentMeta = { ...formatted.attachmentMeta, url: undefined };
+                    }
+                }
+                if (formatted.poll?.isAnonymous) {
+                    formatted.poll = maskAnonymousPoll(formatted.poll, userId);
+                }
+                return {
+                    ...formatted,
+                    isSaved: savedSet.has(message._id.toString()),
+                };
+            });
 
             socket.emit("getMessages", {
                 success: true,
+                conversationId: data.conversationId,
                 data: messagesWithSender,
                 page,
                 hasMore: skip + PAGE_LIMIT < totalCount,
                 totalCount,
                 aroundMessageId: data.aroundMessageId || null,
-                pinnedMessages: (conversationDoc?.pinnedMessages || []).map((pm: any) => ({
+                pinnedMessages: (conversationDoc?.pinnedMessages || [])
+                    .filter((pm: any) => pm && !pm.isDeleted)
+                    .map((pm: any) => ({
                     id: pm._id.toString(),
                     content: pm.content,
                     type: pm.type,
@@ -367,21 +435,37 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
     });
 
     socket.on("typing", async (data: { conversationId: string; senderId: string; senderName: string }) => {
-        const userId = socket.data.userId;
-        const me = await User.findById(userId).select("privacy").lean();
-        if (me?.privacy?.typingIndicators === false) return;
-        socket.to(data.conversationId).emit("typing", {
-            conversationId: data.conversationId,
-            senderId: userId,
-            senderName: socket.data.name,
-        });
+        try {
+            const userId = socket.data.userId;
+            if (!userId || !data?.conversationId || !isValidObjectId(data.conversationId)) return;
+            const [isMember, me] = await Promise.all([
+                Conversation.exists({ _id: data.conversationId, participants: userId }),
+                User.findById(userId).select("privacy").lean(),
+            ]);
+            if (!isMember || me?.privacy?.typingIndicators === false) return;
+            socket.to(data.conversationId).emit("typing", {
+                conversationId: data.conversationId,
+                senderId: userId,
+                senderName: socket.data.name,
+            });
+        } catch (err) {
+            console.log("typing error:", err);
+        }
     });
 
-    socket.on("stopTyping", (data: { conversationId: string; senderId: string }) => {
-        socket.to(data.conversationId).emit("stopTyping", {
-            conversationId: data.conversationId,
-            senderId: socket.data.userId,
-        });
+    socket.on("stopTyping", async (data: { conversationId: string; senderId: string }) => {
+        try {
+            const userId = socket.data.userId;
+            if (!userId || !data?.conversationId || !isValidObjectId(data.conversationId)) return;
+            const isMember = await Conversation.exists({ _id: data.conversationId, participants: userId });
+            if (!isMember) return;
+            socket.to(data.conversationId).emit("stopTyping", {
+                conversationId: data.conversationId,
+                senderId: userId,
+            });
+        } catch (err) {
+            console.log("stopTyping error:", err);
+        }
     });
 
     socket.on("reactToMessage", async (data: {
@@ -489,7 +573,47 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             message.voiceUrl = undefined;
             message.attachmentMeta = undefined;
             message.location = undefined;
+            message.poll = undefined;
+            message.reactions = [] as any;
+            message.isPinned = false;
             await message.save();
+
+            // Remove deleted message from conversation.pinnedMessages if present
+            const updatedConv = await Conversation.findOneAndUpdate(
+                { _id: message.conversationId, pinnedMessages: message._id },
+                { $pull: { pinnedMessages: message._id } },
+                { new: true }
+            )
+                .select("pinnedMessages")
+                .populate({
+                    path: "pinnedMessages",
+                    select: "content senderId type createdAt isDeleted",
+                    populate: { path: "senderId", select: "name avatar" },
+                })
+                .lean();
+
+            if (updatedConv) {
+                const pinnedPayload = (updatedConv.pinnedMessages || []).map((pm: any) => ({
+                    id: pm._id.toString(),
+                    content: pm.content,
+                    type: pm.type,
+                    createdAt: pm.createdAt,
+                    sender: pm.senderId ? {
+                        id: pm.senderId._id?.toString(),
+                        name: pm.senderId.name,
+                        avatar: pm.senderId.avatar,
+                    } : null,
+                }));
+                io.to(message.conversationId.toString()).emit("pinnedMessageUpdated", {
+                    success: true,
+                    data: {
+                        conversationId: message.conversationId.toString(),
+                        pinnedMessages: pinnedPayload,
+                        action: "unpinned",
+                        messageId: data.messageId,
+                    },
+                });
+            }
 
             // Always emit to the genuine conversation room
             io.to(message.conversationId.toString()).emit("deleteMessage", {
@@ -503,7 +627,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
         }
     });
 
-    socket.on("editMessage", async (data: { messageId: string; conversationId: string; content: string }) => {
+    socket.on("editMessage", async (data: { messageId: string; conversationId: string; content?: string; newContent?: string }) => {
         try {
             const userId = socket.data.userId;
             if (!data?.messageId || !isValidObjectId(data.messageId)) {
@@ -511,12 +635,13 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            if (!data.content?.trim()) {
+            const rawContent = typeof data.content === "string" ? data.content : data.newContent;
+            if (typeof rawContent !== "string" || !rawContent.trim()) {
                 socket.emit("editMessage", { success: false, msg: "Message content cannot be empty" });
                 return;
             }
 
-            if (data.content.length > 5000) {
+            if (rawContent.length > 5000) {
                 socket.emit("editMessage", { success: false, msg: "Message content exceeds limit of 5,000 characters" });
                 return;
             }
@@ -538,12 +663,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("editMessage", { success: false, msg: "Cannot edit a deleted message" });
                 return;
             }
-            if (message.voiceUrl || ["voice", "file", "location", "call", "system"].includes(message.type)) {
+            if (message.voiceUrl || ["voice", "file", "location", "call", "system", "poll"].includes(message.type)) {
                 socket.emit("editMessage", { success: false, msg: "Cannot edit this message type" });
                 return;
             }
 
-            message.content = data.content.trim();
+            message.content = rawContent.trim();
             message.isEdited = true;
             await message.save();
 
@@ -564,27 +689,28 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
         }
     });
 
-    socket.on("getUserStatus", async (data: { userId: string }) => {
+    socket.on("getUserStatus", async (data: { userId?: string; targetUserId?: string }) => {
         try {
             const viewerId = socket.data.userId;
-            if (!data?.userId || !isValidObjectId(data.userId)) {
+            const targetId = data?.userId || data?.targetUserId;
+            if (!targetId || !isValidObjectId(targetId)) {
                 socket.emit("getUserStatus", { success: false, msg: "Invalid userId" });
                 return;
             }
-            const user = await User.findById(data.userId).select("isOnline lastSeen privacy").lean();
+            const user = await User.findById(targetId).select("isOnline lastSeen privacy").lean();
             if (!user) {
                 socket.emit("getUserStatus", { success: false, msg: "User not found" });
                 return;
             }
             const shared = await Conversation.exists({
                 type: "direct",
-                participants: { $all: [viewerId, data.userId], $size: 2 },
+                participants: { $all: [viewerId, targetId], $size: 2 },
             });
             const status = sanitizeLastSeen(viewerId, user, !!shared);
             socket.emit("getUserStatus", {
                 success: true,
                 data: {
-                    userId: data.userId,
+                    userId: targetId,
                     isOnline: status.isOnline,
                     lastSeen: status.lastSeen,
                     hidden: status.hidden,
@@ -610,7 +736,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const senderId = socket.data.userId;
             if (!senderId) throw new Error("Unauthorized");
 
-            if (!data.question?.trim()) {
+            if (!data?.conversationId || !isValidObjectId(data.conversationId)) {
+                throw new Error("Invalid conversation");
+            }
+            if (typeof data.question !== "string" || !data.question.trim()) {
                 throw new Error("Question is required");
             }
 
@@ -630,9 +759,15 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             if (!conversation) {
                 throw new Error("Not a member of this conversation");
             }
+            if (await filterBlockedDirect(conversation, senderId)) {
+                throw new Error("You cannot message this user");
+            }
+            if (!canSendInGroup(conversation, senderId)) {
+                throw new Error("Only admins can send messages in this group");
+            }
 
             const options = data.options
-                .filter((option) => option?.trim())
+                .filter((option) => typeof option === "string" && option.trim())
                 .map((text, index) => ({
                     id: `${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
                     text: text.trim(),
@@ -643,17 +778,28 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 throw new Error("At least 2 valid options required");
             }
 
+            let parsedEndsAt: Date | null = null;
+            if (data.endsAt) {
+                const d = new Date(data.endsAt);
+                if (Number.isNaN(d.getTime())) throw new Error("Invalid poll end time");
+                parsedEndsAt = d;
+            }
+            const expiresAt = conversation.disappearingSeconds > 0
+                ? new Date(Date.now() + conversation.disappearingSeconds * 1000)
+                : null;
+
             const message = await Message.create({
                 conversationId: data.conversationId,
                 senderId,
                 type: "poll",
                 content: data.question.trim(),
+                expiresAt,
                 poll: {
                     question: data.question.trim(),
                     options,
                     allowMultiple: data.allowMultiple ?? false,
                     isAnonymous: data.isAnonymous ?? false,
-                    endsAt: data.endsAt ? new Date(data.endsAt) : null,
+                    endsAt: parsedEndsAt,
                     isClosed: false,
                 },
             });
@@ -666,22 +812,13 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 throw new Error("Failed to create poll");
             }
 
-            const payload = {
-                id: populated._id.toString(),
-                conversationId: data.conversationId,
+            const payload = formatMessagePayload(populated, {
                 sender: {
                     id: (populated.senderId as any)._id.toString(),
                     name: (populated.senderId as any).name,
                     avatar: (populated.senderId as any).avatar || null,
                 },
-                type: "poll",
-                content: data.question.trim(),
-                poll: populated.poll,
-                reactions: [],
-                createdAt: populated.createdAt,
-                isDeleted: false,
-                isEdited: false,
-            };
+            });
 
             for (const participantId of conversation.participants) {
                 if (participantId.toString() === senderId.toString()) continue;
@@ -700,12 +837,40 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 }
             }
 
+            conversation.deletedFor = [];
             conversation.lastMessage = message._id as any;
             await conversation.save();
 
             io.to(data.conversationId).emit("newMessage", {
                 success: true,
                 data: payload,
+            });
+
+            const participantIds = conversation.participants.map((p: any) => p.toString());
+            const allSockets = Array.from(io.sockets.sockets.values()).filter(
+                (s) => participantIds.includes(s.data.userId?.toString())
+            );
+            allSockets.forEach((participantSocket) => {
+                const participantId = participantSocket.data.userId?.toString();
+                const unreadEntry = conversation.unreadCounts.find(
+                    (u: any) => u.userId.toString() === participantId
+                );
+                participantSocket.emit("unreadCountUpdate", {
+                    conversationId: data.conversationId,
+                    unreadCount: unreadEntry?.count || 0,
+                });
+            });
+
+            sendMessagePushNotifications({
+                conversation: conversation as any,
+                sender: payload.sender ?? {
+                    id: senderId.toString(),
+                    name: socket.data.name || "Someone",
+                    avatar: socket.data.avatar ?? null,
+                },
+                message: payload as any,
+            }).catch((err) => {
+                console.error("Poll push notification error:", err instanceof Error ? err.message : err);
             });
 
             socket.emit("createPoll", {
@@ -735,6 +900,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const userId = socket.data.userId;
             if (!userId) throw new Error("Unauthorized");
 
+            if (!data?.messageId || !isValidObjectId(data.messageId) || !data?.conversationId || !isValidObjectId(data.conversationId)) {
+                throw new Error("Poll not found");
+            }
             const message = await Message.findById(data.messageId);
 
             if (!message || message.type !== "poll") {
@@ -827,21 +995,38 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
 
             await message.save();
 
-            io.to(data.conversationId).emit("pollUpdated", {
-                success: true,
-                data: {
-                    messageId: data.messageId,
-                    conversationId: data.conversationId,
-                    poll: message.poll,
-                },
-            });
+            const rawPoll = (message.poll as any)?.toObject ? (message.poll as any).toObject() : message.poll;
+            const convForPoll = await Conversation.findById(data.conversationId).select("participants").lean();
+            const pollParticipants = (convForPoll?.participants || []).map((p: any) => p.toString());
+
+            if (rawPoll?.isAnonymous && pollParticipants.length > 0) {
+                pollParticipants.forEach((pid: string) => {
+                    io.to(userRoom(pid)).emit("pollUpdated", {
+                        success: true,
+                        data: {
+                            messageId: data.messageId,
+                            conversationId: data.conversationId,
+                            poll: maskAnonymousPoll(rawPoll, pid),
+                        },
+                    });
+                });
+            } else {
+                io.to(data.conversationId).emit("pollUpdated", {
+                    success: true,
+                    data: {
+                        messageId: data.messageId,
+                        conversationId: data.conversationId,
+                        poll: rawPoll,
+                    },
+                });
+            }
 
             socket.emit("votePoll", {
                 success: true,
                 data: {
                     messageId: data.messageId,
                     conversationId: data.conversationId,
-                    poll: message.poll,
+                    poll: maskAnonymousPoll(rawPoll, userId),
                 },
             });
         } catch (error: any) {
@@ -869,6 +1054,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 throw new Error("Unauthorized");
             }
 
+            if (!data?.messageId || !isValidObjectId(data.messageId) || !data?.conversationId || !isValidObjectId(data.conversationId)) {
+                throw new Error("Poll not found");
+            }
             const message = await Message.findById(data.messageId);
 
             if (!message || message.type !== "poll") {
@@ -891,21 +1079,38 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
 
             await message.save();
 
-            io.to(data.conversationId).emit("pollUpdated", {
-                success: true,
-                data: {
-                    messageId: data.messageId,
-                    conversationId: data.conversationId,
-                    poll: message.poll,
-                },
-            });
+            const rawClosedPoll = (message.poll as any)?.toObject ? (message.poll as any).toObject() : message.poll;
+            const convForClosed = await Conversation.findById(data.conversationId).select("participants").lean();
+            const closedParticipants = (convForClosed?.participants || []).map((p: any) => p.toString());
+
+            if (rawClosedPoll?.isAnonymous && closedParticipants.length > 0) {
+                closedParticipants.forEach((pid: string) => {
+                    io.to(userRoom(pid)).emit("pollUpdated", {
+                        success: true,
+                        data: {
+                            messageId: data.messageId,
+                            conversationId: data.conversationId,
+                            poll: maskAnonymousPoll(rawClosedPoll, pid),
+                        },
+                    });
+                });
+            } else {
+                io.to(data.conversationId).emit("pollUpdated", {
+                    success: true,
+                    data: {
+                        messageId: data.messageId,
+                        conversationId: data.conversationId,
+                        poll: rawClosedPoll,
+                    },
+                });
+            }
 
             socket.emit("closePoll", {
                 success: true,
                 data: {
                     messageId: data.messageId,
                     conversationId: data.conversationId,
-                    poll: message.poll,
+                    poll: maskAnonymousPoll(rawClosedPoll, userId),
                 },
             });
         } catch (error: any) {
@@ -929,18 +1134,23 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            let convId: string | undefined = data?.conversationId;
-            if (!convId && data?.messageId && isValidObjectId(data.messageId)) {
-                const foundMsg: any = await Message.findById(data.messageId).select("conversationId").lean();
-                convId = foundMsg?.conversationId?.toString();
-            }
-            if (!convId || !isValidObjectId(convId) || !data?.messageId || !isValidObjectId(data.messageId)) {
+            if (!data?.messageId || !isValidObjectId(data.messageId)) {
                 socket.emit("toggleStarMessage", { success: false, msg: "Conversation or message not found" });
+                return;
+            }
+            const foundMsg: any = await Message.findById(data.messageId).select("conversationId").lean();
+            if (!foundMsg) {
+                socket.emit("toggleStarMessage", { success: false, msg: "Message not found" });
+                return;
+            }
+            const actualConvId = foundMsg.conversationId.toString();
+            if (data.conversationId && data.conversationId.toString() !== actualConvId) {
+                socket.emit("toggleStarMessage", { success: false, msg: "Message not found in conversation" });
                 return;
             }
 
             const conversation = await Conversation.findOne({
-                _id: convId,
+                _id: actualConvId,
                 participants: userId,
             });
             if (!conversation) {
@@ -957,14 +1167,14 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 await SavedMessage.create({
                     userId,
                     messageId: data.messageId,
-                    conversationId: convId,
+                    conversationId: actualConvId,
                 });
                 isSaved = true;
             }
 
             socket.emit("toggleStarMessage", {
                 success: true,
-                data: { messageId: data.messageId, conversationId: convId, isSaved },
+                data: { messageId: data.messageId, conversationId: actualConvId, isSaved },
             });
         } catch (error: any) {
             console.log("toggleStarMessage error:", error);
@@ -990,19 +1200,34 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const saved = await SavedMessage.find({ userId })
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(limit)
+                .limit(limit + 1)
                 .populate({
                     path: "messageId",
                     populate: { path: "senderId", select: "name avatar" }
                 })
+                .populate({
+                    path: "conversationId",
+                    select: "name type avatar participants",
+                    populate: { path: "participants", select: "name avatar" }
+                })
                 .lean();
 
-            const formatted = saved
+            const hasMore = saved.length > limit;
+            const slice = hasMore ? saved.slice(0, limit) : saved;
+
+            const formatted = slice
                 .filter((s: any) => s.messageId && !s.messageId.isDeleted)
                 .map((s: any) => ({
                     savedId: s._id?.toString() || "",
                     savedAt: s.createdAt,
-                    conversationId: (s.conversationId ? s.conversationId.toString() : s.messageId?.conversationId?.toString()) || "",
+                    conversationId: (s.conversationId?._id ? s.conversationId._id.toString() : s.conversationId?.toString() || s.messageId?.conversationId?.toString()) || "",
+                    conversation: s.conversationId?._id ? {
+                        id: s.conversationId._id.toString(),
+                        name: s.conversationId.name || "",
+                        type: s.conversationId.type || "direct",
+                        avatar: s.conversationId.avatar || "",
+                        participants: s.conversationId.participants || [],
+                    } : null,
                     message: formatMessagePayload(s.messageId, {
                         sender: s.messageId.senderId ? {
                             id: s.messageId.senderId._id?.toString(),
@@ -1016,7 +1241,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 success: true,
                 data: formatted,
                 page,
-                hasMore: formatted.length === limit,
+                hasMore,
             });
         } catch (error: any) {
             console.log("getStarredMessages error:", error);
@@ -1030,6 +1255,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
     socket.on("pinMessage", async (data: { conversationId: string; messageId: string }) => {
         try {
             const userId = socket.data.userId;
+            if (!data?.conversationId || !isValidObjectId(data.conversationId) || !data?.messageId || !isValidObjectId(data.messageId)) {
+                socket.emit("pinMessage", { success: false, msg: "Invalid conversation or message" });
+                return;
+            }
             const conversation = await Conversation.findOne({
                 _id: data.conversationId,
                 participants: userId,
@@ -1049,7 +1278,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             }
 
             const message = await Message.findById(data.messageId);
-            if (!message || message.conversationId.toString() !== data.conversationId) {
+            if (!message || message.isDeleted || message.conversationId.toString() !== data.conversationId) {
                 socket.emit("pinMessage", { success: false, msg: "Message not found" });
                 return;
             }
@@ -1075,7 +1304,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 })
                 .lean();
 
-            const pinnedPayload = (populatedConv?.pinnedMessages || []).map((pm: any) => ({
+            const pinnedPayload = (populatedConv?.pinnedMessages || [])
+                .filter((pm: any) => pm && !pm.isDeleted)
+                .map((pm: any) => ({
                 id: pm._id.toString(),
                 content: pm.content,
                 type: pm.type,
@@ -1110,6 +1341,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
     socket.on("unpinMessage", async (data: { conversationId: string; messageId: string }) => {
         try {
             const userId = socket.data.userId;
+            if (!data?.conversationId || !isValidObjectId(data.conversationId) || !data?.messageId || !isValidObjectId(data.messageId)) {
+                socket.emit("unpinMessage", { success: false, msg: "Invalid conversation or message" });
+                return;
+            }
             const conversation = await Conversation.findOne({
                 _id: data.conversationId,
                 participants: userId,
@@ -1133,7 +1368,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             );
             await conversation.save();
 
-            await Message.findByIdAndUpdate(data.messageId, { isPinned: false });
+            await Message.findOneAndUpdate(
+                { _id: data.messageId, conversationId: data.conversationId },
+                { isPinned: false }
+            );
 
             const populatedConv = await Conversation.findById(conversation._id)
                 .select("pinnedMessages")
@@ -1144,7 +1382,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 })
                 .lean();
 
-            const pinnedPayload = (populatedConv?.pinnedMessages || []).map((pm: any) => ({
+            const pinnedPayload = (populatedConv?.pinnedMessages || [])
+                .filter((pm: any) => pm && !pm.isDeleted)
+                .map((pm: any) => ({
                 id: pm._id.toString(),
                 content: pm.content,
                 type: pm.type,
@@ -1195,8 +1435,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             }
 
             const original = await Message.findById(data.messageId).lean();
-            if (!original || original.isDeleted) {
-                socket.emit("forwardMessage", { success: false, msg: "Message not found or deleted" });
+            if (!original || original.isDeleted || original.isViewOnce || original.type === "system" || original.type === "call" || original.type === "poll") {
+                socket.emit("forwardMessage", { success: false, msg: "Message not found or cannot be forwarded" });
                 return;
             }
 
@@ -1221,6 +1461,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         attachmentMeta: original.attachmentMeta as any,
                         voiceUrl: original.voiceUrl,
                         voiceDuration: original.voiceDuration,
+                        location: original.location as any,
                         type: original.type,
                         isForwarded: true,
                     });

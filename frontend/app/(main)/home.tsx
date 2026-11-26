@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform, Modal, Alert, TouchableWithoutFeedback } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform, Modal, TouchableWithoutFeedback } from 'react-native';
+import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenWrapper from "../../components/ScreenWrapper";
@@ -18,6 +19,11 @@ import {
     markAsUnread,
     deleteConversation,
     markAsRead,
+    onGroupUpdated,
+    onAddedToGroup,
+    onRemovedFromGroup,
+    isSocketConnected,
+    onSocketConnectionChange,
 } from "../../socket/socketEvents";
 import { verticalScale, scale } from "../../utils/styling";
 import * as Icons from 'phosphor-react-native';
@@ -89,6 +95,9 @@ const Home = () => {
     useFocusEffect(
         useCallback(() => {
             loadDraftsAndLocked();
+            if (isSocketConnected()) {
+                getConversations(null);
+            }
         }, [loadDraftsAndLocked])
     );
 
@@ -101,6 +110,19 @@ const Home = () => {
         onUserStatus(userStatusHandler);
         onTyping(typingHandler);
         onStopTyping(stopTypingHandler);
+        deleteConversation(deleteConversationHandler);
+        onGroupUpdated(groupUpdatedHandler);
+        const addedToGroupHandler = () => getConversations(null);
+        const removedFromGroupHandler = (data: { conversationId?: string }) => {
+            if (data?.conversationId) {
+                setConversations(prev => prev.filter(c => c._id !== data.conversationId));
+            }
+        };
+        onAddedToGroup(addedToGroupHandler);
+        onRemovedFromGroup(removedFromGroupHandler);
+        const unsubConnection = onSocketConnectionChange((connected) => {
+            if (connected) getConversations(null);
+        });
         getConversations(null);
 
         return () => {
@@ -111,6 +133,11 @@ const Home = () => {
             onUserStatus(userStatusHandler, true);
             onTyping(typingHandler, true);
             onStopTyping(stopTypingHandler, true);
+            deleteConversation(deleteConversationHandler, true);
+            onGroupUpdated(groupUpdatedHandler, true);
+            onAddedToGroup(addedToGroupHandler, true);
+            onRemovedFromGroup(removedFromGroupHandler, true);
+            unsubConnection();
             Object.values(typingTimers.current).forEach(t => clearTimeout(t));
         };
     }, [loadDraftsAndLocked]);
@@ -176,8 +203,22 @@ const Home = () => {
                 if (exists) {
                     return prev.map((c) => (c._id === res.data._id ? { ...c, ...res.data } : c));
                 }
-                return res.data?.isNew ? [res.data, ...prev] : prev;
+                return [res.data, ...prev];
             });
+        }
+    };
+
+    const deleteConversationHandler = (res: any) => {
+        if (res?.success && res.data?.conversationId) {
+            setConversations(prev => prev.filter(c => c._id !== res.data.conversationId));
+        }
+    };
+
+    const groupUpdatedHandler = (res: any) => {
+        if (res?.success && res.data?._id) {
+            setConversations(prev =>
+                prev.map(c => (c._id === res.data._id ? { ...c, ...res.data } : c))
+            );
         }
     };
 
@@ -216,7 +257,7 @@ const Home = () => {
             return activeList.filter(c => (c.unreadCount || 0) > 0);
         }
         if (filterCategory === "pinned") {
-            return activeList.filter(c => c.pinnedMessages && c.pinnedMessages.length > 0);
+            return activeList.filter(c => !!(c as any).isPinned);
         }
         return activeList;
     }, [activeList, filterCategory]);
@@ -242,13 +283,13 @@ const Home = () => {
         (sum, c) => sum + (c.unreadCount || 0), 0
     );
     const totalUnreadCurrent = selectedTab === 0 ? totalUnreadDirect : totalUnreadGroup;
-    const totalPinnedCurrent = activeList.filter(c => c.pinnedMessages && c.pinnedMessages.length > 0).length;
+    const totalPinnedCurrent = activeList.filter(c => !!(c as any).isPinned).length;
 
     // ── VIP Pinned Contacts ──
     const pinnedVIPs = useMemo(() => {
         return conversations.filter(c =>
             !lockedChatIds.includes(c._id) &&
-            ((c.pinnedMessages && c.pinnedMessages.length > 0) || (c as any).isPinned)
+            !!(c as any).isPinned
         );
     }, [conversations, lockedChatIds]);
 
@@ -277,7 +318,7 @@ const Home = () => {
     const handleTogglePin = () => {
         if (!actionConv) return;
         const convId = actionConv._id;
-        const willPin = !(actionConv as any).isPinned && (!actionConv.pinnedMessages || actionConv.pinnedMessages.length === 0);
+        const willPin = !(actionConv as any).isPinned;
         togglePinConversation({ conversationId: convId, pin: willPin });
         setConversations(prev => prev.map(c => c._id === convId ? ({ ...c, isPinned: willPin } as any) : c));
         handleCloseActionModal();
@@ -314,7 +355,9 @@ const Home = () => {
             const nextLocked = [...lockedChatIds, convId];
             await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(nextLocked));
             setLockedChatIds(nextLocked);
-            Alert.alert("Locked to Vault 🔒", `"${convName}" has been moved to your Secret Chat Vault.`);
+            setTimeout(() => {
+                BubblyAlert.alert("Locked to Vault 🔒", `"${convName}" has been moved to your Secret Chat Vault.`);
+            }, 90);
         } catch (_) {}
     };
 
@@ -323,21 +366,23 @@ const Home = () => {
         const convId = actionConv._id;
         const convName = actionConv.name || "this chat";
         handleCloseActionModal();
-        Alert.alert(
-            "Delete Conversation",
-            `Are you sure you want to delete ${convName}? This will remove it from your chat list.`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => {
-                        deleteConversation({ conversationId: convId });
-                        setConversations(prev => prev.filter(c => c._id !== convId));
+        setTimeout(() => {
+            BubblyAlert.alert(
+                "Delete Conversation",
+                `Are you sure you want to delete ${convName}? This will remove it from your chat list.`,
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => {
+                            deleteConversation({ conversationId: convId });
+                            setConversations(prev => prev.filter(c => c._id !== convId));
+                        }
                     }
-                }
-            ]
-        );
+                ]
+            );
+        }, 90);
     };
 
     const renderConversationItem = useCallback(({ item, index }: { item: ConversationProps; index: number }) => {
@@ -485,7 +530,10 @@ const Home = () => {
                                                     name: vip.name,
                                                     avatar: vip.avatar,
                                                     type: vip.type,
-                                                    participants: JSON.stringify(vip.participants)
+                                                    participants: JSON.stringify(vip.participants),
+                                                    admins: JSON.stringify(vip.admins || []),
+                                                    createdBy: vip.createdBy ? String(vip.createdBy) : "",
+                                                    disappearingSeconds: String(vip.disappearingSeconds || 0),
                                                 }
                                             })}
                                             onLongPress={() => handleLongPress(vip)}
@@ -897,7 +945,7 @@ const Home = () => {
                                                         <Icons.PushPin size={18} color={colors.primaryDark} weight="fill" />
                                                     </View>
                                                     <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
-                                                        {(actionConv as any).isPinned || (actionConv.pinnedMessages && actionConv.pinnedMessages.length > 0)
+                                                        {(actionConv as any).isPinned
                                                             ? "Unpin Conversation"
                                                             : "Pin to Top (VIP)"}
                                                     </Typo>

@@ -313,7 +313,6 @@ export const appScreenshots = [
 // ── Reveal hook ─────────────────────────────────────────────
 export function useReveal() {
   useEffect(() => {
-    const els = document.querySelectorAll<HTMLElement>("[data-reveal]");
     const io = new IntersectionObserver(
       (entries) =>
         entries.forEach((e) => {
@@ -324,8 +323,18 @@ export function useReveal() {
         }),
       { threshold: 0.1 },
     );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    const observeAll = () => {
+      document.querySelectorAll<HTMLElement>("[data-reveal]:not(.is-in)").forEach((el) => {
+        io.observe(el);
+      });
+    };
+    observeAll();
+    const mo = new MutationObserver(() => observeAll());
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      mo.disconnect();
+      io.disconnect();
+    };
   }, []);
 }
 
@@ -418,6 +427,13 @@ export function ThemeToggle() {
         window.matchMedia("(prefers-color-scheme: dark)").matches);
     setDark(isDark);
     document.documentElement.classList.toggle("dark", isDark);
+
+    const onThemeChange = (e: Event) => {
+      const next = Boolean((e as CustomEvent).detail);
+      setDark(next);
+    };
+    window.addEventListener("bubbly-theme-change", onThemeChange);
+    return () => window.removeEventListener("bubbly-theme-change", onThemeChange);
   }, []);
 
   const toggle = () => {
@@ -426,6 +442,7 @@ export function ThemeToggle() {
     setDark(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("bubbly-theme", next ? "dark" : "light");
+    window.dispatchEvent(new CustomEvent("bubbly-theme-change", { detail: next }));
   };
 
   return (

@@ -9,9 +9,22 @@ import { callAccept, callReject } from "../socket/socketEvents";
 
 const PUSH_TOKEN_STORAGE_KEY = "bubbly_expo_push_token";
 const NOTIF_ENABLED_STORAGE_KEY = "bubbly_notifications_enabled";
+const SOUND_ENABLED_STORAGE_KEY = "bubbly_sound_enabled";
 
 let activeConversationId: string | null = null;
 let handlerConfigured = false;
+const recentIncomingCallIds = new Map<string, number>();
+
+export function claimIncomingCallScreen(callId: string): boolean {
+    if (!callId) return false;
+    const now = Date.now();
+    for (const [id, ts] of recentIncomingCallIds.entries()) {
+        if (now - ts > 30000) recentIncomingCallIds.delete(id);
+    }
+    if (recentIncomingCallIds.has(callId)) return false;
+    recentIncomingCallIds.set(callId, now);
+    return true;
+}
 
 export function setActiveConversationId(conversationId: string | null) {
     activeConversationId = conversationId;
@@ -34,6 +47,7 @@ export function configureNotificationHandler() {
         handleNotification: async (notification) => {
             const data = (notification.request.content.data || {}) as Record<string, any>;
 
+            let soundEnabled = true;
             try {
                 const enabledPref = await AsyncStorage.getItem(NOTIF_ENABLED_STORAGE_KEY);
                 if (enabledPref === "false") {
@@ -43,6 +57,10 @@ export function configureNotificationHandler() {
                         shouldPlaySound: false,
                         shouldSetBadge: false,
                     };
+                }
+                const soundPref = await AsyncStorage.getItem(SOUND_ENABLED_STORAGE_KEY);
+                if (soundPref === "false") {
+                    soundEnabled = false;
                 }
             } catch {
                 // ignore storage read errors
@@ -64,7 +82,7 @@ export function configureNotificationHandler() {
             return {
                 shouldShowBanner: true,
                 shouldShowList: true,
-                shouldPlaySound: true,
+                shouldPlaySound: soundEnabled,
                 shouldSetBadge: true,
             };
         },
@@ -209,12 +227,13 @@ export async function unregisterPushTokenAsync(authToken?: string | null): Promi
             });
         }
 
-        await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
     } catch (error) {
         console.warn(
             "Push token unregistration failed:",
             error instanceof Error ? error.message : error
         );
+    } finally {
+        await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY).catch(() => {});
     }
 }
 
@@ -311,10 +330,12 @@ export async function handleNotificationResponse(
             return;
         }
 
+        if (!claimIncomingCallScreen(callId)) return;
         router.push({
             pathname: "/(main)/incomingCall",
             params: {
                 callId,
+                callerId: String(data.callerId || ""),
                 callerName: String(data.callerName || "Unknown"),
                 callerAvatar: String(data.callerAvatar || ""),
                 kind: String(data.kind || "voice"),
@@ -326,13 +347,16 @@ export async function handleNotificationResponse(
 
     if ((data.type === "message" || data.type === "missed_call") && data.conversationId) {
         const isDirect = (data.conversationType || "direct") === "direct";
+        const senderId = data.senderId || data.callerId;
+        const senderName = data.senderName || data.callerName || data.conversationName || "";
+        const senderAvatar = data.senderAvatar || data.callerAvatar || data.conversationAvatar || "";
         const participants =
-            isDirect && data.senderId
+            isDirect && senderId
                 ? JSON.stringify([
                       {
-                          _id: data.senderId,
-                          name: data.senderName || data.conversationName || "",
-                          avatar: data.senderAvatar || data.conversationAvatar || "",
+                          _id: senderId,
+                          name: senderName,
+                          avatar: senderAvatar,
                       },
                   ])
                 : "[]";
@@ -341,8 +365,8 @@ export async function handleNotificationResponse(
             pathname: "/(main)/conversation",
             params: {
                 id: String(data.conversationId),
-                name: String(data.conversationName || data.senderName || ""),
-                avatar: String(data.conversationAvatar || data.senderAvatar || ""),
+                name: String(data.conversationName || senderName),
+                avatar: String(data.conversationAvatar || senderAvatar),
                 type: String(data.conversationType || "direct"),
                 participants,
             },

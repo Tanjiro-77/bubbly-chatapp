@@ -526,7 +526,7 @@ export const getBlockedUsers = (payload: any, off: boolean = false) => {
     else { socket.emit("getBlockedUsers", payload); }
 };
 
-// ── GROUP ADMIN MANAGEMENT (Feature 10) ──
+// ── GROUP MANAGEMENT & ADMIN (Feature 10) ──
 export const setGroupAdmin = (payload: { conversationId: string; targetUserId: string; promote: boolean }, off: boolean = false) => {
     const socket = getSocket();
     if (!socket) return;
@@ -535,11 +535,80 @@ export const setGroupAdmin = (payload: { conversationId: string; targetUserId: s
     else { socket.emit("setGroupAdmin", payload); }
 };
 
+export const updateGroup = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("updateGroup", payload); }
+    else if (typeof payload === 'function') { socket.on("updateGroup", payload); }
+    else { socket.emit("updateGroup", payload); }
+};
+
+export const addGroupMembers = (payload: { conversationId: string; userIds: string[] } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("addGroupMembers", payload as any); }
+    else if (typeof payload === 'function') { socket.on("addGroupMembers", payload); }
+    else { socket.emit("addGroupMembers", payload); }
+};
+
+export const removeGroupMember = (payload: { conversationId: string; targetUserId: string } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("removeGroupMember", payload as any); }
+    else if (typeof payload === 'function') { socket.on("removeGroupMember", payload); }
+    else { socket.emit("removeGroupMember", payload); }
+};
+
+export const leaveGroup = (payload: { conversationId: string } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("leaveGroup", payload as any); }
+    else if (typeof payload === 'function') { socket.on("leaveGroup", payload); }
+    else { socket.emit("leaveGroup", payload); }
+};
+
+export const regenerateInvite = (payload: { conversationId: string } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("regenerateInvite", payload as any); }
+    else if (typeof payload === 'function') { socket.on("regenerateInvite", payload); }
+    else { socket.emit("regenerateInvite", payload); }
+};
+
+export const joinByInvite = (payload: { inviteCode: string } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("joinByInvite", payload as any); }
+    else if (typeof payload === 'function') { socket.on("joinByInvite", payload); }
+    else { socket.emit("joinByInvite", payload); }
+};
+
 export const onGroupUpdated = (payload: any, off: boolean = false) => {
     const socket = getSocket();
     if (!socket) return;
     if (off) { socket.off("groupUpdated", payload); }
     else { socket.on("groupUpdated", payload); }
+};
+
+export const onAddedToGroup = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("addedToGroup", payload); }
+    else { socket.on("addedToGroup", payload); }
+};
+
+export const onRemovedFromGroup = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("removedFromGroup", payload); }
+    else { socket.on("removedFromGroup", payload); }
+};
+
+export const onScheduledMessageSent = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("scheduledMessageSent", payload); }
+    else { socket.on("scheduledMessageSent", payload); }
 };
 
 // ── CONNECTION STATUS (Feature 18) ──

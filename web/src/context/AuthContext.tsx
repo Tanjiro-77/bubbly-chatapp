@@ -45,6 +45,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, []);
 
+  useEffect(() => {
+    if (!token) return;
+    const handleProfileUpdated = (res: any) => {
+      if (res?.success && res?.data?.token) {
+        try {
+          const decoded = jwtDecode<DecodedTokenProps>(res.data.token);
+          localStorage.setItem("bubbly_token", res.data.token);
+          setToken(res.data.token);
+          setUser(decoded.user);
+        } catch (err) {
+          console.error("Invalid updated profile token:", err);
+        }
+      }
+    };
+    emitUpdateProfile(handleProfileUpdated);
+    return () => {
+      emitUpdateProfile(handleProfileUpdated, true);
+    };
+  }, [token]);
+
   const login = async (email: string, password: string) => {
     const res = await apiLogin(email, password);
     if (res.token) {
@@ -52,7 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(res.token);
       const decoded = jwtDecode<DecodedTokenProps>(res.token);
       setUser(decoded.user);
-      await connectSocket();
+      await connectSocket().catch((err) => console.warn("Socket connection deferred:", err));
     }
   };
 
@@ -63,12 +83,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(res.token);
       const decoded = jwtDecode<DecodedTokenProps>(res.token);
       setUser(decoded.user);
-      await connectSocket();
+      await connectSocket().catch((err) => console.warn("Socket connection deferred:", err));
     }
   };
 
   const logout = () => {
     localStorage.removeItem("bubbly_token");
+    localStorage.removeItem("bubbly_cache_conversations");
+    localStorage.removeItem("bubbly_cache_stories");
+    localStorage.removeItem("bubbly_cache_contacts");
+    localStorage.removeItem("bubbly_locked_chats");
     setToken(null);
     setUser(null);
     disconnectSocket();

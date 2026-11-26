@@ -13,8 +13,8 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     RefreshControl,
-    Alert,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import ScreenWrapper from "../../components/ScreenWrapper";
@@ -25,7 +25,7 @@ import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { useAuth } from "../../contexts/authContext";
 import { getCallHistory } from "../../services/callService";
-import { callInvite, onCallRinging, onCallFailed } from "../../socket/socketEvents";
+import { callInvite, onCallRinging, onCallFailed, isSocketConnected } from "../../socket/socketEvents";
 import moment from "moment";
 
 interface CallParticipant {
@@ -82,6 +82,7 @@ const CallLogsScreen = () => {
         fetchHistory();
 
         const ringingHandler = (data: any) => {
+            if (!redialTargetRef.current) return;
             const target = redialTargetRef.current;
             redialTargetRef.current = null;
             router.push({
@@ -90,16 +91,17 @@ const CallLogsScreen = () => {
                     callId: data.callId,
                     kind: data.kind,
                     conversationId: data.conversationId,
-                    remoteUserName: target?.name || data.remoteUserName || "Contact",
-                    remoteUserAvatar: target?.avatar || data.remoteUserAvatar || "",
+                    remoteUserName: target.name || data.remoteUserName || "Contact",
+                    remoteUserAvatar: target.avatar || data.remoteUserAvatar || "",
                     isOutgoing: "true",
                 },
             });
         };
 
         const failedHandler = (data: any) => {
+            if (!redialTargetRef.current) return;
             redialTargetRef.current = null;
-            Alert.alert("Call Failed", data?.msg || "User is currently busy.");
+            BubblyAlert.alert("Call Failed", data?.msg || "User is currently busy.");
         };
 
         onCallRinging(ringingHandler);
@@ -113,12 +115,16 @@ const CallLogsScreen = () => {
 
     const handleRedial = useCallback((item: CallLogItem) => {
         if (!currentUser) return;
+        if (!isSocketConnected()) {
+            BubblyAlert.alert("Offline", "Connect to the internet to place a call.");
+            return;
+        }
         const isCaller = item.callerId?._id === currentUser.id;
         const target = isCaller ? item.calleeId : item.callerId;
         const convId = typeof item.conversationId === "object" ? item.conversationId?._id : item.conversationId;
 
         if (!target?._id || !convId) {
-            Alert.alert("Unable to redial", "Conversation information is unavailable.");
+            BubblyAlert.alert("Unable to redial", "Conversation information is unavailable.");
             return;
         }
 

@@ -1,4 +1,5 @@
-import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
+import { Linking, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, Platform, Share, ActivityIndicator } from 'react-native';
+import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ScreenWrapper from "../../components/ScreenWrapper";
@@ -58,8 +59,7 @@ const NewConversationModal = () => {
         awaitingCreateRef.current = false;
         setIsLoading(false);
         if (res.success) {
-            router.back();
-            router.push({
+            router.replace({
                 pathname: "/(main)/conversation",
                 params: {
                     id: res.data._id,
@@ -72,7 +72,7 @@ const NewConversationModal = () => {
                 }
             });
         } else {
-            Alert.alert("Error", res.msg);
+            BubblyAlert.alert("Error", res.msg);
         }
     };
 
@@ -95,14 +95,14 @@ const NewConversationModal = () => {
 
     const onSelectUser = (user: any) => {
         if (!currentUser) {
-            Alert.alert("Authentication", "Please login to start a conversation");
+            BubblyAlert.alert("Authentication", "Please login to start a conversation");
             return;
         }
         if (isGroupMode) {
             toggleParticipant(user);
         } else {
             if (!isSocketConnected()) {
-                Alert.alert("Offline", "Connect to the internet to start a chat.");
+                BubblyAlert.alert("Offline", "Connect to the internet to start a chat.");
                 return;
             }
             awaitingCreateRef.current = true;
@@ -117,7 +117,7 @@ const NewConversationModal = () => {
     const createGroup = async () => {
         if (!groupName.trim() || !currentUser || selectedParticipants.length < 2) return;
         if (!isSocketConnected()) {
-            Alert.alert("Offline", "Connect to the internet to create a group.");
+            BubblyAlert.alert("Offline", "Connect to the internet to create a group.");
             return;
         }
         setIsLoading(true);
@@ -137,7 +137,7 @@ const NewConversationModal = () => {
         } catch (error: any) {
             awaitingCreateRef.current = false;
             setIsLoading(false);
-            Alert.alert("Error", error.message);
+            BubblyAlert.alert("Error", error.message);
         }
     };
 
@@ -153,7 +153,7 @@ const NewConversationModal = () => {
                 onSelectUser(res.user);
             }
         } catch (err: any) {
-            Alert.alert("User Not Found", err.message || "No registered user has that phone number.");
+            BubblyAlert.alert("User Not Found", err.message || "No registered user has that phone number.");
         } finally {
             setIsLookingUpPhone(false);
         }
@@ -171,7 +171,7 @@ const NewConversationModal = () => {
 
     const handleSyncPhoneContacts = async () => {
         if (!token) {
-            Alert.alert("Authentication", "Please log in to sync contacts.");
+            BubblyAlert.alert("Authentication", "Please log in to sync contacts.");
             return;
         }
 
@@ -179,7 +179,7 @@ const NewConversationModal = () => {
         try {
             const { status, canAskAgain, contacts: fetchedList } = await fetchDevicePhoneContacts();
             if (status !== 'granted') {
-                Alert.alert(
+                BubblyAlert.alert(
                     "Contact Access Needed",
                     canAskAgain
                         ? "Please allow contact access when prompted to discover which friends are on Bubbly."
@@ -196,7 +196,7 @@ const NewConversationModal = () => {
             setPhoneContacts(fetchedList);
 
             if (fetchedList.length === 0) {
-                Alert.alert("No Contacts Found", "No contacts with valid phone numbers were found on your device.");
+                BubblyAlert.alert("No Contacts Found", "No contacts with valid phone numbers were found on your device.");
                 setIsSyncingPhone(false);
                 return;
             }
@@ -208,19 +208,19 @@ const NewConversationModal = () => {
             setContactsTab('phone');
 
             if (syncResult.matchedContacts.length > 0) {
-                Alert.alert(
+                BubblyAlert.alert(
                     "Contacts Synced 🎉",
                     `Found ${syncResult.matchedContacts.length} ${syncResult.matchedContacts.length === 1 ? 'friend' : 'friends'} from your phone book on Bubbly!`
                 );
             } else {
-                Alert.alert(
+                BubblyAlert.alert(
                     "Contacts Synced",
                     "None of your phone contacts have joined Bubbly yet. You can invite them using the Invite button below!"
                 );
             }
         } catch (err: any) {
             console.error("handleSyncPhoneContacts error:", err);
-            Alert.alert("Sync Error", err.message || "Failed to sync device contacts");
+            BubblyAlert.alert("Sync Error", err.message || "Failed to sync device contacts");
         } finally {
             setIsSyncingPhone(false);
         }

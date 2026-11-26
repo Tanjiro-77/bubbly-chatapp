@@ -12,10 +12,10 @@ import {
     StyleSheet,
     TouchableOpacity,
     ScrollView,
-    Alert,
     Platform,
     Share,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -38,48 +38,50 @@ const ContactProfileScreen = () => {
     const router = useRouter();
     const { user: currentUser } = useAuth();
     const { userId, name, avatar, isDirect, conversationId } = useLocalSearchParams();
+    const userIdStr = Array.isArray(userId) ? userId[0] : (userId as string);
+    const conversationIdStr = Array.isArray(conversationId) ? conversationId[0] : (conversationId as string);
+    const nameStr = Array.isArray(name) ? name[0] : (name as string);
 
     const [isOnline, setIsOnline] = useState(false);
     const [lastSeen, setLastSeen] = useState<string | null>(null);
     const [isLocked, setIsLocked] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
 
-    const displayName = (name as string) || "Contact";
+    const displayName = nameStr || "Contact";
     const isDirectChat = isDirect !== "false";
 
     const lockedStorageKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : "@bubbly_locked_chats";
 
     // ── Check Vault Lock Status ──
     useEffect(() => {
-        if (!conversationId) return;
+        if (!conversationIdStr) return;
         AsyncStorage.getItem(lockedStorageKey)
             .then((stored) => {
                 if (stored) {
                     try {
                         const list = JSON.parse(stored);
-                        if (Array.isArray(list) && list.includes(conversationId as string)) {
+                        if (Array.isArray(list) && list.includes(conversationIdStr)) {
                             setIsLocked(true);
                         }
                     } catch (_) {}
                 }
             })
             .catch(() => {});
-    }, [conversationId, lockedStorageKey]);
+    }, [conversationIdStr, lockedStorageKey]);
 
     // ── Listen for User Online Status ──
     useEffect(() => {
-        const uidStr = Array.isArray(userId) ? userId[0] : userId;
-        if (!uidStr || !isDirectChat) return;
+        if (!userIdStr || !isDirectChat) return;
 
         const liveHandler = (data: { userId: string; isOnline: boolean; lastSeen?: string }) => {
-            if (data.userId === uidStr) {
+            if (data.userId === userIdStr) {
                 setIsOnline(data.isOnline);
                 if (data.lastSeen) setLastSeen(data.lastSeen);
             }
         };
 
         const initialHandler = (res: any) => {
-            if (res?.success && res.data && res.data.userId === uidStr) {
+            if (res?.success && res.data && res.data.userId === userIdStr) {
                 setIsOnline(!!res.data.isOnline);
                 if (res.data.lastSeen) setLastSeen(res.data.lastSeen);
             }
@@ -87,23 +89,28 @@ const ContactProfileScreen = () => {
 
         onUserStatus(liveHandler);
         getUserStatus(initialHandler);
-        getUserStatus({ userId: uidStr });
+        getUserStatus({ userId: userIdStr });
 
         return () => {
             onUserStatus(liveHandler, true);
             getUserStatus(initialHandler, true);
         };
-    }, [userId, isDirectChat]);
+    }, [userIdStr, isDirectChat]);
 
     // ── Call Handlers ──
     const handleStartCall = (kind: "voice" | "video") => {
-        if (!conversationId || !userId || !currentUser) {
-            Alert.alert("Call Unavailable", "Unable to place call at this moment.");
+        if (!conversationIdStr || !userIdStr || !currentUser) {
+            BubblyAlert.alert("Call Unavailable", "Unable to place call at this moment.");
+            return;
+        }
+        const { isSocketConnected } = require("../../socket/socketEvents");
+        if (!isSocketConnected()) {
+            BubblyAlert.alert("Offline", "Connect to the internet to place a call.");
             return;
         }
         callInvite({
-            conversationId: conversationId as string,
-            calleeId: userId as string,
+            conversationId: conversationIdStr,
+            calleeId: userIdStr,
             kind,
         });
         router.back();
@@ -125,23 +132,23 @@ const ContactProfileScreen = () => {
                 list = list.filter((id) => id !== (conversationId as string));
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
                 setIsLocked(false);
-                Alert.alert("Chat Unlocked", "Conversation removed from your Secret Vault.");
+                BubblyAlert.alert("Chat Unlocked", "Conversation removed from your Secret Vault.");
             } else {
                 if (!list.includes(conversationId as string)) {
                     list.push(conversationId as string);
                 }
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
                 setIsLocked(true);
-                Alert.alert("Chat Locked 🔒", "Conversation is now hidden in your Secret Vault.");
+                BubblyAlert.alert("Chat Locked 🔒", "Conversation is now hidden in your Secret Vault.");
             }
         } catch (_) {
-            Alert.alert("Error", "Could not update vault lock.");
+            BubblyAlert.alert("Error", "Could not update vault lock.");
         }
     };
 
     // ── Mute Toggle ──
     const handleMuteOptions = () => {
-        Alert.alert(
+        BubblyAlert.alert(
             "Mute Notifications",
             "Choose duration to mute notifications:",
             [
@@ -386,7 +393,7 @@ const ContactProfileScreen = () => {
                         <TouchableOpacity
                             style={styles.dangerRow}
                             onPress={() => {
-                                Alert.alert(
+                                BubblyAlert.alert(
                                     "Clear Chat",
                                     "Are you sure you want to clear message history from this conversation?",
                                     [
@@ -395,12 +402,12 @@ const ContactProfileScreen = () => {
                                             text: "Clear & Hide",
                                             style: "destructive",
                                             onPress: async () => {
-                                                const cid = Array.isArray(conversationId) ? conversationId[0] : conversationId;
-                                                if (cid) {
-                                                    deleteConversation({ conversationId: cid });
-                                                    await AsyncStorage.removeItem(`@bubbly_draft_${cid}`).catch(() => {});
-                                                    await AsyncStorage.removeItem(`@bubbly_outbox_${cid}`).catch(() => {});
+                                                if (conversationIdStr) {
+                                                    deleteConversation({ conversationId: conversationIdStr });
+                                                    await AsyncStorage.removeItem(`@bubbly_draft_${conversationIdStr}`).catch(() => {});
+                                                    await AsyncStorage.removeItem(`@bubbly_outbox_${conversationIdStr}`).catch(() => {});
                                                 }
+                                                if (router.canDismiss?.()) router.dismissAll();
                                                 router.replace("/(main)/home");
                                             },
                                         },

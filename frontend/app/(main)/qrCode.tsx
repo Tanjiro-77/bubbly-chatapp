@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
     View,
     StyleSheet,
@@ -7,9 +7,9 @@ import {
     TextInput,
     Dimensions,
     Platform,
-    Alert,
     ScrollView,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import Svg, { Rect, Path, G } from "react-native-svg";
@@ -162,23 +162,39 @@ export default function QRCodeScreen() {
         } catch (_) {}
     };
 
+    const pendingNewConvRef = useRef<((res: any) => void) | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (pendingNewConvRef.current) {
+                newConversation(pendingNewConvRef.current, true);
+                pendingNewConvRef.current = null;
+            }
+        };
+    }, []);
+
     const handleConnectManual = () => {
         const raw = manualIdInput.trim();
         if (!raw) {
-            Alert.alert("Input Required", "Please enter a valid Bubbly user ID or paste an invite link.");
+            BubblyAlert.alert("Input Required", "Please enter a valid Bubbly user ID or paste an invite link.");
             return;
         }
         // Extract target userId if pasted an invite URL like https://bubbly.app/u/<userId>
         const urlMatch = raw.match(/\/u\/([a-fA-F0-9]{24})/);
         const targetId = urlMatch ? urlMatch[1] : raw;
 
-        if (/^[a-fA-F0-9]{24}$/.test(targetId) && currentUser?.id && isSocketConnected()) {
+        if (/^[a-fA-F0-9]{24}$/.test(targetId) && currentUser?.id) {
+            if (!isSocketConnected()) {
+                BubblyAlert.alert("Offline", "Connect to the internet to start a chat via QR ID.");
+                return;
+            }
             if (targetId === currentUser.id) {
-                Alert.alert("That's You", "You cannot start a chat with your own QR ID.");
+                BubblyAlert.alert("That's You", "You cannot start a chat with your own QR ID.");
                 return;
             }
             const onRes = (res: any) => {
                 newConversation(onRes, true);
+                pendingNewConvRef.current = null;
                 if (res?.success && res.data?._id) {
                     router.replace({
                         pathname: "/(main)/conversation",
@@ -191,9 +207,13 @@ export default function QRCodeScreen() {
                         },
                     });
                 } else {
-                    Alert.alert("User Not Found", res?.msg || "Could not connect with that ID.");
+                    BubblyAlert.alert("User Not Found", res?.msg || "Could not connect with that ID.");
                 }
             };
+            if (pendingNewConvRef.current) {
+                newConversation(pendingNewConvRef.current, true);
+            }
+            pendingNewConvRef.current = onRes;
             newConversation(onRes);
             newConversation({ type: "direct", participants: [currentUser.id, targetId] });
             return;

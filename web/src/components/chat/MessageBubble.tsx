@@ -24,6 +24,7 @@ import { VoicePlayer } from "./VoicePlayer";
 import { PollComponent } from "./PollComponent";
 import { translateMessage } from "../../services/chatService";
 import { formatFileSize } from "../../services/mediaService";
+import { bubblyAlert } from "../common/BubblyDialog";
 
 interface MessageBubbleProps {
   message: MessageProps;
@@ -82,10 +83,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       if (res.success && res.data?.translatedText) {
         setTranslatedText(res.data.translatedText);
       } else {
-        alert(res.msg || "Could not translate");
+        bubblyAlert("Translation Unavailable", res.msg || "Could not translate this message.", {
+          variant: "amber",
+        });
       }
     } catch {
-      alert("Translation failed");
+      bubblyAlert("Translation Failed", "Could not translate this message right now.", {
+        variant: "danger",
+      });
     } finally {
       setIsTranslating(false);
     }
@@ -99,10 +104,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     if (!searchQuery || !searchQuery.trim()) {
       return content;
     }
-    const regex = new RegExp(`(${searchQuery})`, "gi");
+    const trimmed = searchQuery.trim();
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escaped})`, "gi");
     const parts = content.split(regex);
     return parts.map((part, i) =>
-      part.toLowerCase() === searchQuery.toLowerCase() ? (
+      part.toLowerCase() === trimmed.toLowerCase() ? (
         <mark key={i} className="bg-amber-300 dark:bg-amber-500/80 text-black px-0.5 rounded">
           {part}
         </mark>

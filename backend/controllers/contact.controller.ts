@@ -114,7 +114,7 @@ export const syncContacts = async (req: AuthRequest, res: Response): Promise<voi
  */
 export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { phoneNumber } = req.body;
+        const { phoneNumber } = req.body ?? {};
 
         if (typeof phoneNumber !== "string") {
             res.status(400).json({ success: false, msg: "Please provide a valid phone number" });
@@ -127,10 +127,16 @@ export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promis
             return;
         }
 
-        // Check if phone number is already taken by another user
+        const l10 = getLast10Digits(cleaned);
+        const phoneConditions: any[] = [{ phoneNumber: { $eq: cleaned } }];
+        if (l10.length >= 10) {
+            phoneConditions.push({ phoneNumber: { $regex: `${l10}$` } });
+        }
+
+        // Check if phone number (or last-10-digits match) is already taken by another user
         const existing = await User.findOne({
             _id: { $ne: req.userId },
-            phoneNumber: { $eq: cleaned },
+            $or: phoneConditions,
         });
 
         if (existing) {
@@ -170,7 +176,7 @@ export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promis
  */
 export const findUserByPhone = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { phoneNumber } = req.body;
+        const { phoneNumber } = req.body ?? {};
         if (typeof phoneNumber !== "string" || !phoneNumber.trim()) {
             res.status(400).json({ success: false, msg: "Phone number is required" });
             return;

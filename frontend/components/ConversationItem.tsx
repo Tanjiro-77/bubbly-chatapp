@@ -302,11 +302,14 @@ export default React.memo(ConversationItem, (prev, next) => {
         prev.item.avatar === next.item.avatar &&
         prev.item.unreadCount === next.item.unreadCount &&
         prev.item.isMuted === next.item.isMuted &&
+        (prev.item as any).isPinned === (next.item as any).isPinned &&
         prev.item.pinnedMessages?.length === next.item.pinnedMessages?.length &&
         prev.item.lastMessage?.content === next.item.lastMessage?.content &&
         prev.item.lastMessage?.createdAt === next.item.lastMessage?.createdAt &&
         prev.item.lastMessage?.voiceUrl === next.item.lastMessage?.voiceUrl &&
         prev.item.lastMessage?.attachement === next.item.lastMessage?.attachement &&
+        prev.item.lastMessage?.isDeleted === next.item.lastMessage?.isDeleted &&
+        prev.item.lastMessage?.type === next.item.lastMessage?.type &&
         prev.item.participants?.length === next.item.participants?.length &&
         prev.showDivider === next.showDivider &&
         prev.searchQuery === next.searchQuery &&

@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Upload, Sparkles, Image as ImageIcon, Type } from "lucide-react";
 import { uploadMediaToCloudinary } from "../../services/mediaService";
+import { bubblyAlert } from "../common/BubblyDialog";
 
 interface CreateStoryModalProps {
   onClose: () => void;
@@ -28,12 +29,31 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onS
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState(false);
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+    };
+  }, []);
 
   const handleMediaPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+      const nextUrl = URL.createObjectURL(file);
+      previewUrlRef.current = nextUrl;
       setMediaFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
+      setPreviewUrl(nextUrl);
     }
   };
 
@@ -60,10 +80,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onS
           });
           onClose();
         } else {
-          alert("Media upload failed");
+          bubblyAlert("Upload Failed", "Story media upload failed.", { variant: "danger" });
         }
       } catch {
-        alert("Story creation failed");
+        bubblyAlert("Story Creation Failed", "Could not publish your story right now.", { variant: "danger" });
       } finally {
         setUploading(false);
       }
@@ -163,6 +183,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onS
                   )}
                   <button
                     onClick={() => {
+                      if (previewUrlRef.current) {
+                        URL.revokeObjectURL(previewUrlRef.current);
+                        previewUrlRef.current = null;
+                      }
                       setMediaFile(null);
                       setPreviewUrl(null);
                     }}

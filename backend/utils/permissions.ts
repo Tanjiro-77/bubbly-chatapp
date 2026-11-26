@@ -9,12 +9,17 @@ export async function getMembership(conversationId: string, userId: string) {
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) return { conversation: null, isMember: false, isAdmin: false };
     const isMember = conversation.participants.some((p) => p.toString() === userId.toString());
-    const isAdmin = conversation.admins?.some((p) => p.toString() === userId.toString())
-        || conversation.createdBy?.toString() === userId.toString();
+    const isAdmin = isMember && (
+        conversation.admins?.some((p) => p.toString() === userId.toString())
+        || conversation.createdBy?.toString() === userId.toString()
+    );
     return { conversation, isMember, isAdmin };
 }
 
 export function isGroupAdmin(conversation: any, userId: string) {
+    if (Array.isArray(conversation.participants) && !conversation.participants.some((p: Types.ObjectId) => p.toString() === userId.toString())) {
+        return false;
+    }
     return conversation.admins?.some((p: Types.ObjectId) => p.toString() === userId.toString())
         || conversation.createdBy?.toString() === userId.toString();
 }

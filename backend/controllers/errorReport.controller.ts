@@ -39,9 +39,9 @@ export async function submitErrorReport(req: AuthRequest, res: Response): Promis
             deviceInfo,
             stackTrace,
             breadcrumbs,
-        } = req.body;
+        } = req.body ?? {};
 
-        if (!title || !description) {
+        if (typeof title !== "string" || !title.trim() || typeof description !== "string" || !description.trim()) {
             res.status(400).json({
                 success: false,
                 msg: "Title and description are required.",
@@ -100,11 +100,12 @@ export async function getErrorReports(req: AuthRequest, res: Response): Promise<
         const { status, type, limit = 50, page = 1 } = req.query;
 
         const filter: Record<string, any> = {};
-        if (status) filter.status = status;
-        if (type) filter.type = type;
+        if (typeof status === "string" && status.trim()) filter.status = status.trim();
+        if (typeof type === "string" && type.trim()) filter.type = type.trim();
 
-        const limitNum = Math.min(Number(limit) || 50, 100);
-        const skip = ((Number(page) || 1) - 1) * limitNum;
+        const limitNum = Math.max(1, Math.min(Number(limit) || 50, 100));
+        const pageNum = Math.max(1, Number(page) || 1);
+        const skip = (pageNum - 1) * limitNum;
 
         const [reports, total] = await Promise.all([
             AppErrorReport.find(filter)
@@ -120,7 +121,7 @@ export async function getErrorReports(req: AuthRequest, res: Response): Promise<
             success: true,
             reports,
             total,
-            page: Number(page) || 1,
+            page: pageNum,
             totalPages: Math.ceil(total / limitNum),
         });
     } catch (error: any) {

@@ -93,9 +93,22 @@ const IncomingPulsingRings = ({ size, color }: { size: number; color: string }) 
 
 const IncomingCall = () => {
     const router = useRouter();
-    const { callId, callerName, callerAvatar, kind, conversationId } = useLocalSearchParams();
+    const { callId, callerId, callerName, callerAvatar, kind, conversationId } = useLocalSearchParams();
+    const callIdStr = Array.isArray(callId) ? callId[0] : (callId as string);
+    const callerIdStr = Array.isArray(callerId) ? callerId[0] : (callerId as string);
+    const callerNameStr = Array.isArray(callerName) ? callerName[0] : (callerName as string);
+    const callerAvatarStr = Array.isArray(callerAvatar) ? callerAvatar[0] : (callerAvatar as string);
+    const kindStr = Array.isArray(kind) ? kind[0] : (kind as string);
+    const conversationIdStr = Array.isArray(conversationId) ? conversationId[0] : (conversationId as string);
     const vibrationRef = useRef<boolean>(true);
-    const isVideo = kind === 'video';
+    const hasEndedRef = useRef<boolean>(false);
+    const isAcceptingRef = useRef<boolean>(false);
+    const isVideo = kindStr === 'video';
+
+    const safeBack = () => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(main)/home");
+    };
 
     // ── Pulse animation for accept button ──
     const pulse = useSharedValue(1);
@@ -124,13 +137,14 @@ const IncomingCall = () => {
         onCallEnded(handleCallEndedByOther);
 
         // Verify call is still ringing (guards against stale notification cold-starts)
-        if (callId) {
-            getCallStatus(callId as string).then((res) => {
+        if (callIdStr) {
+            getCallStatus(callIdStr).then((res) => {
                 const status = res?.data?.status;
                 if (status && !['ringing', 'connecting'].includes(status)) {
+                    hasEndedRef.current = true;
                     vibrationRef.current = false;
                     Vibration.cancel();
-                    router.back();
+                    safeBack();
                 }
             }).catch(() => {});
         }
@@ -144,10 +158,11 @@ const IncomingCall = () => {
     }, []);
 
     const handleCallEndedByOther = (data: { callId: string; reason: string }) => {
-        if (data.callId !== callId) return;
+        if (data.callId !== callIdStr) return;
+        hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        router.back();
+        safeBack();
     };
 
     const pulseStyle = useAnimatedStyle(() => ({
@@ -160,55 +175,71 @@ const IncomingCall = () => {
     }));
 
     const handleAccept = async () => {
+        if (isAcceptingRef.current || hasEndedRef.current) return;
+        isAcceptingRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        callAccept(callId as string);
         try {
-            const res = await acceptCallHttp(callId as string);
-            if (res && res.success === false) {
-                if (router.canGoBack()) router.back();
+            const res = await acceptCallHttp(callIdStr);
+            if (hasEndedRef.current || (res && res.success === false)) {
+                safeBack();
                 return;
             }
-        } catch {}
+        } catch {
+            if (hasEndedRef.current) {
+                safeBack();
+                return;
+            }
+            callAccept(callIdStr);
+        }
+        if (hasEndedRef.current) {
+            safeBack();
+            return;
+        }
         router.replace({
             pathname: '/(main)/callScreen',
             params: {
-                callId,
-                kind,
-                conversationId,
-                remoteUserName: callerName,
-                remoteUserAvatar: callerAvatar,
+                callId: callIdStr,
+                kind: kindStr,
+                conversationId: conversationIdStr,
+                remoteUserName: callerNameStr,
+                remoteUserAvatar: callerAvatarStr || '',
                 isOutgoing: 'false',
             },
         });
     };
 
     const handleReject = () => {
+        hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        callReject(callId as string);
-        rejectCallHttp(callId as string).catch(() => {});
-        if (router.canGoBack()) router.back();
+        callReject(callIdStr);
+        rejectCallHttp(callIdStr).catch(() => {});
+        safeBack();
     };
 
     const handleDeclineWithMessage = () => {
+        hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        callReject(callId as string);
-        rejectCallHttp(callId as string).catch(() => {});
-        if (conversationId) {
+        callReject(callIdStr);
+        rejectCallHttp(callIdStr).catch(() => {});
+        if (conversationIdStr) {
+            const participants = callerIdStr
+                ? JSON.stringify([{ _id: callerIdStr, name: callerNameStr || 'Unknown', avatar: callerAvatarStr || '' }])
+                : JSON.stringify([]);
             router.replace({
                 pathname: '/(main)/conversation',
                 params: {
-                    id: conversationId as string,
-                    name: callerName as string,
-                    avatar: (callerAvatar as string) || '',
+                    id: conversationIdStr,
+                    name: callerNameStr || '',
+                    avatar: callerAvatarStr || '',
                     type: 'direct',
-                    participants: JSON.stringify([]),
+                    participants,
                 },
             });
-        } else if (router.canGoBack()) {
-            router.back();
+        } else {
+            safeBack();
         }
     };
 

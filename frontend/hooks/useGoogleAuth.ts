@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Alert, Platform } from "react-native";
+import { BubblyAlert } from "../components/BubblyAlert";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import { useAuth } from "../contexts/authContext";
@@ -37,7 +38,7 @@ export const useGoogleAuth = () => {
             handleAuthSuccess(idToken, accessToken);
         } else if (response?.type === "error") {
             setIsLoading(false);
-            Alert.alert("Google Sign-In Error", response.error?.message || "Could not sign in with Google.");
+            BubblyAlert.alert("Google Sign-In Error", response.error?.message || "Could not sign in with Google.");
         } else if (response) {
             setIsLoading(false);
         }
@@ -55,7 +56,7 @@ export const useGoogleAuth = () => {
             }
         } catch (error: any) {
             console.error("handleAuthSuccess error:", error);
-            Alert.alert("Google Login Failed", error.message || "Failed to authenticate with Google.");
+            BubblyAlert.alert("Google Login Failed", error.message || "Failed to authenticate with Google.");
         } finally {
             setIsLoading(false);
         }
@@ -63,8 +64,15 @@ export const useGoogleAuth = () => {
 
     const triggerGoogleSignIn = async () => {
         // If Google Client ID is not configured for the active platform,
-        // provide a clean dev fallback instead of sending an invalid clientId
+        // provide a clean dev fallback in __DEV__ instead of sending an invalid clientId
         if (!hasClientForPlatform) {
+            if (!__DEV__) {
+                BubblyAlert.alert(
+                    "Google Sign-In Unavailable",
+                    "Google Sign-In is not configured for this build. Please use email or phone login."
+                );
+                return;
+            }
             Alert.prompt
                 ? Alert.prompt(
                     "Sign in with Google",
@@ -83,7 +91,7 @@ export const useGoogleAuth = () => {
                                     googleId: `google_${Date.now()}`,
                                 });
                             } catch (e: any) {
-                                Alert.alert("Login Failed", e.message || "Could not complete Google login");
+                                BubblyAlert.alert("Login Failed", e.message || "Could not complete Google login");
                             } finally {
                                 setIsLoading(false);
                             }
@@ -95,7 +103,7 @@ export const useGoogleAuth = () => {
                 )
                 : (async () => {
                     // Fallback for platforms where Alert.prompt is unavailable
-                    Alert.alert(
+                    BubblyAlert.alert(
                         "Google Sign-In",
                         "Google OAuth requires a Google Client ID from Google Cloud Console. To proceed in dev mode, tap Continue.",
                         [
@@ -113,7 +121,7 @@ export const useGoogleAuth = () => {
                                             googleId: `google_${Date.now()}`,
                                         });
                                     } catch (e: any) {
-                                        Alert.alert("Login Failed", e.message || "Could not complete Google login");
+                                        BubblyAlert.alert("Login Failed", e.message || "Could not complete Google login");
                                     } finally {
                                         setIsLoading(false);
                                     }
@@ -122,6 +130,11 @@ export const useGoogleAuth = () => {
                         ]
                     );
                 })();
+            return;
+        }
+
+        if (!request) {
+            BubblyAlert.alert("Google Sign-In", "Google Sign-In is still initializing. Please try again in a moment.");
             return;
         }
 
@@ -134,7 +147,7 @@ export const useGoogleAuth = () => {
         } catch (error: any) {
             console.error("promptAsync error:", error);
             setIsLoading(false);
-            Alert.alert("Sign-In Error", error.message || "Could not open Google Sign-In sheet.");
+            BubblyAlert.alert("Sign-In Error", error.message || "Could not open Google Sign-In sheet.");
         }
     };
 

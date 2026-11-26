@@ -1,7 +1,8 @@
 import {
     Platform, ScrollView, StyleSheet,
-    TouchableOpacity, View, Pressable, Alert,
+    TouchableOpacity, View, Pressable,
 } from 'react-native';
+import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState } from 'react';
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
@@ -37,13 +38,13 @@ const ProfileModal = () => {
         return () => { updateProfile(processUpdateProfile, true); };
     }, []);
 
-    const processUpdateProfile = (res: any) => {
+    const processUpdateProfile = async (res: any) => {
         setLoading(false);
         if (res.success) {
-            updateToken(res.data.token);
+            await updateToken(res.data.token);
             router.back();
         } else {
-            Alert.alert('Profile Update', res.msg || 'Failed to update profile');
+            BubblyAlert.alert('Profile Update', res.msg || 'Failed to update profile');
         }
     };
 
@@ -68,12 +69,11 @@ const ProfileModal = () => {
     };
 
     const handleLogout = async () => {
-        router.back();
         await signOut();
     };
 
     const showLogoutAlert = () => {
-        Alert.alert("Sign Out", "Are you sure you want to sign out of Bubbly?", [
+        BubblyAlert.alert("Sign Out", "Are you sure you want to sign out of Bubbly?", [
             { text: "Cancel", style: 'cancel' },
             { text: "Sign Out", onPress: handleLogout, style: 'destructive' }
         ]);
@@ -82,11 +82,11 @@ const ProfileModal = () => {
     const onSubmit = async () => {
         let { name, avatar } = userData;
         if (!name.trim()) {
-            Alert.alert('Profile', "Please enter your name");
+            BubblyAlert.alert('Profile', "Please enter your name");
             return;
         }
         if (!isSocketConnected()) {
-            Alert.alert("Connection Lost", "Please wait until you are connected to update your profile.");
+            BubblyAlert.alert("Connection Lost", "Please wait until you are connected to update your profile.");
             return;
         }
         setLoading(true);
@@ -96,7 +96,7 @@ const ProfileModal = () => {
             if (res.success) {
                 data.avatar = res.data;
             } else {
-                Alert.alert("Upload Failed", res.msg || "Could not upload profile picture");
+                BubblyAlert.alert("Upload Failed", res.msg || "Could not upload profile picture");
                 setLoading(false);
                 return;
             }
@@ -107,7 +107,7 @@ const ProfileModal = () => {
                 await updateUserPhone(phoneNumber.trim());
             } catch (err: any) {
                 setLoading(false);
-                Alert.alert("Phone Number Error", err.message || "Could not update phone number");
+                BubblyAlert.alert("Phone Number Error", err.message || "Could not update phone number");
                 return;
             }
         }

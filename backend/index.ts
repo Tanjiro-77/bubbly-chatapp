@@ -58,9 +58,10 @@ app.get("/health", (req, res) => {
 // Express global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error("Unhandled request error:", err?.message || err);
-    res.status(err.status || 500).json({
+    const status = typeof err?.status === "number" ? err.status : 500;
+    res.status(status).json({
         success: false,
-        msg: err.message || "Internal server error",
+        msg: err?.message || "Internal server error",
     });
 });
 
@@ -68,16 +69,16 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const server = http.createServer(app);
 
-intializeSocket(server);
-
 connectDB().then(() => {
     console.log("Database Connected");
+    intializeSocket(server);
     startScheduledMessageWorker();
     server.listen(PORT, "0.0.0.0", () => {
         console.log("Server is running on port ", PORT);
     });
 }).catch((error) => {
     console.error("Failed to start server due to database connection error:", error);
+    process.exit(1);
 });
 
 // Graceful shutdown

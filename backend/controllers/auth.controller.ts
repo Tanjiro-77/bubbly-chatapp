@@ -7,8 +7,8 @@ import { normalizePhone, getLast10Digits } from "./contact.controller";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
-    const { email, password, name, avatar, phoneNumber } = req.body;
     try {
+        const { email, password, name, avatar, phoneNumber } = req.body ?? {};
         if (typeof password !== "string" || typeof name !== "string") {
             res.status(400).json({ success: false, msg: "Invalid input fields" });
             return;
@@ -108,14 +108,13 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 };
 
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
-    const { email, phoneNumber, password } = req.body;
-
-    if (typeof password !== "string" || (!password)) {
-        res.status(400).json({ success: false, msg: "Invalid Credentials" });
-        return;
-    }
-
     try {
+        const { email, phoneNumber, password } = req.body ?? {};
+
+        if (typeof password !== "string" || (!password)) {
+            res.status(400).json({ success: false, msg: "Invalid Credentials" });
+            return;
+        }
         let user = null;
         if (typeof phoneNumber === "string" && phoneNumber.trim()) {
             const cleaned = normalizePhone(phoneNumber);
@@ -179,13 +178,22 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
 export const googleAuth = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { idToken, accessToken, email: bodyEmail, name: bodyName, avatar: bodyAvatar, googleId: bodyGoogleId } = req.body;
+        const { idToken, accessToken, email: bodyEmail, name: bodyName, avatar: bodyAvatar, googleId: bodyGoogleId } = req.body ?? {};
 
         let email: string | undefined;
         let name: string | undefined;
         let avatar: string | undefined;
         let googleId: string | undefined;
         let verifiedByGoogle = false;
+
+        const allowedAudiences = [
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_ANDROID_CLIENT_ID,
+            process.env.GOOGLE_IOS_CLIENT_ID,
+        ]
+            .filter(Boolean)
+            .flatMap((val) => String(val).split(",").map((s) => s.trim()))
+            .filter(Boolean);
 
         // 1. Verify Google ID Token if supplied
         if (typeof idToken === "string" && idToken.trim()) {
@@ -195,15 +203,11 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
                 return;
             }
             const gData: any = await gRes.json();
-            const allowedAudiences = [
-                process.env.GOOGLE_CLIENT_ID,
-                process.env.GOOGLE_ANDROID_CLIENT_ID,
-                process.env.GOOGLE_IOS_CLIENT_ID,
-            ]
-                .filter(Boolean)
-                .flatMap((val) => String(val).split(",").map((s) => s.trim()))
-                .filter(Boolean);
-            if (allowedAudiences.length > 0 && gData.aud && !allowedAudiences.includes(gData.aud)) {
+            if (gData.email_verified !== true && gData.email_verified !== "true") {
+                res.status(401).json({ success: false, msg: "Google email is not verified" });
+                return;
+            }
+            if (allowedAudiences.length > 0 && (!gData.aud || !allowedAudiences.includes(gData.aud))) {
                 res.status(401).json({ success: false, msg: "Google token audience mismatch" });
                 return;
             }
@@ -215,14 +219,32 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
         }
         // 2. Otherwise verify Google OAuth Access Token if supplied
         else if (typeof accessToken === "string" && accessToken.trim()) {
+            const trimmedAccess = accessToken.trim();
+            if (allowedAudiences.length > 0) {
+                const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(trimmedAccess)}`);
+                if (!infoRes.ok) {
+                    res.status(401).json({ success: false, msg: "Invalid or expired Google access token" });
+                    return;
+                }
+                const infoData: any = await infoRes.json();
+                const aud = infoData.aud || infoData.azp;
+                if (!aud || !allowedAudiences.includes(aud)) {
+                    res.status(401).json({ success: false, msg: "Google access token audience mismatch" });
+                    return;
+                }
+            }
             const uRes = await fetch("https://www.googleapis.com/userinfo/v2/me", {
-                headers: { Authorization: `Bearer ${accessToken.trim()}` },
+                headers: { Authorization: `Bearer ${trimmedAccess}` },
             });
             if (!uRes.ok) {
                 res.status(401).json({ success: false, msg: "Invalid or expired Google access token" });
                 return;
             }
             const uData: any = await uRes.json();
+            if (uData.verified_email !== true && uData.verified_email !== "true") {
+                res.status(401).json({ success: false, msg: "Google email is not verified" });
+                return;
+            }
             email = uData.email;
             name = uData.name;
             avatar = uData.picture;
@@ -230,9 +252,11 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
             verifiedByGoogle = true;
         }
 
-        // 3. Only permit raw body fallback in explicit non-production dev mode when Google OAuth is unconfigured
+        // 3. Only permit raw body fallback when explicitly opted in during development
         if (!verifiedByGoogle) {
-            const allowDevFallback = process.env.NODE_ENV !== "production" && !process.env.GOOGLE_CLIENT_ID;
+            const allowDevFallback =
+                process.env.ALLOW_DEV_GOOGLE_AUTH === "true" &&
+                process.env.NODE_ENV === "development";
             if (!allowDevFallback) {
                 res.status(401).json({ success: false, msg: "Verified Google token is required" });
                 return;
@@ -251,7 +275,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
         const normalizedEmail = email.trim().toLowerCase();
         const trimmedName = typeof name === "string" && name.trim() ? name.trim().slice(0, 70) : "Google User";
         const safeAvatar = typeof avatar === "string" ? avatar.slice(0, 500) : "";
-        const cleanGoogleId = typeof googleId === "string" ? googleId.trim() : undefined;
+        const cleanGoogleId = typeof googleId === "string" && googleId.trim() ? googleId.trim() : undefined;
 
         // Check if user exists by googleId or email
         let user = await User.findOne({

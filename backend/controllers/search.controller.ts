@@ -58,10 +58,14 @@ export async function searchAll(req: AuthRequest, res: Response) {
             }).select("name avatar type participants").limit(12).lean();
         }
 
+        const now = new Date();
+        const notExpired = { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] };
+
         if (!type || type === "all" || type === "messages") {
             const messageQuery: any = {
                 conversationId: { $in: convIds },
                 isDeleted: { $ne: true },
+                ...notExpired,
                 ...createdFilter,
             };
             if (rx) messageQuery.content = rx;
@@ -77,7 +81,9 @@ export async function searchAll(req: AuthRequest, res: Response) {
             result.media = await Message.find({
                 conversationId: { $in: convIds },
                 isDeleted: { $ne: true },
+                isViewOnce: { $ne: true },
                 type: { $in: ["image", "video"] },
+                ...notExpired,
                 ...createdFilter,
             }).sort({ createdAt: -1 }).limit(24).lean();
         }
@@ -86,7 +92,9 @@ export async function searchAll(req: AuthRequest, res: Response) {
             const fileQuery: any = {
                 conversationId: { $in: convIds },
                 isDeleted: { $ne: true },
+                isViewOnce: { $ne: true },
                 type: "file",
+                ...notExpired,
                 ...createdFilter,
             };
             if (rx) fileQuery["attachmentMeta.name"] = rx;
@@ -94,13 +102,19 @@ export async function searchAll(req: AuthRequest, res: Response) {
         }
 
         if (!type || type === "all" || type === "links") {
-            const linkRx = q ? rx : /(https?:\/\/[^\s]+)/i;
-            result.links = await Message.find({
+            const urlPattern = /(https?:\/\/[^\s]+)/i;
+            const linkQuery: any = {
                 conversationId: { $in: convIds },
                 isDeleted: { $ne: true },
-                content: linkRx,
+                isViewOnce: { $ne: true },
                 ...createdFilter,
-            }).sort({ createdAt: -1 }).limit(20).lean();
+            };
+            if (rx) {
+                linkQuery.$and = [notExpired, { content: urlPattern }, { content: rx }];
+            } else {
+                linkQuery.$and = [notExpired, { content: urlPattern }];
+            }
+            result.links = await Message.find(linkQuery).sort({ createdAt: -1 }).limit(20).lean();
         }
 
         res.json({ success: true, data: result });
@@ -112,9 +126,13 @@ export async function searchAll(req: AuthRequest, res: Response) {
 
 export async function translateText(req: AuthRequest, res: Response) {
     try {
-        const { text, targetLang } = req.body as { text?: string; targetLang?: string };
+        const { text, targetLang, sourceLang } = (req.body ?? {}) as {
+            text?: string;
+            targetLang?: string;
+            sourceLang?: string;
+        };
         const safeTargetLang = typeof targetLang === "string" ? targetLang.trim() : "";
-        const safeText = typeof text === "string" ? text.trim().slice(0, 1000) : "";
+        const safeText = typeof text === "string" ? text.trim().slice(0, 500) : "";
 
         if (!safeText || !safeTargetLang) {
             res.status(400).json({ success: false, msg: "text and targetLang are required" });
@@ -127,15 +145,27 @@ export async function translateText(req: AuthRequest, res: Response) {
             return;
         }
 
-        const hash = crypto.createHash("sha256").update(`${safeText}::${safeTargetLang}`).digest("hex");
+        const cleanSourceLang =
+            typeof sourceLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z0-9]{2,5})?$/.test(sourceLang.trim())
+                ? sourceLang.trim()
+                : safeTargetLang.toLowerCase() === "en"
+                ? "es"
+                : "en";
+
+        if (cleanSourceLang.toLowerCase() === safeTargetLang.toLowerCase()) {
+            res.json({ success: true, data: { translatedText: safeText, cached: false } });
+            return;
+        }
+
+        const hash = crypto.createHash("sha256").update(`${safeText}::${cleanSourceLang}::${safeTargetLang}`).digest("hex");
         const cached = await TranslationCache.findOne({ sourceHash: hash, targetLang: { $eq: safeTargetLang } }).lean();
         if (cached) {
             res.json({ success: true, data: { translatedText: cached.translatedText, cached: true } });
             return;
         }
 
-        const langPair = `en|${encodeURIComponent(safeTargetLang)}`;
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(safeText.slice(0, 500))}&langpair=${langPair}`;
+        const langPair = `${encodeURIComponent(cleanSourceLang)}|${encodeURIComponent(safeTargetLang)}`;
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(safeText)}&langpair=${langPair}`;
         
         // Use timeout to prevent hanging on external API
         const controller = new AbortController();
@@ -156,12 +186,18 @@ export async function translateText(req: AuthRequest, res: Response) {
         const translatedText = json?.responseData?.translatedText;
         if (!translatedText || typeof translatedText !== "string") throw new Error("Could not translate");
 
-        await TranslationCache.create({
-            sourceHash: hash,
-            targetLang: safeTargetLang,
-            sourceText: safeText.slice(0, 500),
-            translatedText,
-        });
+        await TranslationCache.findOneAndUpdate(
+            { sourceHash: hash, targetLang: safeTargetLang },
+            {
+                $setOnInsert: {
+                    sourceHash: hash,
+                    targetLang: safeTargetLang,
+                    sourceText: safeText,
+                    translatedText,
+                },
+            },
+            { upsert: true, new: true }
+        );
 
         res.json({ success: true, data: { translatedText, cached: false } });
     } catch (error: any) {

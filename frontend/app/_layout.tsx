@@ -10,7 +10,9 @@ import { IncomingCallProps } from '../types';
 import { isOnboardingCompleted } from '../hooks/useOnboarding';
 import { initSentry, setupGlobalErrorHandlers, setSentryUser } from '../services/errorReporter';
 import AppErrorBoundary from '../components/ErrorBoundary';
+import { BubblyAlertHost } from '../components/BubblyAlert';
 import {
+    claimIncomingCallScreen,
     configureNotificationHandler,
     handleNotificationResponse,
 } from '../services/notificationService';
@@ -37,10 +39,11 @@ const NavigationGuard = () => {
      */
     const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
-    // Check onboarding completion once on mount
+    // Check onboarding completion on mount and whenever route/user changes while incomplete
     useEffect(() => {
+        if (onboardingDone === true) return;
         isOnboardingCompleted().then(setOnboardingDone);
-    }, []);
+    }, [onboardingDone, segments[0], user]);
 
     // Sync authenticated user context with Sentry
     useEffect(() => {
@@ -62,23 +65,24 @@ const NavigationGuard = () => {
         }
 
         const inLegal = segments[0] === "(legal)";
+        const inOnboarding = segments[0] === "onboarding";
 
         // Onboarding is done. Now check auth state.
         if (user) {
             // Authenticated — go to main app
-            // Only navigate if not already in (main) or (legal) to avoid loops
+            // Only navigate if not already in (main), (legal), or explicit onboarding replay
             const inMain = segments[0] === "(main)";
-            if (!inMain && !inLegal) {
+            if (!inMain && !inLegal && !inOnboarding) {
                 router.replace("/(main)/home");
             }
         } else {
             // Not authenticated, onboarding done — go to auth
             const inAuth = segments[0] === "(auth)";
-            if (!inAuth && !inLegal) {
+            if (!inAuth && !inLegal && segments[0] !== "oauthredirect") {
                 router.replace("/(auth)/welcome");
             }
         }
-    }, [isLoading, onboardingDone, user]);
+    }, [isLoading, onboardingDone, user, segments]);
 
     return null;
 };
@@ -98,23 +102,19 @@ const StackLayout = () => {
 
     const openIncomingCallScreen = (data: {
         callId: string;
+        callerId?: string;
         callerName: string;
         callerAvatar?: string;
         kind: string;
         conversationId: string;
     }) => {
-        if (!data.callId || activeIncomingCallIdRef.current === data.callId) return;
-        activeIncomingCallIdRef.current = data.callId;
-        setTimeout(() => {
-            if (activeIncomingCallIdRef.current === data.callId) {
-                activeIncomingCallIdRef.current = null;
-            }
-        }, 30000);
+        if (!claimIncomingCallScreen(data.callId)) return;
 
         router.push({
             pathname: '/(main)/incomingCall',
             params: {
                 callId: data.callId,
+                callerId: data.callerId || '',
                 callerName: data.callerName,
                 callerAvatar: data.callerAvatar || '',
                 kind: data.kind,
@@ -129,8 +129,9 @@ const StackLayout = () => {
         const handleIncomingCall = (data: IncomingCallProps) => {
             openIncomingCallScreen({
                 callId: data.callId,
-                callerName: data.caller.name,
-                callerAvatar: data.caller.avatar || '',
+                callerId: data?.caller?.id || '',
+                callerName: data?.caller?.name || "Unknown",
+                callerAvatar: data?.caller?.avatar || '',
                 kind: data.kind,
                 conversationId: data.conversationId,
             });
@@ -144,6 +145,7 @@ const StackLayout = () => {
             if (data?.type === 'call' && data?.callId) {
                 openIncomingCallScreen({
                     callId: String(data.callId),
+                    callerId: String(data.callerId || ''),
                     callerName: String(data.callerName || 'Unknown'),
                     callerAvatar: String(data.callerAvatar || ''),
                     kind: String(data.kind || 'voice'),
@@ -155,9 +157,9 @@ const StackLayout = () => {
         const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
             const id = response.notification.request.identifier;
             if (lastHandledNotifIdRef.current === id) return;
-            lastHandledNotifIdRef.current = id;
 
             if (inMainRef.current) {
+                lastHandledNotifIdRef.current = id;
                 handleNotificationResponse(response, router).catch(() => {});
                 Notifications.clearLastNotificationResponseAsync().catch(() => {});
             } else {
@@ -254,6 +256,7 @@ const RootLayout = () => {
                 <AuthProvider>
                     <StackLayout />
                     <NavigationGuard />
+                    <BubblyAlertHost />
                 </AuthProvider>
             </SafeAreaProvider>
         </AppErrorBoundary>

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Download,
   Settings,
@@ -57,12 +57,24 @@ export function DownloadPage() {
   const [userHash, setUserHash] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<"idle" | "match" | "mismatch">("idle");
   const [showQR, setShowQR] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleCopyHash = () => {
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const handleCopyHash = async () => {
     sounds.playTap();
-    navigator.clipboard.writeText(OFFICIAL_SHA256);
-    setCopiedHash(true);
-    setTimeout(() => setCopiedHash(false), 2000);
+    try {
+      await navigator.clipboard?.writeText(OFFICIAL_SHA256);
+      setCopiedHash(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedHash(false), 2000);
+    } catch {
+      // Clipboard write unavailable or denied
+    }
   };
 
   const checkHash = (input: string) => {

@@ -32,6 +32,11 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   const fallbackPath = isGroup ? "/defaultGroupAvatar.png" : "/defaultAvatar.png";
   const imageSource = src || uri;
+
+  React.useEffect(() => {
+    setImgError(false);
+  }, [imageSource]);
+
   const avatarUrl = imageSource && !imgError ? imageSource : fallbackPath;
 
   const isNumeric = typeof size === "number";

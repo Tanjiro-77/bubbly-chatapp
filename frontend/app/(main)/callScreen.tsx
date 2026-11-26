@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-    View, StyleSheet, TouchableOpacity, Alert, StatusBar, Platform,
+    View, StyleSheet, TouchableOpacity, StatusBar, Platform,
 } from 'react-native';
+import { BubblyAlert } from '../../components/BubblyAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
     createAgoraRtcEngine,
@@ -20,9 +21,11 @@ import { colors, radius, spacingX, spacingY } from '../../constants/theme';
 import { verticalScale, scale } from '../../utils/styling';
 import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
-import { getAgoraToken } from '../../services/callService';
+import { getAgoraToken, rejectCallHttp } from '../../services/callService';
 import {
+    callCancel,
     callEnd,
+    callReject,
     callConnected,
     onCallEnded,
     onCallConnected,
@@ -116,8 +119,15 @@ const CallScreen = () => {
         isOutgoing,
     } = useLocalSearchParams();
 
-    const isVideo = kind === 'video';
-    const isOutgoingCall = isOutgoing === 'true';
+    const callIdStr = Array.isArray(callId) ? callId[0] : (callId as string);
+    const kindStr = Array.isArray(kind) ? kind[0] : (kind as string);
+    const isVideo = kindStr === 'video';
+    const isOutgoingCall = (Array.isArray(isOutgoing) ? isOutgoing[0] : isOutgoing) === 'true';
+
+    const safeBack = useCallback(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(main)/home");
+    }, [router]);
 
     const engineRef = useRef<IRtcEngine | null>(null);
     const hasCleanedUp = useRef(false);
@@ -150,23 +160,45 @@ const CallScreen = () => {
 
     const initAgora = async () => {
         try {
-            const currentCallId = callId as string;
+            const currentCallId = callIdStr;
             if (!currentCallId) throw new Error("Missing callId");
+
+            const { AudioModule } = require("expo-audio");
+            const micPerm = await AudioModule.requestRecordingPermissionsAsync();
+            if (!micPerm?.granted) {
+                hasCleanedUp.current = true;
+                if (isOutgoing) {
+                    callCancel(currentCallId);
+                } else {
+                    callReject(currentCallId);
+                    rejectCallHttp(currentCallId).catch(() => {});
+                }
+                BubblyAlert.alert("Microphone Permission", "Microphone access is required for calls.");
+                safeBack();
+                return;
+            }
+            if (isVideo) {
+                const ImagePicker = require("expo-image-picker");
+                const camPerm = await ImagePicker.requestCameraPermissionsAsync();
+                if (!camPerm?.granted) {
+                    BubblyAlert.alert("Camera Permission", "Camera access is required for video calls.");
+                }
+            }
 
             const tokenRes = await getAgoraToken(currentCallId, currentCallId);
             if (hasCleanedUp.current) return;
             if (!tokenRes.success || !tokenRes.data) {
                 console.error("Agora token error:", tokenRes.msg);
-                Alert.alert("Call Error", tokenRes.msg || "Could not get Agora token");
-                if (router.canGoBack()) router.back();
+                BubblyAlert.alert("Call Error", tokenRes.msg || "Could not get Agora token");
+                safeBack();
                 return;
             }
 
             const { token, appId, channelName, uid } = tokenRes.data;
             if (!token || !appId || !channelName || typeof uid !== "number") {
                 console.error("Invalid Agora response:", tokenRes.data);
-                Alert.alert("Call Error", "Invalid Agora configuration received from server");
-                if (router.canGoBack()) router.back();
+                BubblyAlert.alert("Call Error", "Invalid Agora configuration received from server");
+                safeBack();
                 return;
             }
 
@@ -256,9 +288,9 @@ const CallScreen = () => {
         } catch (error) {
             if (hasCleanedUp.current) return;
             console.error("initAgora error:", error);
-            Alert.alert("Call Error", "Could not initialize the call");
+            BubblyAlert.alert("Call Error", "Could not initialize the call");
             cleanup();
-            if (router.canGoBack()) router.back();
+            safeBack();
         }
     };
 
@@ -266,19 +298,19 @@ const CallScreen = () => {
         callId: string;
         reason: string;
     }) => {
-        if (data.callId !== callId) return;
+        if (data.callId !== callIdStr) return;
         if (hasCleanedUp.current) return;
 
         setCallState("ended");
         cleanup();
-        router.back();
-    }, [callId, router]);
+        safeBack();
+    }, [callIdStr, safeBack]);
 
     const handleRemoteConnected = useCallback((data: { callId: string }) => {
-        if (data.callId !== callId) return;
+        if (data.callId !== callIdStr) return;
         setCallState('connected');
         startDurationTimer();
-    }, [callId]);
+    }, [callIdStr]);
 
     const startDurationTimer = () => {
         if (durationRef.current) return;
@@ -300,17 +332,17 @@ const CallScreen = () => {
         stopDurationTimer();
         if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
         if (engineRef.current) {
-            engineRef.current.leaveChannel();
-            engineRef.current.release();
+            try { engineRef.current.leaveChannel(); } catch {}
+            try { engineRef.current.release(); } catch {}
             engineRef.current = null;
         }
     };
 
     const handleCallEnd = () => {
         if (hasCleanedUp.current) return;
-        callEnd(callId as string);
+        callEnd(callIdStr);
         cleanup();
-        router.back();
+        safeBack();
     };
 
     const toggleMute = () => {

@@ -289,7 +289,9 @@ export async function sendCallPushNotification(params: {
  */
 export async function sendMissedCallPushNotification(params: {
     calleeId: string;
+    callerId?: string;
     callerName: string;
+    callerAvatar?: string;
     callId: string;
     kind: "voice" | "video";
     conversationId: string;
@@ -317,7 +319,14 @@ export async function sendMissedCallPushNotification(params: {
             type: "missed_call",
             callId: params.callId,
             conversationId: params.conversationId,
+            conversationType: "direct",
             kind: params.kind,
+            callerId: params.callerId || "",
+            callerName: params.callerName || "Someone",
+            callerAvatar: params.callerAvatar || "",
+            senderId: params.callerId || "",
+            senderName: params.callerName || "Someone",
+            senderAvatar: params.callerAvatar || "",
         },
     }));
 

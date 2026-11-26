@@ -18,6 +18,7 @@ import {
 } from "../socket/socketEvents";
 import { soundManager } from "../hooks/useSoundEffects";
 import { getAgoraToken } from "../services/callService";
+import { bubblyAlert } from "../components/common/BubblyDialog";
 
 interface CallContextType {
   incomingCall: IncomingCallProps | null;
@@ -52,6 +53,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const ringtoneStopRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<any>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const activeCallRef = useRef<ActiveCallProps | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   useEffect(() => {
     // Socket Call Listeners
@@ -61,13 +73,48 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ringtoneStopRef.current = soundManager.startRingtone();
     };
 
-    const handleRinging = (data: any) => {
+    const handleRinging = (data: { callId?: string; channelName?: string }) => {
       setIsRinging(true);
+      if (data?.callId) {
+        setActiveCall((prev) =>
+          prev
+            ? {
+                ...prev,
+                callId: data.callId!,
+                channelName: data.channelName || data.callId || prev.channelName,
+              }
+            : prev
+        );
+      }
     };
 
-    const handleAccepted = async (data: { callId: string; channelName: string }) => {
+    const handleAccepted = async (data: { callId: string; channelName?: string }) => {
       setIsRinging(false);
-      emitCallConnected(data.callId);
+      const current = activeCallRef.current;
+      setActiveCall((prev) =>
+        prev
+          ? {
+              ...prev,
+              callId: data.callId || prev.callId,
+              channelName: data.channelName || prev.channelName || data.callId,
+            }
+          : prev
+      );
+      if (current?.isOutgoing) {
+        try {
+          await initWebRTC(current.remoteUser.id, data.callId, current.kind, true);
+          emitCallConnected(data.callId);
+        } catch (err) {
+          console.error("Failed to initialize outgoing WebRTC:", err);
+          bubblyAlert("Media Access Required", "Could not access microphone/camera for call.", {
+            variant: "danger",
+          });
+          emitCallEnd(data.callId);
+          cleanupCallState();
+        }
+      } else {
+        emitCallConnected(data.callId);
+      }
     };
 
     const handleConnected = (data: { callId: string }) => {
@@ -80,16 +127,29 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const handleFailed = (data: any) => {
-      alert(data.msg || "Call failed");
+      bubblyAlert("Call Failed", data.msg || "Call failed", { variant: "danger" });
       cleanupCallState();
+    };
+
+    const flushPendingCandidates = async (pc: RTCPeerConnection) => {
+      const queued = pendingCandidatesRef.current;
+      pendingCandidatesRef.current = [];
+      for (const candidate of queued) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.warn("Queued ICE candidate error:", err);
+        }
+      }
     };
 
     const handleSignal = async (data: { callId: string; fromUserId: string; payload: any }) => {
       const pc = peerConnectionRef.current;
-      if (!pc) return;
+      if (!pc || !data?.payload) return;
       try {
         if (data.payload.type === "offer") {
           await pc.setRemoteDescription(new RTCSessionDescription(data.payload));
+          await flushPendingCandidates(pc);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           emitCallSignal({
@@ -99,8 +159,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         } else if (data.payload.type === "answer") {
           await pc.setRemoteDescription(new RTCSessionDescription(data.payload));
+          await flushPendingCandidates(pc);
         } else if (data.payload.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
+          } else {
+            pendingCandidatesRef.current.push(data.payload.candidate);
+          }
         }
       } catch (err) {
         console.error("WebRTC signal error:", err);
@@ -123,6 +188,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onCallEnded(handleEnded, true);
       onCallFailed(handleFailed, true);
       onCallSignal(handleSignal, true);
+      cleanupCallState();
     };
   }, []);
 
@@ -143,13 +209,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
     }
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+    pendingCandidatesRef.current = [];
+    activeCallRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
     setIncomingCall(null);
@@ -161,47 +230,54 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const initWebRTC = async (targetUserId: string, callId: string, kind: CallKind, isCaller: boolean) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: kind === "video",
-      });
-      setLocalStream(stream);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: kind === "video",
+    });
 
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
-      peerConnectionRef.current = pc;
+    // If the call was cancelled/ended while awaiting media permission, release tracks immediately
+    if (!activeCallRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    localStreamRef.current = stream;
+    setLocalStream(stream);
 
-      pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-        }
-      };
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+    }
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    peerConnectionRef.current = pc;
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          emitCallSignal({
-            callId,
-            targetUserId,
-            payload: { candidate: event.candidate },
-          });
-        }
-      };
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        setRemoteStream(event.streams[0]);
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
         emitCallSignal({
           callId,
           targetUserId,
-          payload: offer,
+          payload: { candidate: event.candidate },
         });
       }
-    } catch (e) {
-      console.warn("Could not acquire media devices:", e);
+    };
+
+    if (isCaller) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      emitCallSignal({
+        callId,
+        targetUserId,
+        payload: offer,
+      });
     }
   };
 
@@ -212,32 +288,46 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     kind: CallKind
   ) => {
     setIsRinging(true);
-    setActiveCall({
+    const nextCall: ActiveCallProps = {
       callId: "",
       channelName: "",
       kind,
       remoteUser,
       isOutgoing: true,
-    });
+    };
+    activeCallRef.current = nextCall;
+    setActiveCall(nextCall);
     emitCallInvite({ conversationId, calleeId, kind });
   };
 
   const acceptCall = async () => {
     if (!incomingCall) return;
+    const call = incomingCall;
     if (ringtoneStopRef.current) {
       ringtoneStopRef.current();
       ringtoneStopRef.current = null;
     }
-    setActiveCall({
-      callId: incomingCall.callId,
-      channelName: incomingCall.conversationId,
-      kind: incomingCall.kind,
-      remoteUser: incomingCall.caller,
+    const nextCall: ActiveCallProps = {
+      callId: call.callId,
+      channelName: (call as any).channelName || call.callId,
+      kind: call.kind,
+      remoteUser: call.caller,
       isOutgoing: false,
-    });
-    emitCallAccept(incomingCall.callId);
+    };
+    activeCallRef.current = nextCall;
+    setActiveCall(nextCall);
     setIncomingCall(null);
-    await initWebRTC(incomingCall.caller.id, incomingCall.callId, incomingCall.kind, false);
+    try {
+      await initWebRTC(call.caller.id, call.callId, call.kind, false);
+      emitCallAccept(call.callId);
+    } catch (err) {
+      console.error("Failed to acquire media for incoming call:", err);
+      bubblyAlert("Permission Required", "Microphone/camera access is required to answer the call.", {
+        variant: "danger",
+      });
+      emitCallReject(call.callId);
+      cleanupCallState();
+    }
   };
 
   const rejectCall = () => {

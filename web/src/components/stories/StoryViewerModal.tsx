@@ -11,6 +11,7 @@ interface StoryViewerModalProps {
   onReact: (storyId: string, emoji: string) => void;
   onReply: (userId: string, text: string, storyId: string) => void;
   onDelete: (storyId: string) => void;
+  onView?: (storyId: string) => void;
 }
 
 const STORY_REACTIONS = ["❤️", "🔥", "😂", "😮", "👏", "🎉"];
@@ -22,6 +23,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   onReact,
   onReply,
   onDelete,
+  onView,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -29,14 +31,49 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [replyText, setReplyText] = useState("");
   const [showViewers, setShowViewers] = useState(false);
   const timerRef = useRef<any>(null);
+  const viewedIdsRef = useRef<Set<string>>(new Set());
 
-  if (!storyGroup || !storyGroup.stories || storyGroup.stories.length === 0) return null;
+  const stories = storyGroup?.stories ?? [];
+  const safeIndex = stories.length > 0 ? Math.min(currentIndex, stories.length - 1) : 0;
+  const currentStory: StoryItemProps | undefined = stories[safeIndex];
+  const isMe = storyGroup?.user?.id === currentUserId;
 
-  const isMe = storyGroup.user.id === currentUserId;
-  const currentStory: StoryItemProps = storyGroup.stories[currentIndex] || storyGroup.stories[0];
+  useEffect(() => {
+    setCurrentIndex(0);
+    setProgress(0);
+    setShowViewers(false);
+  }, [storyGroup?.user?.id]);
+
+  useEffect(() => {
+    if (!currentStory || !storyGroup) return;
+    if (!isMe && currentStory._id && !viewedIdsRef.current.has(currentStory._id)) {
+      viewedIdsRef.current.add(currentStory._id);
+      onView?.(currentStory._id);
+    }
+  }, [currentStory?._id, isMe, onView, storyGroup]);
+
+  const handleNext = () => {
+    if (!storyGroup || stories.length === 0) return;
+    if (safeIndex < stories.length - 1) {
+      setCurrentIndex(safeIndex + 1);
+      setProgress(0);
+    } else {
+      onClose();
+    }
+  };
+
+  const handlePrev = () => {
+    if (safeIndex > 0) {
+      setCurrentIndex(safeIndex - 1);
+      setProgress(0);
+    } else {
+      setProgress(0);
+    }
+  };
 
   // Auto-progress 5-second timer
   useEffect(() => {
+    if (!storyGroup || stories.length === 0 || !currentStory) return;
     setProgress(0);
     if (timerRef.current) clearInterval(timerRef.current);
 
@@ -46,42 +83,34 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     const step = 100 / (5000 / interval);
 
     timerRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          handleNext();
-          return 0;
-        }
-        return prev + step;
-      });
+      setProgress((prev) => Math.min(100, prev + step));
     }, interval);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentIndex, isPaused]);
+  }, [safeIndex, isPaused, storyGroup?.user?.id, stories.length, currentStory?._id]);
 
-  const handleNext = () => {
-    if (currentIndex < storyGroup.stories.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-      setProgress(0);
-    } else {
-      onClose();
+  useEffect(() => {
+    if (!storyGroup || stories.length === 0) return;
+    if (progress >= 100) {
+      if (safeIndex < stories.length - 1) {
+        setCurrentIndex(safeIndex + 1);
+        setProgress(0);
+      } else {
+        onClose();
+      }
     }
-  };
+  }, [progress, safeIndex, stories.length, storyGroup, onClose]);
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-      setProgress(0);
-    }
-  };
+  if (!storyGroup || stories.length === 0 || !currentStory) return null;
 
   const handleSendReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyText.trim()) return;
     onReply(storyGroup.user.id, replyText.trim(), currentStory._id);
     setReplyText("");
-    alert("Reply sent!");
+    setIsPaused(false);
   };
 
   return (

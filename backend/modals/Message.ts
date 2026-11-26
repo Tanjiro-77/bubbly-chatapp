@@ -27,6 +27,8 @@ const messageSchema = new mongoose.Schema({
         mimeType: String,
         size: Number,
         resourceType: { type: String, enum: ["image", "video", "raw", "audio"] },
+        isHd: Boolean,
+        isViewOnce: Boolean,
     },
     location: {
         latitude: Number,

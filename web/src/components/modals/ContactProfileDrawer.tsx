@@ -3,6 +3,7 @@ import { UserProps } from "../../types";
 import { Avatar } from "../common/Avatar";
 import { X, Mail, ShieldAlert, ImageIcon, BellOff, Bell, UserX } from "lucide-react";
 import { toggleMuteConversation, blockUser } from "../../socket/socketEvents";
+import { bubblyAlert, bubblyConfirm } from "../common/BubblyDialog";
 
 interface ContactProfileDrawerProps {
   contact: UserProps;
@@ -29,12 +30,18 @@ export const ContactProfileDrawer: React.FC<ContactProfileDrawerProps> = ({
     });
   };
 
-  const handleBlock = () => {
+  const handleBlock = async () => {
     const id = contact.id || contact._id;
     if (!id) return;
-    if (confirm(`Block ${contact.name}? You will not receive messages or calls from them.`)) {
-      blockUser({ targetUserId: id });
-      alert("User blocked");
+    const confirmed = await bubblyConfirm({
+      title: `Block ${contact.name}?`,
+      message: "You will not receive messages or calls from them.",
+      confirmText: "Block Contact",
+      variant: "danger",
+    });
+    if (confirmed) {
+      blockUser({ targetUserId: id, block: true });
+      bubblyAlert("Contact Blocked", `${contact.name} has been blocked.`, { variant: "success" });
       onClose();
     }
   };

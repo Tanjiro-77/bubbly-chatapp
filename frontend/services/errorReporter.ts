@@ -138,7 +138,19 @@ export const captureAppException = async (
         // 2. Dispatch to Backend DB
         const diagnostics = getDeviceDiagnostics(context?.currentRoute);
         const title = context?.message || error?.message || "Unhandled App Exception";
-        const stackTrace = error?.stack || (typeof error === "string" ? error : JSON.stringify(error));
+        let serializedError = "";
+        if (!error?.stack) {
+            if (typeof error === "string") {
+                serializedError = error;
+            } else {
+                try {
+                    serializedError = JSON.stringify(error);
+                } catch {
+                    serializedError = String(error);
+                }
+            }
+        }
+        const stackTrace = error?.stack || serializedError;
 
         const headers = await getAuthHeaders();
         await axios.post(

@@ -1,8 +1,9 @@
 import {
     StyleSheet, View, KeyboardAvoidingView,
-    Platform, ScrollView, Pressable, Alert,
+    Platform, ScrollView, Pressable,
     TouchableOpacity, ActivityIndicator
 } from 'react-native'
+import { BubblyAlert } from "../../components/BubblyAlert"
 import React, { useRef, useState } from 'react'
 import ScreenWrapper from "../../components/ScreenWrapper"
 import Typo from "../../components/Typo"
@@ -36,14 +37,14 @@ const Login = () => {
         if (loginMethod === 'phone') {
             const cleanPhone = phoneRef.current.trim();
             if (!cleanPhone || !cleanPassword) {
-                Alert.alert('Log In', "Please enter your phone number and password");
+                BubblyAlert.alert('Log In', "Please enter your phone number and password");
                 return;
             }
             try {
                 setIsLoading(true);
                 await signInWithPhone(cleanPhone, cleanPassword);
             } catch (error: any) {
-                Alert.alert("Login Error", error.message);
+                BubblyAlert.alert("Login Error", error.message);
             } finally {
                 setIsLoading(false);
             }
@@ -52,14 +53,14 @@ const Login = () => {
 
         const cleanEmail = emailRef.current.trim().toLowerCase();
         if (!cleanEmail || !cleanPassword) {
-            Alert.alert('Log In', "Please fill all the fields");
+            BubblyAlert.alert('Log In', "Please fill all the fields");
             return;
         }
         try {
             setIsLoading(true);
             await signIn(cleanEmail, cleanPassword);
         } catch (error: any) {
-            Alert.alert("Login Error", error.message);
+            BubblyAlert.alert("Login Error", error.message);
         } finally {
             setIsLoading(false);
         }
@@ -106,7 +107,10 @@ const Login = () => {
                             <View style={styles.methodTabs}>
                                 <TouchableOpacity
                                     style={[styles.methodTab, loginMethod === 'phone' && styles.methodTabActive]}
-                                    onPress={() => setLoginMethod('phone')}
+                                    onPress={() => {
+                                        emailRef.current = "";
+                                        setLoginMethod('phone');
+                                    }}
                                     activeOpacity={0.8}
                                 >
                                     <Icons.Phone size={15} color={loginMethod === 'phone' ? colors.neutral900 : colors.neutral500} weight="bold" />
@@ -116,7 +120,10 @@ const Login = () => {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.methodTab, loginMethod === 'email' && styles.methodTabActive]}
-                                    onPress={() => setLoginMethod('email')}
+                                    onPress={() => {
+                                        phoneRef.current = "";
+                                        setLoginMethod('email');
+                                    }}
                                     activeOpacity={0.8}
                                 >
                                     <Icons.At size={15} color={loginMethod === 'email' ? colors.neutral900 : colors.neutral500} weight="bold" />
@@ -129,11 +136,12 @@ const Login = () => {
                             {/* Fields */}
                             <View style={styles.fields}>
                                 {loginMethod === 'phone' ? (
-                                    <View style={styles.fieldGroup}>
+                                    <View key="phone-group" style={styles.fieldGroup}>
                                         <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
                                             PHONE NUMBER
                                         </Typo>
                                         <Input
+                                            key="phone-input"
                                             placeholder="+91 98765 43210"
                                             keyboardType="phone-pad"
                                             autoCapitalize="none"
@@ -148,11 +156,12 @@ const Login = () => {
                                         />
                                     </View>
                                 ) : (
-                                    <View style={styles.fieldGroup}>
+                                    <View key="email-group" style={styles.fieldGroup}>
                                         <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
                                             EMAIL
                                         </Typo>
                                         <Input
+                                            key="email-input"
                                             placeholder="you@email.com"
                                             keyboardType="email-address"
                                             autoCapitalize="none"
@@ -176,7 +185,7 @@ const Login = () => {
                                             PASSWORD
                                         </Typo>
                                         <Pressable
-                                            onPress={() => Alert.alert(
+                                            onPress={() => BubblyAlert.alert(
                                                 "Reset Password",
                                                 "You can sign in instantly with Google using the button below, or contact support at arnavkhari.77@gmail.com to reset your password."
                                             )}

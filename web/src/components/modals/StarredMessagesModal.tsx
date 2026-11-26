@@ -17,12 +17,16 @@ export const StarredMessagesModal: React.FC<StarredMessagesModalProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getStarredMessages((res: any) => {
-      if (res.success && Array.isArray(res.data)) {
+    const handleStarred = (res: any) => {
+      if (res?.success && Array.isArray(res.data)) {
         setStarredList(res.data);
       }
       setLoading(false);
-    });
+    };
+    getStarredMessages(handleStarred);
+    return () => {
+      getStarredMessages(handleStarred, true);
+    };
   }, []);
 
   const handleUnstar = (messageId: string, conversationId: string) => {

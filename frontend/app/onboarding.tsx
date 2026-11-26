@@ -9,10 +9,10 @@ import {
     FlatList,
     ListRenderItemInfo,
     StatusBar,
-    Alert,
     AppState,
     AppStateStatus,
 } from "react-native";
+import { BubblyAlert } from "../components/BubblyAlert";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
@@ -810,7 +810,7 @@ export default function OnboardingScreen() {
         async (key: PermissionKey) => {
             const current = permissions[key];
             if (!current.canAskAgain && !current.granted) {
-                Alert.alert(
+                BubblyAlert.alert(
                     `${PERMISSION_METADATA[key].title} Permission`,
                     `Permission was previously denied. Please open Settings to grant access.`,
                     [
@@ -871,8 +871,10 @@ export default function OnboardingScreen() {
             handleFinish();
             return;
         }
+        const nextIndex = activeIndex + 1;
+        setActiveIndex(nextIndex);
         flatListRef.current?.scrollToIndex({
-            index: activeIndex + 1,
+            index: nextIndex,
             animated: true,
         });
     }, [isLast, activeIndex, handleFinish]);

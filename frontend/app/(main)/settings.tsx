@@ -5,7 +5,7 @@
  * Includes dedicated Native App Permissions management with live OS status.
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
     View,
     ScrollView,
@@ -13,12 +13,12 @@ import {
     StyleSheet,
     TouchableOpacity,
     Switch,
-    Alert,
     Platform,
     Linking,
     AppState,
     AppStateStatus,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -270,15 +270,23 @@ export default function SettingsScreen() {
             }
         );
 
-        return () => subscription.remove();
+        return () => {
+            subscription.remove();
+            if (blockedHandlerRef.current) {
+                getBlockedUsers(blockedHandlerRef.current, true);
+                blockedHandlerRef.current = null;
+            }
+        };
     }, [refreshPermissions]);
+
+    const blockedHandlerRef = useRef<((res: any) => void) | null>(null);
 
     const handleRequestPermission = useCallback(
         async (key: PermissionKey) => {
             const current = permissions[key];
             if (!current.canAskAgain && !current.granted) {
                 // Permanently denied - direct user to device Settings
-                Alert.alert(
+                BubblyAlert.alert(
                     `${PERMISSION_METADATA[key].title} Permission`,
                     `Permission was previously denied. Please enable ${PERMISSION_METADATA[key].title} access in your device Settings to use this feature.`,
                     [
@@ -296,7 +304,7 @@ export default function SettingsScreen() {
             setPermissions((prev) => ({ ...prev, [key]: updated }));
 
             if (!updated.granted && !updated.canAskAgain) {
-                Alert.alert(
+                BubblyAlert.alert(
                     "Permission Denied",
                     `To enable ${PERMISSION_METADATA[key].title} later, visit your device Settings.`,
                     [
@@ -328,7 +336,7 @@ export default function SettingsScreen() {
         setAppLockEnabled(value);
         try {
             await AsyncStorage.setItem(APP_LOCK_KEY, String(value));
-            Alert.alert(
+            BubblyAlert.alert(
                 value ? "App Lock Enabled" : "App Lock Disabled",
                 value
                     ? "Bubbly is now protected with biometric / passcode lock."
@@ -338,7 +346,7 @@ export default function SettingsScreen() {
     }, []);
 
     const handleLogout = useCallback(() => {
-        Alert.alert("Log Out", "Are you sure you want to log out?", [
+        BubblyAlert.alert("Log Out", "Are you sure you want to log out?", [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Log Out",
@@ -347,7 +355,7 @@ export default function SettingsScreen() {
                     try {
                         await signOut();
                     } catch (_) {
-                        Alert.alert("Error", "Something went wrong. Please try again.");
+                        BubblyAlert.alert("Error", "Something went wrong. Please try again.");
                     }
                 },
             },
@@ -355,7 +363,7 @@ export default function SettingsScreen() {
     }, [signOut]);
 
     const handleDeleteAccount = useCallback(() => {
-        Alert.alert(
+        BubblyAlert.alert(
             "Delete Account",
             "This will permanently delete your account and all your data. This action cannot be undone.",
             [
@@ -364,7 +372,7 @@ export default function SettingsScreen() {
                     text: "Delete",
                     style: "destructive",
                     onPress: () => {
-                        Alert.alert(
+                        BubblyAlert.alert(
                             "Contact Support",
                             "Please email us to complete account deletion.",
                             [
@@ -614,17 +622,21 @@ export default function SettingsScreen() {
                         subtitle="Manage people you've blocked"
                         onPress={() => {
                             if (!isSocketConnected()) {
-                                Alert.alert("Offline", "Connect to the internet to check blocked contacts.");
+                                BubblyAlert.alert("Offline", "Connect to the internet to check blocked contacts.");
                                 return;
+                            }
+                            if (blockedHandlerRef.current) {
+                                getBlockedUsers(blockedHandlerRef.current, true);
                             }
                             const handler = (res: any) => {
                                 getBlockedUsers(handler, true);
+                                blockedHandlerRef.current = null;
                                 if (res?.success && Array.isArray(res.data)) {
                                     if (res.data.length === 0) {
-                                        Alert.alert("Blocked Contacts", "You have not blocked any contacts yet.");
+                                        BubblyAlert.alert("Blocked Contacts", "You have not blocked any contacts yet.");
                                     } else {
                                         const names = res.data.map((u: any) => u.name || u.email).join("\n• ");
-                                        Alert.alert(
+                                        BubblyAlert.alert(
                                             `Blocked Contacts (${res.data.length})`,
                                             `• ${names}`,
                                             [
@@ -633,7 +645,7 @@ export default function SettingsScreen() {
                                                     style: "destructive",
                                                     onPress: () => {
                                                         res.data.forEach((u: any) => blockUser({ targetUserId: u._id, block: false }));
-                                                        Alert.alert("Done", "All contacts unblocked.");
+                                                        BubblyAlert.alert("Done", "All contacts unblocked.");
                                                     },
                                                 },
                                                 { text: "Close", style: "cancel" },
@@ -642,6 +654,7 @@ export default function SettingsScreen() {
                                     }
                                 }
                             };
+                            blockedHandlerRef.current = handler;
                             getBlockedUsers(handler);
                             getBlockedUsers(null);
                         }}
@@ -652,7 +665,7 @@ export default function SettingsScreen() {
                         iconBg="#16a34a1F"
                         label="Change Password"
                         onPress={() =>
-                            Alert.alert("Change Password", "Password updates can be requested through account settings.")
+                            BubblyAlert.alert("Change Password", "Password updates can be requested through account settings.")
                         }
                     />
                     <Row

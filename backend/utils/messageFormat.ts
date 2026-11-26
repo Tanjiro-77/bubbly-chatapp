@@ -43,7 +43,7 @@ export function formatMessagePayload(message: any, extras?: {
         id: message._id || message.id,
         content: message.content || "",
         sender,
-        attachement: (message.type === "image" || message.type === "video" || message.type === "text")
+        attachement: (message.type === "image" || message.type === "video" || message.type === "file" || message.type === "text")
             ? (message.attachement || message.attachmentMeta?.url || null)
             : null,
         createdAt: message.createdAt instanceof Date
@@ -78,6 +78,26 @@ export function formatMessagePayload(message: any, extras?: {
     };
 }
 
+/** Mask voter identities for anonymous polls according to the viewing user. */
+export function maskAnonymousPoll(poll: any, viewerId: string) {
+    if (!poll || !poll.isAnonymous) return poll;
+    const rawPoll = typeof poll.toObject === "function" ? poll.toObject() : poll;
+    return {
+        ...rawPoll,
+        options: (rawPoll.options || []).map((opt: any) => ({
+            id: opt.id,
+            text: opt.text,
+            votes: (opt.votes || []).map((v: any) => {
+                const isViewer = v.userId?.toString?.() === viewerId.toString();
+                return {
+                    userId: isViewer ? v.userId : "anon",
+                    userName: isViewer ? v.userName : "Anonymous",
+                };
+            }),
+        })),
+    };
+}
+
 const ALLOWED_MIME = new Set([
     "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic",
     "video/mp4", "video/quicktime", "video/webm",
@@ -96,18 +116,27 @@ const ALLOWED_MIME = new Set([
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export function validateAttachment(meta?: {
+    url?: string;
     mimeType?: string;
     size?: number;
     name?: string;
 }) {
     if (!meta) return;
-    if (meta.size && meta.size > MAX_FILE_BYTES) {
+    if (meta.url !== undefined && (typeof meta.url !== "string" || !/^https?:\/\//i.test(meta.url.trim()))) {
+        throw new Error("Invalid attachment URL");
+    }
+    if (meta.size !== undefined && (typeof meta.size !== "number" || meta.size > MAX_FILE_BYTES)) {
         throw new Error("File is too large (max 25MB)");
     }
-    if (meta.mimeType && !ALLOWED_MIME.has(meta.mimeType) && !meta.mimeType.startsWith("image/") && !meta.mimeType.startsWith("audio/")) {
-        throw new Error("This file type is not allowed");
+    if (meta.mimeType !== undefined) {
+        if (typeof meta.mimeType !== "string") {
+            throw new Error("This file type is not allowed");
+        }
+        if (!ALLOWED_MIME.has(meta.mimeType) && !meta.mimeType.startsWith("image/") && !meta.mimeType.startsWith("audio/")) {
+            throw new Error("This file type is not allowed");
+        }
     }
-    if (meta.name && /[<>:"/\\|?*\x00-\x1F]/.test(meta.name)) {
+    if (meta.name !== undefined && (typeof meta.name !== "string" || /[<>:"/\\|?*\x00-\x1F]/.test(meta.name))) {
         throw new Error("Invalid file name");
     }
 }

@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { uploadMediaToCloudinary } from "../../services/mediaService";
+import { bubblyAlert } from "../common/BubblyDialog";
 
 interface NewChatModalProps {
   currentUserId: string;
@@ -50,6 +51,14 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
   const [groupAvatar, setGroupAvatar] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const pendingCreateRef = React.useRef(false);
+  const onCreatedRef = React.useRef(onCreated);
+  const onCloseRef = React.useRef(onClose);
+
+  useEffect(() => {
+    onCreatedRef.current = onCreated;
+    onCloseRef.current = onClose;
+  }, [onCreated, onClose]);
 
   useEffect(() => {
     // Listen for contacts from server
@@ -67,10 +76,14 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
 
     // Listen for new conversation created
     const handleNewConv = (res: any) => {
+      if (!pendingCreateRef.current) return;
+      pendingCreateRef.current = false;
       setIsLoading(false);
       if (res.success && res.data) {
-        onCreated(res.data);
-        onClose();
+        onCreatedRef.current(res.data);
+        onCloseRef.current();
+      } else if (res?.msg) {
+        bubblyAlert("Unable to Start Chat", res.msg, { variant: "danger" });
       }
     };
 
@@ -84,7 +97,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
       getContacts(handleContacts, true);
       newConversation(handleNewConv, true);
     };
-  }, [currentUserId, onCreated, onClose]);
+  }, [currentUserId]);
 
   // Toggle selection for group members
   const toggleParticipant = (userId: string) => {
@@ -103,6 +116,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
     if (isGroupMode) {
       toggleParticipant(targetId);
     } else {
+      pendingCreateRef.current = true;
       setIsLoading(true);
       newConversation({
         type: "direct",
@@ -115,10 +129,13 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupName.trim() || selectedParticipants.length < 1) {
-      alert("Please enter a group name and select at least one contact.");
+      bubblyAlert("Group Details Required", "Please enter a group name and select at least one contact.", {
+        variant: "amber",
+      });
       return;
     }
 
+    pendingCreateRef.current = true;
     setIsLoading(true);
     newConversation({
       type: "group",
@@ -139,7 +156,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
           setGroupAvatar(res.data.url);
         }
       } catch {
-        alert("Avatar upload failed");
+        bubblyAlert("Upload Failed", "Avatar upload failed. Please try again.", { variant: "danger" });
       } finally {
         setUploadingAvatar(false);
       }

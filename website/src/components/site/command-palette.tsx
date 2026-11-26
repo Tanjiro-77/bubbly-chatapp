@@ -100,6 +100,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           const isDark = !document.documentElement.classList.contains("dark");
           document.documentElement.classList.toggle("dark", isDark);
           localStorage.setItem("bubbly-theme", isDark ? "dark" : "light");
+          window.dispatchEvent(new CustomEvent("bubbly-theme-change", { detail: isDark }));
         },
       },
       {

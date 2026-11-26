@@ -10,6 +10,7 @@ import { MessageStream } from "./components/chat/MessageStream";
 import { MessageInput } from "./components/chat/MessageInput";
 import { Lightbox } from "./components/common/Lightbox";
 import { ToastContainer, ToastMessage } from "./components/common/Toast";
+import { bubblyAlert, bubblyConfirm } from "./components/common/BubblyDialog";
 import { StoryViewerModal } from "./components/stories/StoryViewerModal";
 import { CreateStoryModal } from "./components/stories/CreateStoryModal";
 import { IncomingCallModal } from "./components/calls/IncomingCallModal";
@@ -36,6 +37,7 @@ import {
   fetchConversations,
   newConversation,
   getMessages,
+  onGetMessages,
   newMessage as onNewMessage,
   markAsRead,
   onUnreadCountUpdate,
@@ -47,29 +49,42 @@ import {
   onTyping,
   onStopTyping,
   reactToMessage,
+  onMessageReacted,
   deleteMessage,
+  onMessageDeleted,
   editMessage,
+  onMessageEdited,
   getUserStatus,
+  onGetUserStatus,
   onUserStatus,
   createPoll,
   votePoll,
   closePoll,
   onPollUpdated,
   toggleStarMessage,
+  onMessageStarred,
   pinMessage,
   unpinMessage,
   onPinnedMessageUpdated,
+  togglePinConversation,
+  toggleMuteConversation,
+  deleteConversation,
+  onConversationDeleted,
   forwardMessage,
   openViewOnce,
   onViewOnceOpened,
   getStories,
   fetchStories,
   createStory,
+  onCreateStory,
   viewStory,
   reactToStory,
   replyToStory,
   deleteStory,
   onStoryFeedUpdated,
+  onGroupUpdated,
+  onAddedToGroup,
+  onRemovedFromGroup,
 } from "./socket/socketEvents";
 import { MessageSquare, Sparkles } from "lucide-react";
 
@@ -111,6 +126,10 @@ export const App: React.FC = () => {
     return [];
   });
   const [activeConversation, setActiveConversation] = useState<ConversationProps | null>(null);
+  const activeConversationRef = useRef<ConversationProps | null>(null);
+  useEffect(() => {
+    activeConversationRef.current = activeConversation;
+  }, [activeConversation]);
   const [messages, setMessages] = useState<MessageProps[]>([]);
   const [stories, setStories] = useState<StoryGroupProps[]>(() => {
     try {
@@ -191,15 +210,22 @@ export const App: React.FC = () => {
   }, [searchQuery]);
 
   const handleTogglePinChat = (convId: string) => {
+    const target = conversations.find((c) => c._id === convId);
+    const nextPin = !target?.isPinned;
+    togglePinConversation({ conversationId: convId, pin: nextPin });
     setConversations((prev) =>
       prev.map((c) =>
-        c._id === convId ? { ...c, isPinned: !c.isPinned } : c
+        c._id === convId ? { ...c, isPinned: nextPin } : c
       )
     );
-    addToast("info", "Chat pin status updated");
+    if (activeConversation?._id === convId) {
+      setActiveConversation((prev) => (prev ? { ...prev, isPinned: nextPin } : null));
+    }
+    addToast("info", nextPin ? "Conversation pinned" : "Conversation unpinned");
   };
 
   const handleToggleMuteChat = (convId: string, currentMuted: boolean) => {
+    toggleMuteConversation({ conversationId: convId, unmute: currentMuted });
     setConversations((prev) =>
       prev.map((c) =>
         c._id === convId ? { ...c, isMuted: !currentMuted } : c
@@ -213,8 +239,15 @@ export const App: React.FC = () => {
     addToast("info", !currentMuted ? "Conversation muted" : "Conversation unmuted");
   };
 
-  const handleDeleteConversation = (convId: string) => {
-    if (confirm("Are you sure you want to delete this conversation?")) {
+  const handleDeleteConversation = async (convId: string) => {
+    const confirmed = await bubblyConfirm({
+      title: "Delete Conversation",
+      message: "Are you sure you want to delete this conversation?",
+      confirmText: "Delete",
+      variant: "danger",
+    });
+    if (confirmed) {
+      deleteConversation({ conversationId: convId });
       setConversations((prev) => prev.filter((c) => c._id !== convId));
       if (activeConversation?._id === convId) {
         setActiveConversation(null);
@@ -259,33 +292,50 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Load initial data & update cache
-    getConversations((res: ResponseProps) => {
+    // Load initial data & update cache (getConversations / getStories trigger fetch automatically)
+    const handleConversations = (res: ResponseProps) => {
       if (res.success && Array.isArray(res.data)) {
         setConversations(res.data);
         try {
           localStorage.setItem(CACHED_CONVERSATIONS_KEY, JSON.stringify(res.data));
         } catch {}
       }
-    });
+    };
 
-    getStories((res: ResponseProps) => {
+    const handleStories = (res: ResponseProps) => {
       if (res.success && Array.isArray(res.data)) {
         setStories(res.data);
         try {
           localStorage.setItem(CACHED_STORIES_KEY, JSON.stringify(res.data));
         } catch {}
       }
-    });
+    };
 
-    // Explicitly emit requests to server immediately
-    fetchConversations();
-    fetchStories();
+    getConversations(handleConversations);
+    getStories(handleStories);
+
+    const handleMessages = (res: any) => {
+      if (!res?.success || !Array.isArray(res.data)) return;
+      const activeId = activeConversationRef.current?._id;
+      if (res.conversationId && activeId && res.conversationId !== activeId) return;
+      // Backend returns messages newest-first (createdAt desc); reverse to chronological order
+      setMessages([...res.data].reverse());
+    };
 
     // Listen for new conversations
     const handleNewConversation = (res: ResponseProps) => {
       if (res.success && res.data) {
         setConversations((prev) => [res.data, ...prev.filter((c) => c._id !== res.data._id)]);
+      }
+    };
+
+    const handleConversationDeleted = (res: ResponseProps) => {
+      const deletedId = res?.data?.conversationId;
+      if (res?.success && deletedId) {
+        setConversations((prev) => prev.filter((c) => c._id !== deletedId));
+        if (activeConversationRef.current?._id === deletedId) {
+          setActiveConversation(null);
+        }
       }
     };
 
@@ -296,38 +346,30 @@ export const App: React.FC = () => {
         const senderId = msg.sender?.id || msg.sender?._id || msg.senderId;
         const isFromMe = senderId === currentUserId;
 
-        // Play audio chime
         if (isFromMe) {
           soundManager.playSend();
         } else {
           soundManager.playReceive();
-        }
-
-        // Emit delivery receipt if from other user
-        if (!isFromMe) {
           messageDelivered({
             messageId: msg.id || msg._id,
             conversationId: msg.conversationId,
           });
         }
 
-        // If in active chat, append message
-        setActiveConversation((active) => {
-          if (active && active._id === msg.conversationId) {
-            setMessages((prev) => {
-              if (prev.some((m) => (m.id || m._id) === (msg.id || msg._id))) return prev;
-              return [...prev, msg];
-            });
-            // Mark read immediately if window has focus
-            markAsRead(msg.conversationId);
-          }
-          return active;
-        });
+        const active = activeConversationRef.current;
+        if (active && active._id === msg.conversationId) {
+          setMessages((prev) => {
+            if (prev.some((m) => (m.id || m._id) === (msg.id || msg._id))) return prev;
+            return [...prev, msg];
+          });
+          markAsRead(msg.conversationId);
+        }
 
-        // Update conversation list preview & order
+        let foundConversation = false;
         setConversations((prev) => {
           const index = prev.findIndex((c) => c._id === msg.conversationId);
           if (index !== -1) {
+            foundConversation = true;
             const updated = {
               ...prev[index],
               lastMessage: msg,
@@ -338,6 +380,50 @@ export const App: React.FC = () => {
           }
           return prev;
         });
+        if (!foundConversation) {
+          fetchConversations();
+        }
+      }
+    };
+
+    const handleMessageEdited = (res: ResponseProps) => {
+      const payload = res?.data ?? res;
+      const messageId = payload?.messageId || payload?.id || payload?._id;
+      const nextContent = payload?.content;
+      if (!messageId || typeof nextContent !== "string") return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          (m.id || m._id) === messageId ? { ...m, content: nextContent, isEdited: true } : m
+        )
+      );
+    };
+
+    const handleMessageDeleted = (res: ResponseProps) => {
+      const payload = res?.data ?? res;
+      const messageId = payload?.messageId || payload?.id || payload?._id;
+      if (!messageId) return;
+      setMessages((prev) => prev.filter((m) => (m.id || m._id) !== messageId));
+    };
+
+    const handleMessageReacted = (res: ResponseProps) => {
+      const payload = res?.data ?? res;
+      const messageId = payload?.messageId;
+      if (!messageId || !Array.isArray(payload?.reactions)) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          (m.id || m._id) === messageId ? { ...m, reactions: payload.reactions } : m
+        )
+      );
+    };
+
+    const handleMessageStarred = (res: ResponseProps) => {
+      if (res?.success && res?.data?.messageId) {
+        const { messageId, isStarred } = res.data;
+        setMessages((prev) =>
+          prev.map((m) =>
+            (m.id || m._id) === messageId ? { ...m, isSaved: Boolean(isStarred) } : m
+          )
+        );
       }
     };
 
@@ -367,15 +453,32 @@ export const App: React.FC = () => {
       }
     };
 
-    // Listen for user presence
-    const handleUserStatus = (data: { userId: string; isOnline: boolean; lastSeen?: string | null }) => {
-      setOnlineMap((prev) => ({ ...prev, [data.userId]: data.isOnline }));
+    // Listen for user presence (both live broadcasts and getUserStatus responses)
+    const handleUserStatus = (res: any) => {
+      const payload = res?.data ?? res;
+      if (payload?.userId) {
+        setOnlineMap((prev) => ({ ...prev, [payload.userId]: Boolean(payload.isOnline) }));
+      }
     };
 
     // Listen for story feed updates
-    const handleStoryFeed = (res: ResponseProps) => {
-      if (res.success && Array.isArray(res.data)) {
+    const handleStoryFeed = (res?: ResponseProps) => {
+      if (res?.success && Array.isArray(res.data)) {
         setStories(res.data);
+        try {
+          localStorage.setItem(CACHED_STORIES_KEY, JSON.stringify(res.data));
+        } catch {}
+      } else {
+        fetchStories();
+      }
+    };
+
+    const handleCreateStoryRes = (res: ResponseProps) => {
+      if (res?.success) {
+        addToast("success", "Story shared successfully!");
+        fetchStories();
+      } else if (res?.msg) {
+        addToast("error", res.msg);
       }
     };
 
@@ -396,21 +499,54 @@ export const App: React.FC = () => {
         setConversations((prev) =>
           prev.map((c) => (c._id === conversationId ? { ...c, pinnedMessages } : c))
         );
-        setActiveConversation((active) =>
-          active && active._id === conversationId ? { ...active, pinnedMessages } : active
+        if (activeConversationRef.current?._id === conversationId) {
+          setActiveConversation((active) =>
+            active && active._id === conversationId ? { ...active, pinnedMessages } : active
+          );
+        }
+      }
+    };
+
+    const handleGroupUpdated = (res: ResponseProps) => {
+      if (res?.success && res?.data?._id) {
+        const updatedConv = res.data;
+        setConversations((prev) =>
+          prev.map((c) => (c._id === updatedConv._id ? { ...c, ...updatedConv } : c))
         );
+        if (activeConversationRef.current?._id === updatedConv._id) {
+          setActiveConversation((prev) => (prev ? { ...prev, ...updatedConv } : prev));
+        }
+      }
+    };
+
+    const handleAddedToGroup = () => {
+      fetchConversations();
+    };
+
+    const handleRemovedFromGroup = (data: { conversationId?: string }) => {
+      if (data?.conversationId) {
+        setConversations((prev) => prev.filter((c) => c._id !== data.conversationId));
+        if (activeConversationRef.current?._id === data.conversationId) {
+          setActiveConversation(null);
+        }
+      } else {
+        fetchConversations();
       }
     };
 
     // Listen for view once opened
-    const handleViewOnceOpened = (data: { messageId: string; userId: string }) => {
+    const handleViewOnceOpened = (res: any) => {
+      const payload = res?.data ?? res;
+      const messageId = payload?.messageId;
+      const viewerId = payload?.openedByUserId || payload?.userId;
+      if (!messageId || !viewerId) return;
       setMessages((prev) =>
         prev.map((m) => {
-          if ((m.id || m._id) === data.messageId) {
+          if ((m.id || m._id) === messageId) {
             const opened = m.viewOnceOpenedBy || [];
             return {
               ...m,
-              viewOnceOpenedBy: opened.includes(data.userId) ? opened : [...opened, data.userId],
+              viewOnceOpenedBy: opened.includes(viewerId) ? opened : [...opened, viewerId],
             };
           }
           return m;
@@ -418,27 +554,51 @@ export const App: React.FC = () => {
       );
     };
 
+    onGetMessages(handleMessages);
     newConversation(handleNewConversation);
+    onConversationDeleted(handleConversationDeleted);
     onNewMessage(handleNewMessage);
+    onMessageEdited(handleMessageEdited);
+    onMessageDeleted(handleMessageDeleted);
+    onMessageReacted(handleMessageReacted);
+    onMessageStarred(handleMessageStarred);
     onUnreadCountUpdate(handleUnreadCount);
     onTyping(handleTyping);
     onStopTyping(handleStopTyping);
     onUserStatus(handleUserStatus);
+    onGetUserStatus(handleUserStatus);
     onStoryFeedUpdated(handleStoryFeed);
+    onCreateStory(handleCreateStoryRes);
     onPollUpdated(handlePollUpdated);
     onPinnedMessageUpdated(handlePinnedUpdated);
+    onGroupUpdated(handleGroupUpdated);
+    onAddedToGroup(handleAddedToGroup);
+    onRemovedFromGroup(handleRemovedFromGroup);
     onViewOnceOpened(handleViewOnceOpened);
 
     return () => {
+      getConversations(handleConversations, true);
+      getStories(handleStories, true);
+      onGetMessages(handleMessages, true);
       newConversation(handleNewConversation, true);
+      onConversationDeleted(handleConversationDeleted, true);
       onNewMessage(handleNewMessage, true);
+      onMessageEdited(handleMessageEdited, true);
+      onMessageDeleted(handleMessageDeleted, true);
+      onMessageReacted(handleMessageReacted, true);
+      onMessageStarred(handleMessageStarred, true);
       onUnreadCountUpdate(handleUnreadCount, true);
       onTyping(handleTyping, true);
       onStopTyping(handleStopTyping, true);
       onUserStatus(handleUserStatus, true);
+      onGetUserStatus(handleUserStatus, true);
       onStoryFeedUpdated(handleStoryFeed, true);
+      onCreateStory(handleCreateStoryRes, true);
       onPollUpdated(handlePollUpdated, true);
       onPinnedMessageUpdated(handlePinnedUpdated, true);
+      onGroupUpdated(handleGroupUpdated, true);
+      onAddedToGroup(handleAddedToGroup, true);
+      onRemovedFromGroup(handleRemovedFromGroup, true);
       onViewOnceOpened(handleViewOnceOpened, true);
     };
   }, [isAuthenticated, currentUserId]);
@@ -447,16 +607,16 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!activeConversation) {
       setMessages([]);
+      setReplyingTo(null);
+      setEditingMessage(null);
       return;
     }
 
+    setReplyingTo(null);
+    setEditingMessage(null);
     markAsRead(activeConversation._id);
 
-    getMessages({ conversationId: activeConversation._id }, (res: ResponseProps) => {
-      if (res.success && Array.isArray(res.data)) {
-        setMessages(res.data);
-      }
-    });
+    getMessages({ conversationId: activeConversation._id });
 
     // Request presence status for conversation participants
     activeConversation.participants?.forEach((p) => {
@@ -479,13 +639,18 @@ export const App: React.FC = () => {
   }) => {
     if (!activeConversation) return;
 
+    const replyToId =
+      typeof payload.replyTo === "string"
+        ? payload.replyTo
+        : payload.replyTo?.id || payload.replyTo?._id || undefined;
+
     onNewMessage({
       conversationId: activeConversation._id,
       content: payload.content,
       type: payload.type || "text",
       attachement: payload.attachment,
       attachmentMeta: payload.attachmentMeta,
-      replyTo: payload.replyTo,
+      replyTo: replyToId,
       isViewOnce: payload.isViewOnce,
       voiceUrl: payload.voiceUrl,
       voiceDuration: payload.voiceDuration,
@@ -563,9 +728,15 @@ export const App: React.FC = () => {
   };
 
   // Delete message
-  const handleDelete = (messageId: string) => {
+  const handleDelete = async (messageId: string) => {
     if (!activeConversation) return;
-    if (confirm("Delete this message for everyone?")) {
+    const confirmed = await bubblyConfirm({
+      title: "Delete Message",
+      message: "Delete this message for everyone?",
+      confirmText: "Delete",
+      variant: "danger",
+    });
+    if (confirmed) {
       deleteMessage({
         conversationId: activeConversation._id,
         messageId,
@@ -614,11 +785,7 @@ export const App: React.FC = () => {
 
   // Create Story
   const handleCreateStory = (storyData: any) => {
-    createStory(storyData, (res: ResponseProps) => {
-      if (res.success) {
-        addToast("success", "Story shared successfully!");
-      }
-    });
+    createStory(storyData);
   };
 
   // Call initiations
@@ -630,7 +797,9 @@ export const App: React.FC = () => {
         : null;
 
     if (!partner) {
-      alert("Group calls currently unavailable. Call 1-on-1 contact.");
+      bubblyAlert("Group Calls Unavailable", "Group calls are currently unavailable. Call a 1-on-1 contact.", {
+        variant: "amber",
+      });
       return;
     }
 
@@ -676,6 +845,8 @@ export const App: React.FC = () => {
           activeConversationId={activeConversation?._id || null}
           stories={stories}
           currentUserId={currentUserId}
+          userAvatar={user?.avatar}
+          userName={user?.name}
           onlineMap={onlineMap}
           typingMap={typingMap}
           draftMap={draftMap}
@@ -859,8 +1030,12 @@ export const App: React.FC = () => {
           storyGroup={activeStoryGroup}
           currentUserId={currentUserId}
           onClose={() => setActiveStoryGroup(null)}
+          onView={(storyId) => viewStory({ storyId })}
           onReact={(storyId, emoji) => reactToStory({ storyId, emoji })}
-          onReply={(userId, text, storyId) => replyToStory({ targetUserId: userId, text, storyId })}
+          onReply={(_userId, text, storyId) => {
+            replyToStory({ storyId, content: text });
+            addToast("success", "Reply sent!");
+          }}
           onDelete={(storyId) => {
             deleteStory({ storyId });
             setActiveStoryGroup(null);
@@ -892,6 +1067,7 @@ export const App: React.FC = () => {
       {/* Call Logs Modal */}
       {showCallLogs && (
         <CallLogsModal
+          currentUserId={currentUserId}
           onClose={() => setShowCallLogs(false)}
           onInitiateCall={(targetId, name, avatar, kind) => {
             // Find existing conversation with this user or create
@@ -901,7 +1077,9 @@ export const App: React.FC = () => {
             if (conv) {
               startCall(conv._id, targetId, { id: targetId, name, avatar }, kind);
             } else {
-              alert("Start a chat first before placing call");
+              bubblyAlert("Start a Chat First", "Start a chat with this contact before placing a call.", {
+                variant: "amber",
+              });
             }
           }}
         />
@@ -1030,7 +1208,7 @@ export const App: React.FC = () => {
           callDuration={callDuration}
           localStream={localStream}
           remoteStream={remoteStream}
-          onEndCall={endCall}
+          onEndCall={isRinging && activeCall.isOutgoing ? cancelCall : endCall}
           onToggleMute={toggleMute}
           onToggleVideo={toggleVideo}
         />

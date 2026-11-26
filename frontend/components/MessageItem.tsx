@@ -1,9 +1,10 @@
 import {
     StyleSheet, View, Modal, FlatList,
     TouchableOpacity, TouchableWithoutFeedback,
-    Pressable, TextInput, Dimensions, ScrollView, Alert, Linking,
+    Pressable, TextInput, Dimensions, ScrollView, Linking,
     PanResponder, Animated as RNAnimated, Platform, Vibration
 } from 'react-native'
+import { BubblyAlert } from './BubblyAlert'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { AttachmentMetaProps, MessageProps, PollProps, ReactionProps, ReplyToProps } from "../types"
 import { useAuth } from "../contexts/authContext"
@@ -373,6 +374,7 @@ const popupStyles = StyleSheet.create({
 const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { voiceUrl: string; voiceDuration: number; isMe: boolean; content?: string }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadFailed, setLoadFailed] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [totalDuration, setTotalDuration] = useState(voiceDuration);
     const [showTranscript, setShowTranscript] = useState(false);
@@ -400,13 +402,23 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
 
     useEffect(() => {
         setIsPlaying(status.playing);
-        setIsLoading(!status.isLoaded);
+        setIsLoading(!status.isLoaded && !loadFailed);
         if (status.isLoaded) {
+            setLoadFailed(false);
             setCurrentTime(Math.max(0, status.currentTime || 0));
             if (status.duration > 0) setTotalDuration(Math.floor(status.duration));
         }
         if (status.didJustFinish) { setIsPlaying(false); setCurrentTime(0); clearProgressInterval(); }
-    }, [status.playing, status.isLoaded, status.currentTime, status.duration, status.didJustFinish]);
+    }, [status.playing, status.isLoaded, status.currentTime, status.duration, status.didJustFinish, loadFailed]);
+
+    useEffect(() => {
+        if (status.isLoaded) return;
+        const timer = setTimeout(() => {
+            setLoadFailed(true);
+            setIsLoading(false);
+        }, 8000);
+        return () => clearTimeout(timer);
+    }, [voiceUrl, status.isLoaded]);
 
     useEffect(() => {
         if (isPlaying) {
@@ -454,6 +466,10 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
             if (isPlaying) { player.pause(); setIsPlaying(false); clearProgressInterval(); return; }
             setIsLoading(!player.isLoaded);
             await setAudioModeAsync({ playsInSilentMode: true });
+            if (status.didJustFinish || (totalDuration > 0 && currentTime >= totalDuration - 0.2)) {
+                try { await (player as any).seekTo?.(0); } catch {}
+                setCurrentTime(0);
+            }
             player.play();
             setIsLoading(false); setIsPlaying(true);
             startProgressTracking();
@@ -869,8 +885,8 @@ const FileBubble = ({ meta, isMe }: { meta: AttachmentMetaProps; isMe: boolean }
         try {
             const supported = await Linking.canOpenURL(meta.url);
             if (supported) await Linking.openURL(meta.url);
-            else Alert.alert("Cannot open", "No app found to open this file type.");
-        } catch { Alert.alert("Error", "Could not open the file."); }
+            else BubblyAlert.alert("Cannot open", "No app found to open this file type.");
+        } catch { BubblyAlert.alert("Error", "Could not open the file."); }
     };
 
     return (
@@ -1074,7 +1090,7 @@ const PollBubble = ({
     };
 
     const handleClose = () => {
-        Alert.alert(
+        BubblyAlert.alert(
             "Close Poll",
             "Are you sure? No more votes will be accepted.",
             [
@@ -1965,6 +1981,9 @@ const MessageItem = ({
     isTargetHighlight,
     customBubbleMine,
     customBubbleOther,
+    isNotesToSelf = false,
+    onLocalDelete,
+    onLocalEdit,
 }: {
     item: MessageProps;
     isDirect: boolean;
@@ -1979,6 +1998,9 @@ const MessageItem = ({
     isTargetHighlight?: boolean;
     customBubbleMine?: string;
     customBubbleOther?: string;
+    isNotesToSelf?: boolean;
+    onLocalDelete?: (messageId: string) => void;
+    onLocalEdit?: (messageId: string, newContent: string) => void;
 }) => {
     const { user: currentUser } = useAuth();
     const isMe = currentUser?.id == item?.sender?.id;
@@ -2135,28 +2157,31 @@ const MessageItem = ({
     const handleTranslate = () => {
         if (!item.content) return;
         setShowActions(false);
-        Alert.alert(
-            "Translate Message",
-            "Choose target language:",
-            [
-                ...TRANSLATION_LANGUAGES.map(lang => ({
-                    text: lang.label,
-                    onPress: async () => {
-                        setSelectedTargetLang(lang);
-                        setIsTranslating(true);
-                        const res = await translateMessage(item.content, lang.code);
-                        if (res.success && res.data?.translatedText) {
-                            setTranslatedText(res.data.translatedText);
-                            setShowOriginal(false);
-                        } else {
-                            Alert.alert("Translation", res.msg || "Could not translate message");
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => {
+            BubblyAlert.alert(
+                "Translate Message",
+                "Choose target language:",
+                [
+                    ...TRANSLATION_LANGUAGES.map(lang => ({
+                        text: lang.label,
+                        onPress: async () => {
+                            setSelectedTargetLang(lang);
+                            setIsTranslating(true);
+                            const res = await translateMessage(item.content, lang.code);
+                            if (res.success && res.data?.translatedText) {
+                                setTranslatedText(res.data.translatedText);
+                                setShowOriginal(false);
+                            } else {
+                                BubblyAlert.alert("Translation", res.msg || "Could not translate message");
+                            }
+                            setIsTranslating(false);
                         }
-                        setIsTranslating(false);
-                    }
-                })),
-                { text: "Cancel", style: "cancel" }
-            ]
-        );
+                    })),
+                    { text: "Cancel", style: "cancel" }
+                ]
+            );
+        }, 90);
     };
 
     const handleReply = () => { setShowActions(false); onReply(item); };
@@ -2199,14 +2224,29 @@ const MessageItem = ({
 
     const handleDelete = () => {
         setShowActions(false);
-        Alert.alert(
-            "Delete Message",
-            "This message will be deleted for everyone. This cannot be undone.",
-            [
-                { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: () => deleteMessage({ messageId: item.id, conversationId: item.conversationId }) },
-            ]
-        );
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => {
+            BubblyAlert.alert(
+                "Delete Message",
+                isNotesToSelf
+                    ? "Delete this note from your device?"
+                    : "This message will be deleted for everyone. This cannot be undone.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => {
+                            if (isNotesToSelf && onLocalDelete) {
+                                onLocalDelete(item.id);
+                            } else {
+                                deleteMessage({ messageId: item.id, conversationId: item.conversationId });
+                            }
+                        },
+                    },
+                ]
+            );
+        }, 90);
     };
 
     const handleEdit = () => {
@@ -2214,14 +2254,21 @@ const MessageItem = ({
         if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
         pendingTimerRef.current = setTimeout(() => setShowEditModal(true), 150);
     };
-    const handleEditSave = (newContent: string) => { setShowEditModal(false); editMessage({ messageId: item.id, conversationId: item.conversationId, content: newContent }); };
+    const handleEditSave = (newContent: string) => {
+        setShowEditModal(false);
+        if (isNotesToSelf && onLocalEdit) {
+            onLocalEdit(item.id, newContent);
+        } else {
+            editMessage({ messageId: item.id, conversationId: item.conversationId, content: newContent });
+        }
+    };
     const handleOpenFile = async () => {
         if (!item.attachmentMeta?.url) return;
         try {
             const supported = await Linking.canOpenURL(item.attachmentMeta.url);
             if (supported) await Linking.openURL(item.attachmentMeta.url);
-            else Alert.alert("Cannot open", "No app found to open this file type.");
-        } catch { Alert.alert("Error", "Could not open the file."); }
+            else BubblyAlert.alert("Cannot open", "No app found to open this file type.");
+        } catch { BubblyAlert.alert("Error", "Could not open the file."); }
     };
 
     // ── DELETED MESSAGE ──
@@ -2367,7 +2414,7 @@ const MessageItem = ({
                                     size={12}
                                     style={styles.senderName}
                                 >
-                                    {item.sender.name}
+                                    {item?.sender?.name || "Unknown"}
                                 </Typo>
                             )}
 
@@ -2432,7 +2479,7 @@ const MessageItem = ({
                                 <TouchableOpacity
                                     onPress={() => {
                                         const url = item.attachmentMeta?.url || item.attachement;
-                                        if (url) Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open video"));
+                                        if (url) Linking.openURL(url).catch(() => BubblyAlert.alert("Error", "Could not open video"));
                                     }}
                                     activeOpacity={0.85}
                                     style={{
@@ -2589,7 +2636,7 @@ const MessageItem = ({
                     swipeToCloseEnabled
                     doubleTapToZoomEnabled
                     FooterComponent={() => (
-                        <ImageViewerFooter senderName={isMe ? "You" : item.sender.name} time={moment(item.createdAt).format("MMM D, YYYY • h:mm A")} />
+                        <ImageViewerFooter senderName={isMe ? "You" : (item?.sender?.name || "Unknown")} time={moment(item.createdAt).format("MMM D, YYYY • h:mm A")} />
                     )}
                 />
             )}
@@ -2700,7 +2747,7 @@ const MessageItem = ({
 
                                     {/* ── View Image ── */}
                                     {isImageMessage ? (
-                                        <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={() => { handleDismiss(); setTimeout(() => setShowImageViewer(true), 200); }}>
+                                        <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={() => { handleDismiss(); if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current); pendingTimerRef.current = setTimeout(() => setShowImageViewer(true), 200); }}>
                                             <View style={styles.actionIconWrap}><Icons.ArrowsOut size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>
                                             <Typo size={15} fontWeight="500" color={colors.neutral800}>View Image</Typo>
                                         </TouchableOpacity>
@@ -2714,7 +2761,7 @@ const MessageItem = ({
                                             onPress={() => {
                                                 handleDismiss();
                                                 const url = item.attachement || item.attachmentMeta?.url;
-                                                if (url) Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open image for saving."));
+                                                if (url) Linking.openURL(url).catch(() => BubblyAlert.alert("Error", "Could not open image for saving."));
                                             }}
                                         >
                                             <View style={styles.actionIconWrap}><Icons.DownloadSimple size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>

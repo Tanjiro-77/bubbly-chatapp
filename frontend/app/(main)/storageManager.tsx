@@ -5,11 +5,11 @@ import {
     StyleSheet,
     TouchableOpacity,
     Switch,
-    Alert,
     Platform,
     ActivityIndicator,
     Vibration,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Icons from "phosphor-react-native";
@@ -84,11 +84,11 @@ export default function StorageManagerScreen() {
 
     const handleClearCache = async () => {
         if (storageData.cache === 0) {
-            Alert.alert("Cache Already Clean", "There are no temporary cache files to delete right now.");
+            BubblyAlert.alert("Cache Already Clean", "There are no temporary cache files to delete right now.");
             return;
         }
 
-        Alert.alert(
+        BubblyAlert.alert(
             "Clear App Cache",
             `This will remove ${storageData.cache.toFixed(1)} MB of cached preview files and temporary media. Your chat history and downloaded files will remain safe.`,
             [
@@ -107,9 +107,9 @@ export default function StorageManagerScreen() {
                             const freedMB = storageData.cache.toFixed(1);
                             setStorageData((prev) => ({ ...prev, cache: 0 }));
                             setCacheCleared(true);
-                            Alert.alert("Storage Cleaned ✨", `Successfully freed ${freedMB} MB of temporary cache!`);
+                            BubblyAlert.alert("Storage Cleaned ✨", `Successfully freed ${freedMB} MB of temporary cache!`);
                         } catch (_) {
-                            Alert.alert("Error", "Could not clear cache at this time.");
+                            BubblyAlert.alert("Error", "Could not clear cache at this time.");
                         } finally {
                             setClearingCache(false);
                         }
@@ -120,7 +120,7 @@ export default function StorageManagerScreen() {
     };
 
     const handleResetStats = () => {
-        Alert.alert(
+        BubblyAlert.alert(
             "Reset Network Statistics",
             "Are you sure you want to reset all network and call counters?",
             [
@@ -129,7 +129,7 @@ export default function StorageManagerScreen() {
                     text: "Reset",
                     style: "destructive",
                     onPress: () => {
-                        Alert.alert("Statistics Reset", "All network usage counters have been reset to zero.");
+                        BubblyAlert.alert("Statistics Reset", "All network usage counters have been reset to zero.");
                     },
                 },
             ]

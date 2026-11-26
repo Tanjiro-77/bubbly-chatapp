@@ -19,6 +19,7 @@ import {
   leaveGroup,
   toggleMuteConversation,
 } from "../../socket/socketEvents";
+import { bubblyConfirm } from "../common/BubblyDialog";
 
 interface GroupDetailsDrawerProps {
   conversation: ConversationProps;
@@ -33,9 +34,7 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
   onClose,
   onOpenSharedMedia,
 }) => {
-  const isMeAdmin =
-    conversation.groupAdmins?.includes(currentUserId) ||
-    (conversation.participants && conversation.participants[0]?._id === currentUserId);
+  const isMeAdmin = !!conversation.groupAdmins?.includes(currentUserId);
 
   const handleToggleAdmin = (targetUserId: string, promote: boolean) => {
     setGroupAdmin({
@@ -45,8 +44,14 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
     });
   };
 
-  const handleRemoveMember = (targetUserId: string) => {
-    if (confirm("Are you sure you want to remove this member?")) {
+  const handleRemoveMember = async (targetUserId: string) => {
+    const confirmed = await bubblyConfirm({
+      title: "Remove Member",
+      message: "Are you sure you want to remove this member from the group?",
+      confirmText: "Remove",
+      variant: "danger",
+    });
+    if (confirmed) {
       removeGroupMember({
         conversationId: conversation._id,
         targetUserId,
@@ -54,8 +59,14 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
     }
   };
 
-  const handleLeaveGroup = () => {
-    if (confirm("Are you sure you want to leave this group?")) {
+  const handleLeaveGroup = async () => {
+    const confirmed = await bubblyConfirm({
+      title: "Leave Group",
+      message: "Are you sure you want to leave this group?",
+      confirmText: "Leave Group",
+      variant: "danger",
+    });
+    if (confirmed) {
       leaveGroup({ conversationId: conversation._id });
       onClose();
     }

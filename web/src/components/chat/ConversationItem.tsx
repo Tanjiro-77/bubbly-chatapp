@@ -26,6 +26,8 @@ interface ConversationItemProps {
   onOpenActions?: () => void;
 }
 
+const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Matched text highlighter matching mobile HighlightText
 const HighlightText: React.FC<{
   text: string;
@@ -35,11 +37,12 @@ const HighlightText: React.FC<{
   if (!query.trim()) {
     return <span className={className}>{text}</span>;
   }
-  const parts = text.split(new RegExp(`(${query})`, "gi"));
+  const trimmed = query.trim();
+  const parts = text.split(new RegExp(`(${escapeRegExp(trimmed)})`, "gi"));
   return (
     <span className={className}>
       {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase() ? (
+        part.toLowerCase() === trimmed.toLowerCase() ? (
           <span
             key={i}
             className="bg-[#fef3c7] dark:bg-amber-500/30 text-[#1c1917] dark:text-amber-200 font-extrabold px-0.5 rounded"
@@ -77,21 +80,21 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
 
   const lastMsg = conversation.lastMessage;
   const isLastMsgMe =
-    lastMsg &&
+    !!lastMsg &&
     (lastMsg.senderId === currentUserId ||
+      (lastMsg as any).sender?.id === currentUserId ||
       (lastMsg as any).sender?._id === currentUserId);
 
   const formatLastTime = (dateStr?: string) => {
     if (!dateStr) return "";
     const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return "";
     if (isToday(date)) return format(date, "h:mm a");
     if (isYesterday(date)) return "Yesterday";
     return format(date, "MMM d");
   };
 
-  const isPinned =
-    (conversation.pinnedMessages && conversation.pinnedMessages.length > 0) ||
-    conversation.isPinned;
+  const isPinned = !!conversation.isPinned;
   const unreadCount = conversation.unreadCount || 0;
   const hasUnread = unreadCount > 0;
 

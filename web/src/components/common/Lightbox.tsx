@@ -10,6 +10,19 @@ interface LightboxProps {
 export const Lightbox: React.FC<LightboxProps> = ({ src, onClose, title }) => {
   const [scale, setScale] = React.useState(1);
 
+  React.useEffect(() => {
+    setScale(1);
+  }, [src]);
+
+  React.useEffect(() => {
+    if (!src) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [src, onClose]);
+
   if (!src) return null;
 
   return (

@@ -20,11 +20,12 @@ export const PinnedBanner: React.FC<PinnedBannerProps> = ({
   if (!pinnedMessages || pinnedMessages.length === 0) return null;
 
   const latest = pinnedMessages[pinnedMessages.length - 1];
+  const latestId = latest.id || (latest as any)._id || "";
 
   return (
     <div className="h-10 px-4 bg-amber-500/10 dark:bg-amber-950/40 border-b border-amber-500/20 backdrop-blur-md flex items-center justify-between text-xs font-semibold text-amber-900 dark:text-amber-200 select-none z-10 animate-slide-up">
       <div
-        onClick={() => onScrollToMessage(latest.id)}
+        onClick={() => latestId && onScrollToMessage(latestId)}
         className="flex items-center gap-2 truncate cursor-pointer hover:underline flex-1"
       >
         <Pin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -33,7 +34,7 @@ export const PinnedBanner: React.FC<PinnedBannerProps> = ({
       </div>
 
       <button
-        onClick={() => onUnpin(latest.id)}
+        onClick={() => latestId && onUnpin(latestId)}
         className="p-1 hover:bg-amber-500/20 rounded-full transition ml-2 text-stone-500 dark:text-zinc-400"
         title="Unpin"
       >

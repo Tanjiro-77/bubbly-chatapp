@@ -70,7 +70,7 @@ const userSchema = new Schema<UserProps>({
         mode: { type: String, enum: ["light", "dark", "system"], default: "system" },
         accent: { type: String, default: "#facc15" },
         wallpaper: { type: String, default: "" },
-        bubbleStyle: { type: String, enum: ["rounded", "sharp"], default: "rounded" },
+        bubbleStyle: { type: String, enum: ["rounded", "sharp", "minimal"], default: "rounded" },
     },
 });
 

@@ -99,6 +99,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
   const [pushBanner, setPushBanner] = useState<"none" | "message" | "call">("none");
   const replyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const storyEmojiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerPushPreview = (kind: "message" | "call") => {
     sounds.playReceive();
@@ -139,6 +140,9 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
       }
       if (pushTimeoutRef.current) {
         clearTimeout(pushTimeoutRef.current);
+      }
+      if (storyEmojiTimeoutRef.current) {
+        clearTimeout(storyEmojiTimeoutRef.current);
       }
     };
   }, []);
@@ -608,7 +612,10 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                           onClick={() => {
                             sounds.playPop();
                             setStoryEmoji(emo);
-                            setTimeout(() => setStoryEmoji(null), 1500);
+                            if (storyEmojiTimeoutRef.current) {
+                              clearTimeout(storyEmojiTimeoutRef.current);
+                            }
+                            storyEmojiTimeoutRef.current = setTimeout(() => setStoryEmoji(null), 1500);
                           }}
                           className="hover:scale-125 transition-transform"
                         >

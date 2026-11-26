@@ -119,15 +119,17 @@ export const FormattedText: React.FC<FormattedTextProps> = ({
     searchHighlight,
     style,
 }) => {
+    const safeContent = content || "";
+
     // Check for fenced code block ```code```
     const codeBlockMatch = useMemo(() => {
-        const match = content.match(/^```(?:[a-zA-Z0-9_-]+)?\n?([\s\S]*?)```$/);
+        const match = safeContent.match(/^```(?:[a-zA-Z0-9_-]+)?\n?([\s\S]*?)```$/);
         return match ? match[1] : null;
-    }, [content]);
+    }, [safeContent]);
 
     const tokens = useMemo(
-        () => (codeBlockMatch !== null ? [] : parseInline(content, searchHighlight)),
-        [content, searchHighlight, codeBlockMatch]
+        () => (codeBlockMatch !== null ? [] : parseInline(safeContent, searchHighlight)),
+        [safeContent, searchHighlight, codeBlockMatch]
     );
 
     if (codeBlockMatch !== null) {

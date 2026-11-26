@@ -26,8 +26,9 @@ export const SharedMediaModal: React.FC<SharedMediaModalProps> = ({
 
   const docItems = messages.filter((m) => m.type === "file" && m.attachement);
 
-  const linkRegex = /(https?:\/\/[^\s]+)/g;
-  const linkItems = messages.filter((m) => m.content && linkRegex.test(m.content));
+  const linkTestRegex = /https?:\/\/[^\s]+/i;
+  const linkMatchRegex = /https?:\/\/[^\s]+/gi;
+  const linkItems = messages.filter((m) => m.content && linkTestRegex.test(m.content));
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 select-none">
@@ -150,7 +151,7 @@ export const SharedMediaModal: React.FC<SharedMediaModalProps> = ({
             ) : (
               <div className="space-y-2">
                 {linkItems.map((item, idx) => {
-                  const links = item.content.match(linkRegex) || [];
+                  const links = item.content.match(linkMatchRegex) || [];
                   return links.map((link, lIdx) => (
                     <a
                       key={`${idx}-${lIdx}`}

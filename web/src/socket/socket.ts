@@ -35,14 +35,26 @@ export function connectSocket(): Promise<Socket> {
     });
   }
 
-  return new Promise((resolve) => {
-    if (socket?.connected) {
-      resolve(socket);
-    } else {
-      socket?.once("connect", () => {
-        resolve(socket!);
-      });
+  return new Promise((resolve, reject) => {
+    if (!socket) {
+      reject(new Error("Socket not initialized"));
+      return;
     }
+    if (socket.connected) {
+      resolve(socket);
+      return;
+    }
+    const s = socket;
+    const onConnect = () => {
+      s.off("connect_error", onError);
+      resolve(s);
+    };
+    const onError = (err: Error) => {
+      s.off("connect", onConnect);
+      reject(err);
+    };
+    s.once("connect", onConnect);
+    s.once("connect_error", onError);
   });
 }
 

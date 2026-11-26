@@ -72,21 +72,27 @@ export function intializeSocket(server: any): SocketIOServer {
         try {
             const conversations = await Conversation.find({
                 participants: userId
-            }).select("_id");
+            }).select("_id type");
 
             conversations.forEach(conversation => {
                 socket.join(conversation._id.toString());
             });
 
             const me = await User.findById(userId).select("privacy isOnline lastSeen").lean();
-            conversations.forEach(conversation => {
-                const status = sanitizeLastSeen("broadcast", me, true);
-                socket.to(conversation._id.toString()).emit("userStatus", {
-                    userId,
-                    isOnline: status.hidden ? false : true,
-                    lastSeen: null,
+            if (me) {
+                const visibility = me.privacy?.lastSeen || "everyone";
+                conversations.forEach(conversation => {
+                    const isContact = conversation.type === "direct";
+                    const status = sanitizeLastSeen("broadcast", me, isContact);
+                    if (!status.hidden) {
+                        socket.to(conversation._id.toString()).emit("userStatus", {
+                            userId,
+                            isOnline: visibility === "nobody" ? false : true,
+                            lastSeen: null,
+                        });
+                    }
                 });
-            });
+            }
 
         } catch (error: any) {
             console.log("Error joining conversations:", error);
@@ -100,19 +106,32 @@ export function intializeSocket(server: any): SocketIOServer {
                 console.error("Error handling user disconnect calls:", err);
             });
 
+            // Only mark offline if user has no remaining connected sockets
+            const remainingSockets = Array.from(io.sockets.sockets.values()).filter(
+                (s) => s.id !== socket.id && s.data.userId === userId
+            );
+            if (remainingSockets.length > 0) {
+                return;
+            }
+
             const lastSeen = new Date();
 
             try {
-                await User.findByIdAndUpdate(userId, {
-                    isOnline: false,
-                    lastSeen,
-                });
+                const updated = await User.findByIdAndUpdate(
+                    userId,
+                    { isOnline: false, lastSeen },
+                    { new: true }
+                ).select("privacy").lean();
+
+                const visibility = updated?.privacy?.lastSeen || "everyone";
+                if (visibility === "nobody") return;
 
                 const conversations = await Conversation.find({
                     participants: userId
-                }).select("_id");
+                }).select("_id type");
 
                 conversations.forEach(conversation => {
+                    if (visibility === "contacts" && conversation.type !== "direct") return;
                     socket.to(conversation._id.toString()).emit("userStatus", {
                         userId,
                         isOnline: false,

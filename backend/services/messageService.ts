@@ -1,5 +1,7 @@
 import Message from "../modals/Message";
+import Conversation from "../modals/Conversation";
 import User from "../modals/User";
+import { isValidObjectId } from "mongoose";
 import { getIO } from "../socket/io";
 import { assertRateLimit } from "../utils/rateLimit";
 import { canSendInGroup, filterBlockedDirect, getMembership } from "../utils/permissions";
@@ -18,6 +20,8 @@ export type SendMessageInput = {
         mimeType?: string;
         size?: number;
         resourceType?: "image" | "video" | "raw" | "audio";
+        isHd?: boolean;
+        isViewOnce?: boolean;
     };
     replyTo?: string | null;
     voiceUrl?: string | null;
@@ -62,11 +66,24 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     if (!conversation) throw new Error("Conversation not found");
     if (!isMember && !input.skipPermissionCheck) throw new Error("Not a member of this conversation");
 
+    if (typeof content !== "string") {
+        throw new Error("Invalid message content");
+    }
+    if (replyTo && !isValidObjectId(replyTo)) {
+        throw new Error("Invalid reply target");
+    }
+    if (storyId && !isValidObjectId(storyId)) {
+        throw new Error("Invalid story reference");
+    }
+
     if (!systemEvent && !input.skipPermissionCheck) {
+        if (input.type === "system" || input.type === "call" || input.type === "poll") {
+            throw new Error("Invalid message type");
+        }
         if (await filterBlockedDirect(conversation, senderId)) {
             throw new Error("You cannot message this user");
         }
-        if (!canSendInGroup(conversation, senderId) && input.type !== "system") {
+        if (!canSendInGroup(conversation, senderId)) {
             throw new Error("Only admins can send messages in this group");
         }
     }
@@ -134,7 +151,7 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
             replyToData = {
                 id: replyMsg._id,
                 content: replyMsg.content,
-                senderName: (replyMsg.senderId as { _id: string; name: string }).name,
+                senderName: (replyMsg.senderId as { _id: string; name: string } | null)?.name || "Unknown",
                 voiceUrl: replyMsg.voiceUrl || null,
                 type: (replyMsg as any).type,
             };
@@ -151,28 +168,47 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         };
     }
 
-    if (type !== "system") {
-        conversation.participants.forEach((participantId: any) => {
-            if (participantId.toString() === senderId.toString()) return;
-            const existing = conversation.unreadCounts.find(
-                (u: any) => u.userId.toString() === participantId.toString()
-            );
-            if (existing) existing.count += 1;
-            else conversation.unreadCounts.push({ userId: participantId, count: 1 });
-        });
-    }
+    const otherParticipantIds = conversation.participants
+        .map((p: any) => p.toString())
+        .filter((pid: string) => pid !== senderId.toString());
 
-    conversation.lastMessage = message._id as any;
-    if ((conversation as any).deletedFor?.length) {
-        (conversation as any).deletedFor = [];
+    let updatedConv = conversation;
+    if (type !== "system" && otherParticipantIds.length > 0) {
+        // Atomic unread increment for existing entries + update lastMessage/deletedFor
+        await Conversation.updateOne(
+            { _id: conversationId },
+            {
+                $inc: { "unreadCounts.$[elem].count": 1 },
+                $set: { lastMessage: message._id, deletedFor: [] },
+            },
+            { arrayFilters: [{ "elem.userId": { $in: otherParticipantIds } }] }
+        );
+        // Ensure any participant missing an unreadCounts entry gets count: 1
+        const refreshed = await Conversation.findById(conversationId);
+        if (refreshed) {
+            const missingIds = otherParticipantIds.filter(
+                (pid: string) => !refreshed.unreadCounts.some((u: any) => u.userId.toString() === pid)
+            );
+            if (missingIds.length > 0) {
+                missingIds.forEach((pid: string) => refreshed.unreadCounts.push({ userId: pid as any, count: 1 }));
+                await refreshed.save();
+            }
+            updatedConv = refreshed;
+        }
+    } else {
+        await Conversation.updateOne(
+            { _id: conversationId },
+            { $set: { lastMessage: message._id, deletedFor: [] } }
+        );
     }
-    await conversation.save();
 
     const payload = formatMessagePayload(message, { sender, replyTo: replyToData });
 
     const io = getIO();
     io.to(conversationId).emit("newMessage", {
         success: true,
+        conversationType: conversation.type,
+        conversationName: conversation.name || null,
         data: payload,
     });
 
@@ -183,7 +219,7 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
 
     allSockets.forEach((participantSocket) => {
         const participantId = participantSocket.data.userId?.toString();
-        const unreadEntry = conversation.unreadCounts.find(
+        const unreadEntry = updatedConv.unreadCounts.find(
             (u: any) => u.userId.toString() === participantId
         );
         participantSocket.emit("unreadCountUpdate", {
@@ -193,7 +229,7 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     });
 
     sendMessagePushNotifications({
-        conversation: conversation as any,
+        conversation: updatedConv as any,
         sender,
         message: payload as any,
     }).catch((err) => {

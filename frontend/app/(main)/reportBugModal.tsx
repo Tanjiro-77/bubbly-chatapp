@@ -8,10 +8,10 @@ import {
     ScrollView,
     Image,
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
@@ -47,7 +47,7 @@ export default function ReportBugModal() {
         try {
             const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
             if (!permissionResult.granted) {
-                Alert.alert(
+                BubblyAlert.alert(
                     "Permission Required",
                     "Please allow photo library access to attach a screenshot of the issue."
                 );
@@ -65,7 +65,7 @@ export default function ReportBugModal() {
             }
         } catch (err) {
             console.error("Failed to pick screenshot:", err);
-            Alert.alert("Error", "Could not open image picker.");
+            BubblyAlert.alert("Error", "Could not open image picker.");
         }
     };
 
@@ -75,12 +75,12 @@ export default function ReportBugModal() {
 
     const handleSubmit = async () => {
         if (!title.trim()) {
-            Alert.alert("Missing Title", "Please enter a brief title or summary of the issue.");
+            BubblyAlert.alert("Missing Title", "Please enter a brief title or summary of the issue.");
             return;
         }
 
         if (!description.trim()) {
-            Alert.alert("Missing Details", "Please provide a short description of what happened.");
+            BubblyAlert.alert("Missing Details", "Please provide a short description of what happened.");
             return;
         }
 
@@ -99,16 +99,16 @@ export default function ReportBugModal() {
             });
 
             if (result.success) {
-                Alert.alert(
+                BubblyAlert.alert(
                     "Report Sent! 🚀",
                     "Thank you for reporting this issue. Our team has received the diagnostic details and will investigate.",
                     [{ text: "OK", onPress: () => router.back() }]
                 );
             } else {
-                Alert.alert("Submission Notice", result.msg || "Could not submit report. Please try again.");
+                BubblyAlert.alert("Submission Notice", result.msg || "Could not submit report. Please try again.");
             }
         } catch (err: any) {
-            Alert.alert("Error", err.message || "Failed to submit report.");
+            BubblyAlert.alert("Error", err.message || "Failed to submit report.");
         } finally {
             setIsSubmitting(false);
         }

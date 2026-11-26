@@ -74,21 +74,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     }
 
-    const signIn = async (email: string, password: string) => {
-        const response = await login(email, password);
-        await updateToken(response.token);
+    const establishAuthenticatedSession = async (authToken: string) => {
+        setToken(authToken);
+        await AsyncStorage.setItem("token", authToken);
+        const decoded = jwtDecode<DecodedTokenProps>(authToken);
         await connectSocket();
         await markOnboardingCompleted();
-        registerForPushNotificationsAsync(response.token).catch(() => {});
+        setUser(decoded.user);
+        registerForPushNotificationsAsync(authToken).catch(() => {});
+    };
+
+    const signIn = async (email: string, password: string) => {
+        const response = await login(email, password);
+        await establishAuthenticatedSession(response.token);
         router.replace("/(main)/home");
     };
 
     const signInWithPhone = async (phoneNumber: string, password: string) => {
         const response = await loginWithPhone(phoneNumber, password);
-        await updateToken(response.token);
-        await connectSocket();
-        await markOnboardingCompleted();
-        registerForPushNotificationsAsync(response.token).catch(() => {});
+        await establishAuthenticatedSession(response.token);
         router.replace("/(main)/home");
     };
 
@@ -101,10 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         googleId?: string;
     }) => {
         const response = await googleLogin(payload);
-        await updateToken(response.token);
-        await connectSocket();
-        await markOnboardingCompleted();
-        registerForPushNotificationsAsync(response.token).catch(() => {});
+        await establishAuthenticatedSession(response.token);
         router.replace("/(main)/home");
     };
 
@@ -122,19 +123,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const signUp = async (email: string, password: string, name: string, avatar?: string | null) => {
         const response = await register(email, password, name, avatar);
-        await updateToken(response.token);
-        await connectSocket();
-        await markOnboardingCompleted();
-        registerForPushNotificationsAsync(response.token).catch(() => {});
+        await establishAuthenticatedSession(response.token);
         router.replace("/(main)/home");
     };
 
     const signUpWithPhone = async (phoneNumber: string, password: string, name: string, avatar?: string | null) => {
         const response = await registerWithPhone(phoneNumber, password, name, avatar);
-        await updateToken(response.token);
-        await connectSocket();
-        await markOnboardingCompleted();
-        registerForPushNotificationsAsync(response.token).catch(() => {});
+        await establishAuthenticatedSession(response.token);
         router.replace("/(main)/home");
     };
 

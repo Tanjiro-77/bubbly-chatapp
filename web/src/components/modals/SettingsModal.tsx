@@ -22,6 +22,7 @@ import {
   Code2,
 } from "lucide-react";
 import { uploadMediaToCloudinary } from "../../services/mediaService";
+import { bubblyAlert, bubblyConfirm } from "../common/BubblyDialog";
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -48,7 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
           updateUser({ avatar: res.data.url });
         }
       } catch {
-        alert("Avatar upload failed");
+        bubblyAlert("Upload Failed", "Avatar upload failed. Please try again.", { variant: "danger" });
       } finally {
         setUploading(false);
       }
@@ -267,8 +268,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
           {/* Logout */}
           <div className="pt-2">
             <button
-              onClick={() => {
-                if (confirm("Are you sure you want to log out?")) {
+              onClick={async () => {
+                const confirmed = await bubblyConfirm({
+                  title: "Log Out",
+                  message: "Are you sure you want to log out of Bubbly?",
+                  confirmText: "Log Out",
+                  variant: "danger",
+                });
+                if (confirmed) {
                   logout();
                   onClose();
                 }

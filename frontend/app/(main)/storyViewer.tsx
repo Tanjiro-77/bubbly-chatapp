@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, Dimensions,
-    TextInput, KeyboardAvoidingView, Platform, Alert,
+    TextInput, KeyboardAvoidingView, Platform,
     FlatList, StatusBar,
 } from 'react-native';
+import { BubblyAlert } from '../../components/BubblyAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import Animated, {
@@ -20,7 +21,7 @@ import Avatar from '../../components/Avatar';
 import { useAuth } from '../../contexts/authContext';
 import {
     viewStory, reactToStory, deleteStory,
-    replyToStory,
+    replyToStory, isSocketConnected,
 } from '../../socket/socketEvents';
 import { StoryGroupProps } from '../../types';
 import moment from 'moment';
@@ -58,6 +59,7 @@ const StoryViewer = () => {
     const progress = useSharedValue(0);
     const startTimeRef = useRef<number>(0);
     const elapsedRef = useRef<number>(0);
+    const isPausedRef = useRef<boolean>(false);
 
     const currentGroup = allGroups[currentGroupIndex];
     const currentStory = currentGroup?.stories?.[currentStoryIndex];
@@ -106,6 +108,8 @@ const StoryViewer = () => {
     }, [goToNext, progress]);
 
     const pauseProgress = () => {
+        if (isPausedRef.current) return;
+        isPausedRef.current = true;
         const elapsed = Date.now() - startTimeRef.current + elapsedRef.current;
         elapsedRef.current = elapsed;
         cancelAnimation(progress);
@@ -113,12 +117,14 @@ const StoryViewer = () => {
     };
 
     const resumeProgress = () => {
+        isPausedRef.current = false;
         setIsPaused(false);
         startProgress(elapsedRef.current);
     };
 
     useEffect(() => {
         if (!currentStory) return;
+        isPausedRef.current = false;
         elapsedRef.current = 0;
         progress.value = 0;
         startProgress(0);
@@ -140,8 +146,12 @@ const StoryViewer = () => {
         } else if (currentGroupIndex > 0) {
             setCurrentGroupIndex(prev => prev - 1);
             setCurrentStoryIndex(allGroups[currentGroupIndex - 1].stories.length - 1);
+        } else {
+            isPausedRef.current = false;
+            elapsedRef.current = 0;
+            startProgress(0);
         }
-    }, [currentGroupIndex, currentStoryIndex, allGroups, progress]);
+    }, [currentGroupIndex, currentStoryIndex, allGroups, progress, startProgress]);
 
     const progressStyle = useAnimatedStyle(() => ({
         width: `${progress.value * 100}%`,
@@ -152,6 +162,19 @@ const StoryViewer = () => {
     // ─────────────────────────────────────────────
     const handleReply = () => {
         if (!replyText.trim()) return;
+        if (!isSocketConnected()) {
+            BubblyAlert.alert('Offline', 'Connect to the internet to reply to a story.');
+            return;
+        }
+        const ack = (res: any) => {
+            replyToStory(ack, true);
+            if (res?.success) {
+                BubblyAlert.alert('✅ Message Sent', 'Your reply was delivered to ' + currentGroup.user.name);
+            } else {
+                BubblyAlert.alert('Reply Failed', res?.msg || 'Could not send story reply.');
+            }
+        };
+        replyToStory(ack);
         replyToStory({
             storyId: currentStory._id,
             content: replyText.trim(),
@@ -159,13 +182,18 @@ const StoryViewer = () => {
         setReplyText('');
         setShowReplyInput(false);
         resumeProgress();
-        Alert.alert('✅ Message Sent', 'Your reply was delivered to ' + currentGroup.user.name);
     };
 
     // ─────────────────────────────────────────────
     // REACT
     // ─────────────────────────────────────────────
     const handleReact = (emoji: string) => {
+        if (!isSocketConnected()) {
+            BubblyAlert.alert('Offline', 'Connect to the internet to react to a story.');
+            setShowEmojiPicker(false);
+            resumeProgress();
+            return;
+        }
         reactToStory({
             storyId: currentStory._id,
             emoji,
@@ -179,7 +207,7 @@ const StoryViewer = () => {
     // ─────────────────────────────────────────────
     const handleDelete = () => {
         pauseProgress();
-        Alert.alert(
+        BubblyAlert.alert(
             'Delete Story',
             'Are you sure you want to delete this story? It will be removed for everyone.',
             [
@@ -189,7 +217,7 @@ const StoryViewer = () => {
                     style: 'destructive',
                     onPress: () => {
                         deleteStory({ storyId: currentStory._id });
-                        router.back();
+                        safeBack();
                     },
                 },
             ]
@@ -344,7 +372,7 @@ const StoryViewer = () => {
                     >
                         <Icons.Eye size={18} color={colors.primary} weight="fill" />
                         <Typo size={13} color={colors.white} fontWeight="700">
-                            {currentStory.viewers.length} {currentStory.viewers.length === 1 ? 'Viewer' : 'Viewers'}
+                            {(currentStory.viewers || []).length} {(currentStory.viewers || []).length === 1 ? 'Viewer' : 'Viewers'}
                         </Typo>
                         <Icons.CaretUp size={14} color={'rgba(255,255,255,0.7)'} weight="bold" />
                     </TouchableOpacity>
@@ -450,7 +478,7 @@ const StoryViewer = () => {
                         <View style={styles.viewersTitleWrap}>
                             <Icons.Eye size={18} color={colors.primaryDark} weight="fill" />
                             <Typo size={16} fontWeight="800" color={colors.neutral900}>
-                                Story Viewers ({currentStory.viewers.length})
+                                Story Viewers ({(currentStory.viewers || []).length})
                             </Typo>
                         </View>
                         <TouchableOpacity
@@ -463,7 +491,7 @@ const StoryViewer = () => {
                             <Icons.X size={18} color={colors.neutral600} weight="bold" />
                         </TouchableOpacity>
                     </View>
-                    {currentStory.viewers.length === 0 ? (
+                    {(currentStory.viewers || []).length === 0 ? (
                         <View style={styles.noViewers}>
                             <Icons.UsersThree size={36} color={colors.neutral300} />
                             <Typo size={14} color={colors.neutral500} fontWeight="600">No viewers yet</Typo>

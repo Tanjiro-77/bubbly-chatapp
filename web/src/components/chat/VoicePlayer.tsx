@@ -29,8 +29,19 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ url, duration = 0, isM
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
+      audio.pause();
     };
   }, []);
+
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.playbackRate = speed;
+    }
+  }, [url]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -38,8 +49,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ url, duration = 0, isM
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play();
-      setIsPlaying(true);
+      audioRef.current.playbackRate = speed;
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     }
   };
 
@@ -50,12 +64,15 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ url, duration = 0, isM
   };
 
   const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
+    const safeSecs = Number.isFinite(secs) && secs >= 0 ? secs : 0;
+    const m = Math.floor(safeSecs / 60);
+    const s = Math.floor(safeSecs % 60);
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
-  const totalTime = duration || (audioRef.current?.duration ? Math.floor(audioRef.current.duration) : 0);
+  const rawDuration = audioRef.current?.duration;
+  const totalTime =
+    duration || (typeof rawDuration === "number" && Number.isFinite(rawDuration) ? Math.floor(rawDuration) : 0);
 
   // Generate pseudo-random deterministic waveform heights
   const bars = [40, 65, 80, 50, 90, 75, 45, 85, 100, 70, 55, 95, 60, 45, 80, 65, 50, 75, 85, 40];

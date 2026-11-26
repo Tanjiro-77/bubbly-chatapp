@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, TextInput,
-    Alert, ScrollView, KeyboardAvoidingView, Platform,
+    ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { BubblyAlert } from '../../components/BubblyAlert';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -94,16 +95,16 @@ const CreateStory = () => {
 
     const handleCreate = async () => {
         if (storyType === 'text' && !text.trim()) {
-            Alert.alert('Story Studio', 'Please enter some text for your story');
+            BubblyAlert.alert('Story Studio', 'Please enter some text for your story');
             return;
         }
         if (storyType === 'image' && !imageUri) {
-            Alert.alert('Story Studio', 'Please choose a photo to share');
+            BubblyAlert.alert('Story Studio', 'Please choose a photo to share');
             return;
         }
 
         if (!isSocketConnected()) {
-            Alert.alert('Offline', 'You need an internet connection to post a story.');
+            BubblyAlert.alert('Offline', 'You need an internet connection to post a story.');
             return;
         }
 
@@ -117,7 +118,7 @@ const CreateStory = () => {
                     'stories'
                 );
                 if (!uploadResult.success) {
-                    Alert.alert('Upload Failed', 'Could not upload image to cloud');
+                    BubblyAlert.alert('Upload Failed', 'Could not upload image to cloud');
                     setLoading(false);
                     return;
                 }
@@ -125,16 +126,16 @@ const CreateStory = () => {
             }
 
             await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    createStory(ackHandler, true);
-                    resolve();
-                }, 4000);
                 const ackHandler = (res: any) => {
                     clearTimeout(timeout);
                     createStory(ackHandler, true);
                     if (res?.success) resolve();
                     else reject(new Error(res?.msg || 'Failed to publish story'));
                 };
+                const timeout = setTimeout(() => {
+                    createStory(ackHandler, true);
+                    reject(new Error('Request timed out'));
+                }, 8000);
                 createStory(ackHandler);
                 createStory({
                     type: storyType,
@@ -146,7 +147,7 @@ const CreateStory = () => {
 
             router.back();
         } catch (error) {
-            Alert.alert('Error', 'Could not publish story. Please try again.');
+            BubblyAlert.alert('Error', 'Could not publish story. Please try again.');
         } finally {
             setLoading(false);
         }

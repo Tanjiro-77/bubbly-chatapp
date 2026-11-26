@@ -13,9 +13,9 @@ import {
     TouchableOpacity,
     TextInput,
     ActivityIndicator,
-    Alert,
     Platform,
 } from "react-native";
+import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import { Image } from "expo-image";
@@ -127,7 +127,7 @@ const StarredMessagesScreen = () => {
         const msgId = msg?.id || msg?._id || item._id || item.savedId;
         if (!msgId) return;
 
-        Alert.alert(
+        BubblyAlert.alert(
             "Remove Star",
             "Are you sure you want to remove this message from your starred messages?",
             [
@@ -152,13 +152,20 @@ const StarredMessagesScreen = () => {
         if (!item.conversationId) return;
         const msg = item.message || item.messageId;
         const sender = msg?.sender || msg?.senderId;
-        const senderName = sender?.name || "Chat";
+        const conv = (item as any).conversation;
+        const convType = conv?.type || "direct";
+        const convName = conv?.name || sender?.name || "Chat";
+        const convAvatar = conv?.avatar || sender?.avatar || "";
+        const participants = Array.isArray(conv?.participants) ? JSON.stringify(conv.participants) : "[]";
         const msgId = msg?.id || msg?._id || "";
         router.push({
             pathname: "/(main)/conversation",
             params: {
                 id: item.conversationId,
-                name: senderName,
+                name: convName,
+                avatar: convAvatar,
+                type: convType,
+                participants,
                 highlightMessageId: msgId,
             },
         });

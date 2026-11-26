@@ -1,20 +1,25 @@
 import ScheduledMessage from "../modals/ScheduledMessage";
 import { createAndBroadcastMessage } from "./messageService";
+import { getIO } from "../socket/io";
 
 let started = false;
+let isRunning = false;
 
 export function startScheduledMessageWorker() {
     if (started) return;
     started = true;
 
-    // Reclaim orphaned messages from earlier crashed process instances (older than 5 minutes)
-    ScheduledMessage.updateMany(
-        { status: "processing", updatedAt: { $lte: new Date(Date.now() - 5 * 60 * 1000) } },
-        { $set: { status: "pending" } }
-    ).catch((err) => console.error("Error reclaiming stale scheduled messages:", err));
+    const reclaimStale = () =>
+        ScheduledMessage.updateMany(
+            { status: "processing", updatedAt: { $lte: new Date(Date.now() - 5 * 60 * 1000) } },
+            { $set: { status: "pending" } }
+        ).catch((err) => console.error("Error reclaiming stale scheduled messages:", err));
 
     const tick = async () => {
+        if (isRunning) return;
+        isRunning = true;
         try {
+            await reclaimStale();
             const due = await ScheduledMessage.find({
                 status: "pending",
                 sendAt: { $lte: new Date() },
@@ -30,8 +35,9 @@ export function startScheduledMessageWorker() {
 
                 if (!lockedItem) continue;
 
+                let payload: any;
                 try {
-                    const payload = await createAndBroadcastMessage({
+                    payload = await createAndBroadcastMessage({
                         conversationId: lockedItem.conversationId.toString(),
                         senderId: lockedItem.senderId.toString(),
                         content: lockedItem.content,
@@ -42,17 +48,34 @@ export function startScheduledMessageWorker() {
                         voiceUrl: lockedItem.voiceUrl,
                         voiceDuration: lockedItem.voiceDuration ?? undefined,
                     });
-                    lockedItem.status = "sent";
-                    lockedItem.sentMessageId = payload.id;
-                    await lockedItem.save();
                 } catch (error: any) {
                     lockedItem.status = "failed";
                     lockedItem.error = error.message || "Failed to send";
+                    await lockedItem.save().catch(() => {});
+                    continue;
+                }
+
+                try {
+                    lockedItem.status = "sent";
+                    lockedItem.sentMessageId = payload.id;
                     await lockedItem.save();
+                    try {
+                        getIO().to(lockedItem.conversationId.toString()).emit("scheduledMessageSent", {
+                            id: lockedItem._id.toString(),
+                            conversationId: lockedItem.conversationId.toString(),
+                            sentMessageId: payload.id,
+                        });
+                    } catch {
+                        // IO may not be initialized in unit test contexts
+                    }
+                } catch (saveErr) {
+                    console.error("Failed to mark scheduled message sent:", saveErr);
                 }
             }
         } catch (error) {
             console.log("scheduled worker error:", error);
+        } finally {
+            isRunning = false;
         }
     };
 

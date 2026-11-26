@@ -12,7 +12,7 @@ import Typo from './Typo';
 import Avatar from './Avatar';
 import { useAuth } from '../contexts/authContext';
 import {
-    getStories, onStoryFeedUpdated,
+    getStories, onStoryFeedUpdated, onSocketConnectionChange,
 } from '../socket/socketEvents';
 import { StoryGroupProps, ResponseProps } from '../types';
 
@@ -28,11 +28,15 @@ const StoryBar = () => {
     useEffect(() => {
         getStories(storiesHandler);
         onStoryFeedUpdated(feedUpdatedHandler);
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected) fetchStories();
+        });
         fetchStories();
 
         return () => {
             getStories(storiesHandler, true);
             onStoryFeedUpdated(feedUpdatedHandler, true);
+            unsubConn();
         };
     }, []);
 
