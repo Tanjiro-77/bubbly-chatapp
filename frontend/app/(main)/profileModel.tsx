@@ -133,7 +133,7 @@ const ProfileModal = () => {
                             Account & Profile
                         </Typo>
                         <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
-                            Bubbly v3.4.0 Profile
+                            Bubbly v4.0.1 Profile
                         </Typo>
                     </View>
                     <View style={{ width: verticalScale(36) }} />
@@ -378,7 +378,7 @@ const ProfileModal = () => {
                                 </View>
                                 <View style={styles.actionTextWrap}>
                                     <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
-                                        About Bubbly v3.4.0
+                                        About Bubbly v4.0.1
                                     </Typo>
                                     <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Build info, credits & terms

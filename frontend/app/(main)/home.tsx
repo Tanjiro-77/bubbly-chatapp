@@ -423,10 +423,10 @@ const Home = () => {
                             <View style={styles.brandRow}>
                                 <View style={styles.brandBadge}>
                                     <Typo size={9.5} fontWeight="800" color={colors.neutral900}>
-                                        V3.4.0
+                                        V4.0.1
                                     </Typo>
                                 </View>
-                                <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="500" textProps={{ numberOfLines: 1 }}>
+                                <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="500" style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1 }}>
                                     {getGreeting()}
                                 </Typo>
                             </View>

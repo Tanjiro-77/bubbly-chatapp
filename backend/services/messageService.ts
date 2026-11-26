@@ -72,6 +72,12 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     if (replyTo && !isValidObjectId(replyTo)) {
         throw new Error("Invalid reply target");
     }
+    // Validate replyTo belongs to same conversation before saving (prevents cross-conversation IDOR)
+    let validatedReplyTo: string | null = null;
+    if (replyTo) {
+        const replyCheck = await Message.findById(replyTo).select("conversationId").lean();
+        validatedReplyTo = (replyCheck && replyCheck.conversationId.toString() === conversationId.toString()) ? replyTo : null;
+    }
     if (storyId && !isValidObjectId(storyId)) {
         throw new Error("Invalid story reference");
     }
@@ -89,6 +95,15 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     }
 
     if (attachmentMeta) validateAttachment(attachmentMeta);
+    if (voiceUrl && typeof voiceUrl === "string" && !/^https?:\/\//i.test(voiceUrl.trim())) {
+        throw new Error("Invalid voice URL");
+    }
+    if (attachement && !attachmentMeta && typeof attachement === "string" && !/^https?:\/\//i.test(attachement.trim())) {
+        throw new Error("Invalid attachment URL");
+    }
+    if (typeof voiceDuration === "number" && (!Number.isFinite(voiceDuration) || voiceDuration < 0)) {
+        throw new Error("Invalid voice duration");
+    }
     if (location) {
         if (typeof location.latitude !== "number" || typeof location.longitude !== "number") {
             throw new Error("Invalid location");
@@ -130,7 +145,7 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         type,
         attachmentMeta: attachmentMeta?.url ? attachmentMeta : undefined,
         location: location || undefined,
-        replyTo: replyTo || null,
+        replyTo: validatedReplyTo,
         voiceUrl: voiceUrl || null,
         voiceDuration,
         systemEvent: systemEvent || undefined,
@@ -142,18 +157,18 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     });
 
     let replyToData = null;
-    if (replyTo) {
-        const replyMsg = await Message.findById(replyTo)
+    if (validatedReplyTo) {
+        const replyMsg = await Message.findById(validatedReplyTo)
             .populate<{ senderId: { _id: string; name: string } }>({ path: "senderId", select: "name" })
             .lean();
-        // Prevent cross-conversation message disclosure
-        if (replyMsg && replyMsg.conversationId.toString() === conversationId.toString()) {
+        if (replyMsg) {
             replyToData = {
                 id: replyMsg._id,
-                content: replyMsg.content,
+                content: (replyMsg as any).isDeleted ? "This message was deleted" : replyMsg.content,
                 senderName: (replyMsg.senderId as { _id: string; name: string } | null)?.name || "Unknown",
-                voiceUrl: replyMsg.voiceUrl || null,
-                type: (replyMsg as any).type,
+                voiceUrl: (replyMsg as any).isDeleted ? null : (replyMsg.voiceUrl || null),
+                type: (replyMsg as any).isDeleted ? "text" : ((replyMsg as any).type),
+                isDeleted: (replyMsg as any).isDeleted || false,
             };
         }
     }

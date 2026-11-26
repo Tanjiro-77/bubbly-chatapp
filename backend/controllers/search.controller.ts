@@ -65,6 +65,7 @@ export async function searchAll(req: AuthRequest, res: Response) {
             const messageQuery: any = {
                 conversationId: { $in: convIds },
                 isDeleted: { $ne: true },
+                isViewOnce: { $ne: true },
                 ...notExpired,
                 ...createdFilter,
             };

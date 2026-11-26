@@ -44,7 +44,7 @@ export const getDeviceDiagnostics = (currentRoute?: string): DeviceDiagnostics =
     const osName = Device.osName || Platform.OS;
     const osVersion = Device.osVersion || `${Platform.Version}`;
     const modelName = Device.modelName || (Platform.OS === "android" ? "Android Device" : "iOS Device");
-    const appVersion = Constants.expoConfig?.version || "1.0.0";
+    const appVersion = Constants.expoConfig?.version || "4.0.1";
 
     return {
         os: `${osName} ${osVersion}`,

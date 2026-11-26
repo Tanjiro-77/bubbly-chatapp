@@ -82,7 +82,7 @@ const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
 }) => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const appVersion = Constants.expoConfig?.version ?? "3.4.0";
+    const appVersion = Constants.expoConfig?.version ?? "4.0.1";
 
     const handleBack = () => {
         if (router.canGoBack()) {

@@ -88,7 +88,7 @@ const faqs = [
   },
   {
     q: "Can I receive calls and messages when Bubbly is closed?",
-    a: "Yes! v3.4.0 supports WhatsApp-style high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline action buttons, even when the app is closed or running in the background.",
+    a: "Yes! v4.0.1 supports WhatsApp-style high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline action buttons, even when the app is closed or running in the background.",
     category: "Calls & Voice",
     emoji: "🔔",
   },

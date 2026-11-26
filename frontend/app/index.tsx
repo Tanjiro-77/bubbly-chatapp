@@ -100,7 +100,7 @@ const SplashScreen = () => {
           <Text style={styles.footerText}>End-to-End Encrypted</Text>
         </View>
 
-        <Text style={styles.versionText}>v3.4.0</Text>
+        <Text style={styles.versionText}>v4.0.1</Text>
       </Animated.View>
     </View>
   );

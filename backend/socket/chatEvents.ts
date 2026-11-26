@@ -59,9 +59,13 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 const isPinned = (conv.pinnedBy || []).some(
                     (id: any) => id.toString() === userId.toString()
                 );
+                const lm = sanitizeLastMessage(conv.lastMessage);
+                if (lm?.poll?.isAnonymous) {
+                    lm.poll = maskAnonymousPoll(lm.poll, userId);
+                }
                 return {
                     ...conv,
-                    lastMessage: sanitizeLastMessage(conv.lastMessage),
+                    lastMessage: lm,
                     unreadCount: unreadEntry?.count || 0,
                     isMuted,
                     mutedUntil: muteEntry?.until || null,
@@ -123,11 +127,15 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         (u: any) => u.userId.toString() === userId.toString()
                     );
                     socket.join(existingConversation._id.toString());
+                    const existingLm = sanitizeLastMessage(existingConversation.lastMessage);
+                    if (existingLm?.poll?.isAnonymous) {
+                        existingLm.poll = maskAnonymousPoll(existingLm.poll, userId);
+                    }
                     socket.emit("newConversation", {
                         success: true,
                         data: {
                             ...existingConversation,
-                            lastMessage: sanitizeLastMessage(existingConversation.lastMessage),
+                            lastMessage: existingLm,
                             isNew: false,
                             unreadCount: unreadEntry?.count || 0,
                         }
@@ -156,7 +164,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const conversation = await Conversation.create({
                 type: data.type,
                 participants: uniqueParticipants,
-                name: data.name || "",
+                name: (data.name || "").trim().slice(0, 100),
                 description: data.description || "",
                 avatar: data.avatar || "",
                 createdBy: userId,
@@ -325,7 +333,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         } | null
                     }>({
                         path: "replyTo",
-                        select: "content senderId voiceUrl type",
+                        select: "content senderId voiceUrl type isDeleted",
                         populate: { path: "senderId", select: "name" }
                     })
                     .lean(),
@@ -354,10 +362,11 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     },
                     replyTo: message.replyTo ? {
                         id: (message.replyTo as any)._id,
-                        content: (message.replyTo as any).content,
+                        content: (message.replyTo as any).isDeleted ? "This message was deleted" : (message.replyTo as any).content,
                         senderName: (message.replyTo as any).senderId?.name || "Unknown",
-                        voiceUrl: (message.replyTo as any).voiceUrl || null,
-                        type: (message.replyTo as any).type,
+                        voiceUrl: (message.replyTo as any).isDeleted ? null : ((message.replyTo as any).voiceUrl || null),
+                        type: (message.replyTo as any).isDeleted ? "text" : (message.replyTo as any).type,
+                        isDeleted: (message.replyTo as any).isDeleted || false,
                     } : null,
                 });
                 const openedViewOnce = formatted.isViewOnce && formatted.viewOnceOpenedBy.includes(userId);
@@ -420,7 +429,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 { $set: { "unreadCounts.$[elem].count": 0 } },
                 { arrayFilters: [{ "elem.userId": userId }], new: true }
             );
-            socket.emit("unreadCountUpdate", { conversationId: data.conversationId, unreadCount: 0 });
+            io.to(userRoom(userId)).emit("unreadCountUpdate", { conversationId: data.conversationId, unreadCount: 0 });
 
             const senderPrivacy = await User.findById(userId).select("privacy").lean();
             if (senderPrivacy?.privacy?.readReceipts !== false) {
@@ -697,9 +706,16 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("getUserStatus", { success: false, msg: "Invalid userId" });
                 return;
             }
-            const user = await User.findById(targetId).select("isOnline lastSeen privacy").lean();
+            const user = await User.findById(targetId).select("isOnline lastSeen privacy blockedUsers").lean();
             if (!user) {
                 socket.emit("getUserStatus", { success: false, msg: "User not found" });
+                return;
+            }
+            if (await areBlocked(viewerId, targetId)) {
+                socket.emit("getUserStatus", {
+                    success: true,
+                    data: { userId: targetId, isOnline: false, lastSeen: null, hidden: true },
+                });
                 return;
             }
             const shared = await Conversation.exists({
@@ -820,26 +836,19 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 },
             });
 
+            // Atomic unread count update (prevents race conditions vs concurrent messages)
+            const pollUnreadInc: Record<string, number> = {};
             for (const participantId of conversation.participants) {
                 if (participantId.toString() === senderId.toString()) continue;
-
-                const unreadEntry = conversation.unreadCounts.find(
+                const idx = (conversation.unreadCounts || []).findIndex(
                     (u: any) => u.userId.toString() === participantId.toString()
                 );
-
-                if (unreadEntry) {
-                    unreadEntry.count += 1;
-                } else {
-                    conversation.unreadCounts.push({
-                        userId: participantId,
-                        count: 1,
-                    } as any);
-                }
+                if (idx >= 0) pollUnreadInc[`unreadCounts.${idx}.count`] = 1;
             }
-
-            conversation.deletedFor = [];
-            conversation.lastMessage = message._id as any;
-            await conversation.save();
+            await Conversation.findByIdAndUpdate(data.conversationId, {
+                $set: { deletedFor: [], lastMessage: message._id },
+                $inc: pollUnreadInc,
+            });
 
             io.to(data.conversationId).emit("newMessage", {
                 success: true,
@@ -924,6 +933,11 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             if (message.poll.endsAt && new Date() > message.poll.endsAt) {
                 message.poll.isClosed = true;
                 await message.save();
+                const closedPoll = (message.poll as any)?.toObject ? (message.poll as any).toObject() : message.poll;
+                io.to(data.conversationId).emit("pollUpdated", {
+                    success: true,
+                    data: { messageId: data.messageId, conversationId: data.conversationId, poll: closedPoll },
+                });
                 throw new Error("Poll has ended");
             }
 
@@ -1138,9 +1152,13 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("toggleStarMessage", { success: false, msg: "Conversation or message not found" });
                 return;
             }
-            const foundMsg: any = await Message.findById(data.messageId).select("conversationId").lean();
+            const foundMsg: any = await Message.findById(data.messageId).select("conversationId isDeleted isViewOnce").lean();
             if (!foundMsg) {
                 socket.emit("toggleStarMessage", { success: false, msg: "Message not found" });
+                return;
+            }
+            if (foundMsg.isDeleted || foundMsg.isViewOnce) {
+                socket.emit("toggleStarMessage", { success: false, msg: "This message cannot be starred" });
                 return;
             }
             const actualConvId = foundMsg.conversationId.toString();
@@ -1215,8 +1233,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             const hasMore = saved.length > limit;
             const slice = hasMore ? saved.slice(0, limit) : saved;
 
+            const starNow = new Date();
             const formatted = slice
-                .filter((s: any) => s.messageId && !s.messageId.isDeleted)
+                .filter((s: any) => s.messageId && !s.messageId.isDeleted && (!s.messageId.expiresAt || new Date(s.messageId.expiresAt) > starNow))
                 .map((s: any) => ({
                     savedId: s._id?.toString() || "",
                     savedAt: s.createdAt,
@@ -1435,7 +1454,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             }
 
             const original = await Message.findById(data.messageId).lean();
-            if (!original || original.isDeleted || original.isViewOnce || original.type === "system" || original.type === "call" || original.type === "poll") {
+            if (!original || original.isDeleted || original.isViewOnce || original.type === "system" || original.type === "call" || original.type === "poll"
+                || (original.expiresAt && new Date(original.expiresAt as any) <= new Date())) {
                 socket.emit("forwardMessage", { success: false, msg: "Message not found or cannot be forwarded" });
                 return;
             }

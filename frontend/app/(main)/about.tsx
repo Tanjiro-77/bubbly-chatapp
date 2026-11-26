@@ -28,7 +28,7 @@ const FEEDBACK_EMAIL =
     "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20Feedback&body=Hi%20Arnav%2C%0A%0A";
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION: string = Constants.expoConfig?.version ?? "3.4.0";
+const APP_VERSION: string = Constants.expoConfig?.version ?? "4.0.1";
 
 interface TechItem {
     label: string;

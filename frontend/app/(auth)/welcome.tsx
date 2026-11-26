@@ -43,7 +43,7 @@ const Welcome = () => {
 
           <View style={styles.versionBadge}>
             <Typo size={10} fontWeight="800" color={colors.neutral900}>
-              V3.4.0 RELEASE
+              V4.0.1 RELEASE
             </Typo>
           </View>
         </Animated.View>
