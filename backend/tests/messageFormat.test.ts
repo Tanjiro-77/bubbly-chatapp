@@ -87,4 +87,28 @@ describe("Message Formatting & Validation", () => {
         assert.equal(payload.replyTo.content, "Original snippet");
         assert.equal(payload.replyTo.senderName, "Alice");
     });
+
+    test("formats checklist and silent message metadata safely", () => {
+        const payload = formatMessagePayload({
+            _id: "msg789",
+            content: "Sprint Tasks",
+            createdAt: new Date("2026-11-26T10:00:00.000Z"),
+            conversationId: "conv2",
+            type: "checklist",
+            isSilent: true,
+            checklist: {
+                title: "Sprint Tasks",
+                items: [
+                    { id: "1", text: "Ship v4.0.1", completed: true, completedBy: "Arnav" },
+                    { id: "2", text: "Verify tests", completed: false, completedBy: "" },
+                ],
+            },
+        });
+
+        assert.equal(payload.type, "checklist");
+        assert.equal(payload.isSilent, true);
+        assert.equal(payload.checklist?.title, "Sprint Tasks");
+        assert.equal(payload.checklist?.items?.length, 2);
+        assert.equal(payload.checklist?.items?.[0]?.completed, true);
+    });
 });

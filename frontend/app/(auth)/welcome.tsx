@@ -36,13 +36,14 @@ const Welcome = () => {
               size={18}
               fontWeight={'800'}
               style={styles.brandText}
+              textProps={{ numberOfLines: 1 }}
             >
               BUBBLY
             </Typo>
           </View>
 
           <View style={styles.versionBadge}>
-            <Typo size={10} fontWeight="800" color={colors.neutral900}>
+            <Typo size={10} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
               V4.0.1 RELEASE
             </Typo>
           </View>
@@ -172,6 +173,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(7),
+    flexShrink: 1,
+    minWidth: 0,
   },
   logoDot: {
     width: scale(9),

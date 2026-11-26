@@ -50,20 +50,25 @@ const VaultScreen = () => {
 
     useEffect(() => {
         const init = async () => {
-            const storedPin = await AsyncStorage.getItem(PIN_STORAGE_KEY);
-            const storedLocked = await AsyncStorage.getItem(LOCKED_CHATS_KEY);
-            if (storedLocked) {
-                try {
-                    setLockedChatIds(JSON.parse(storedLocked));
-                } catch (_) { }
-            }
+            try {
+                const storedPin = await AsyncStorage.getItem(PIN_STORAGE_KEY);
+                const storedLocked = await AsyncStorage.getItem(LOCKED_CHATS_KEY);
+                if (storedLocked) {
+                    try {
+                        setLockedChatIds(JSON.parse(storedLocked));
+                    } catch (_) { }
+                }
 
-            if (!storedPin) {
+                if (!storedPin) {
+                    setSavedPin(null);
+                    setPinStage("setup_new");
+                } else {
+                    setSavedPin(storedPin);
+                    setPinStage("enter");
+                }
+            } catch (_) {
                 setSavedPin(null);
                 setPinStage("setup_new");
-            } else {
-                setSavedPin(storedPin);
-                setPinStage("enter");
             }
         };
         init();
@@ -93,7 +98,7 @@ const VaultScreen = () => {
         setCurrentPin(newPin);
 
         if (newPin.length === 4) {
-            handleCompletePin(newPin);
+            handleCompletePin(newPin).catch(() => {});
         }
     };
 
@@ -129,7 +134,12 @@ const VaultScreen = () => {
             }, 100);
         } else if (pinStage === "setup_confirm") {
             if (pin === firstSetupPin) {
-                await AsyncStorage.setItem(PIN_STORAGE_KEY, pin);
+                try {
+                    await AsyncStorage.setItem(PIN_STORAGE_KEY, pin);
+                } catch (_) {
+                    BubblyAlert.alert("Error", "Could not save Vault PIN. Please try again.");
+                    return;
+                }
                 setSavedPin(pin);
                 setTimeout(() => {
                     setIsUnlocked(true);
@@ -158,7 +168,9 @@ const VaultScreen = () => {
                     onPress: async () => {
                         const updated = lockedChatIds.filter(id => id !== convId);
                         setLockedChatIds(updated);
-                        await AsyncStorage.setItem(LOCKED_CHATS_KEY, JSON.stringify(updated));
+                        try {
+                            await AsyncStorage.setItem(LOCKED_CHATS_KEY, JSON.stringify(updated));
+                        } catch (_) {}
                     },
                 },
             ]

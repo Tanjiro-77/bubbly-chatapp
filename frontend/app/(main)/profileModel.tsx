@@ -20,6 +20,12 @@ import { updateProfile, isSocketConnected } from "../../socket/socketEvents";
 import * as ImagePicker from 'expo-image-picker';
 import { uploadFileToCloudinary } from "../../services/imageService";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import {
+    CustomStatusState,
+    getMyCustomStatus,
+    saveMyCustomStatus,
+    STATUS_PRESETS,
+} from "../../utils/featureStorage";
 
 const ProfileModal = () => {
     const { user, signOut, updateToken, updateUserPhone } = useAuth();
@@ -32,6 +38,17 @@ const ProfileModal = () => {
         avatar: null
     });
     const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || "");
+    const [statusEmoji, setStatusEmoji] = useState((user as any)?.customStatus?.emoji || "");
+    const [statusText, setStatusText] = useState((user as any)?.customStatus?.text || "");
+
+    useEffect(() => {
+        getMyCustomStatus().then((st) => {
+            if (st.text || st.emoji) {
+                setStatusEmoji(st.emoji);
+                setStatusText(st.text);
+            }
+        });
+    }, []);
 
     useEffect(() => {
         updateProfile(processUpdateProfile);
@@ -58,13 +75,17 @@ const ProfileModal = () => {
     }, [user]);
 
     const onPickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            aspect: [1, 1],
-            quality: 0.6,
-        });
-        if (!result.canceled) {
-            setUserData({ ...userData, avatar: result.assets[0] });
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                aspect: [1, 1],
+                quality: 0.6,
+            });
+            if (!result.canceled && result.assets?.length) {
+                setUserData({ ...userData, avatar: result.assets[0] });
+            }
+        } catch {
+            BubblyAlert.alert("Error", "Could not open image library.");
         }
     };
 
@@ -111,6 +132,14 @@ const ProfileModal = () => {
                 return;
             }
         }
+
+        const nextStatus: CustomStatusState = {
+            emoji: statusEmoji.trim(),
+            text: statusText.trim(),
+            expiresAt: null,
+        };
+        await saveMyCustomStatus(nextStatus);
+        data.customStatus = { emoji: nextStatus.emoji, text: nextStatus.text };
 
         updateProfile(data);
     };
@@ -279,6 +308,54 @@ const ProfileModal = () => {
                             <Typo size={11} color={colors.neutral400} style={{ marginLeft: 6 }}>
                                 Allows your phone contacts to discover you on Bubbly
                             </Typo>
+                        </View>
+
+                        {/* Custom Live Status */}
+                        <View style={styles.fieldGroup}>
+                            <View style={styles.labelRow}>
+                                <Icons.Smiley size={verticalScale(14)} color={colors.primaryDark} weight="bold" />
+                                <Typo size={12} fontWeight="700" color={colors.neutral600} style={styles.label}>
+                                    LIVE ACTIVITY STATUS
+                                </Typo>
+                            </View>
+                            <Input
+                                value={statusText}
+                                onChangeText={setStatusText}
+                                placeholder="What are you up to right now?"
+                                icon={<Typo size={16}>{statusEmoji || "💬"}</Typo>}
+                                rightIcon={
+                                    (statusText || statusEmoji) ? (
+                                        <TouchableOpacity onPress={() => { setStatusEmoji(""); setStatusText(""); }}>
+                                            <Icons.X size={16} color={colors.neutral400} weight="bold" />
+                                        </TouchableOpacity>
+                                    ) : undefined
+                                }
+                            />
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 4 }}>
+                                {STATUS_PRESETS.map((preset) => {
+                                    const active = statusText === preset.text && statusEmoji === preset.emoji;
+                                    return (
+                                        <TouchableOpacity
+                                            key={preset.text}
+                                            onPress={() => { setStatusEmoji(preset.emoji); setStatusText(preset.text); }}
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                gap: 4,
+                                                backgroundColor: active ? colors.primaryLight : colors.neutral100,
+                                                borderWidth: 1,
+                                                borderColor: active ? colors.primary : colors.neutral200,
+                                                borderRadius: radius.full,
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                            }}
+                                        >
+                                            <Typo size={12}>{preset.emoji}</Typo>
+                                            <Typo size={11.5} fontWeight="600" color={colors.neutral800}>{preset.text}</Typo>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
                         </View>
                     </Animated.View>
 

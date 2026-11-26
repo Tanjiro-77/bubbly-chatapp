@@ -93,8 +93,8 @@ export const syncContacts = async (req: AuthRequest, res: Response): Promise<voi
             avatar: u.avatar || null,
             email: u.email,
             phoneNumber: u.phoneNumber,
-            isOnline: !!u.isOnline,
-            lastSeen: u.lastSeen || null,
+            isOnline: false,
+            lastSeen: null,
         }));
 
         res.json({
@@ -215,8 +215,8 @@ export const findUserByPhone = async (req: AuthRequest, res: Response): Promise<
                 avatar: user.avatar || null,
                 email: user.email,
                 phoneNumber: user.phoneNumber,
-                isOnline: !!user.isOnline,
-                lastSeen: user.lastSeen || null,
+                isOnline: false,
+                lastSeen: null,
             },
         });
     } catch (error) {

@@ -69,6 +69,12 @@ const ConversationSchema = new Schema<ConversationProps>({
             ref: "User",
         },
     ],
+    archivedBy: [
+        {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+        },
+    ],
     deletedFor: [
         {
             type: Schema.Types.ObjectId,

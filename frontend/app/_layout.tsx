@@ -11,6 +11,7 @@ import { isOnboardingCompleted } from '../hooks/useOnboarding';
 import { initSentry, setupGlobalErrorHandlers, setSentryUser } from '../services/errorReporter';
 import AppErrorBoundary from '../components/ErrorBoundary';
 import { BubblyAlertHost } from '../components/BubblyAlert';
+import { AppLockGate } from '../components/AppLockGate';
 import {
     claimIncomingCallScreen,
     configureNotificationHandler,
@@ -256,6 +257,7 @@ const RootLayout = () => {
                 <AuthProvider>
                     <StackLayout />
                     <NavigationGuard />
+                    <AppLockGate />
                     <BubblyAlertHost />
                 </AuthProvider>
             </SafeAreaProvider>

@@ -72,6 +72,11 @@ const userSchema = new Schema<UserProps>({
         wallpaper: { type: String, default: "" },
         bubbleStyle: { type: String, enum: ["rounded", "sharp", "minimal"], default: "rounded" },
     },
+    customStatus: {
+        emoji: { type: String, default: "" },
+        text: { type: String, default: "" },
+        updatedAt: { type: Date, default: null },
+    },
 });
 
 userSchema.index({ name: "text", email: "text" });

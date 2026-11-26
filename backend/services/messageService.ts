@@ -38,6 +38,11 @@ export type SendMessageInput = {
     storyId?: string | null;
     isForwarded?: boolean;
     isViewOnce?: boolean;
+    isSilent?: boolean;
+    checklist?: {
+        title?: string;
+        items?: { id: string; text: string; completed?: boolean; completedBy?: string }[];
+    } | null;
     skipRateLimit?: boolean;
     skipPermissionCheck?: boolean;
 };
@@ -137,10 +142,29 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         ? new Date(Date.now() + conversation.disappearingSeconds * 1000)
         : null;
 
+    const sanitizedChecklist = type === "checklist" && input.checklist
+        ? {
+            title: String(input.checklist.title || "Checklist").trim().slice(0, 120),
+            items: (Array.isArray(input.checklist.items) ? input.checklist.items : [])
+                .filter((it) => typeof it?.text === "string" && it.text.trim())
+                .slice(0, 20)
+                .map((it, idx) => ({
+                    id: String(it.id || `${Date.now()}_${idx}`),
+                    text: it.text.trim().slice(0, 200),
+                    completed: Boolean(it.completed),
+                    completedBy: typeof it.completedBy === "string" ? it.completedBy : "",
+                })),
+        }
+        : undefined;
+
+    if (type === "checklist" && (!sanitizedChecklist || sanitizedChecklist.items.length === 0)) {
+        throw new Error("Checklist requires at least 1 item");
+    }
+
     const message = await Message.create({
         conversationId,
         senderId,
-        content: content?.trim?.() || content || "",
+        content: content?.trim?.() || (sanitizedChecklist ? sanitizedChecklist.title : "") || "",
         attachement: attachement || attachmentMeta?.url || undefined,
         type,
         attachmentMeta: attachmentMeta?.url ? attachmentMeta : undefined,
@@ -152,7 +176,9 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         callMeta: callMeta || undefined,
         storyId: storyId || null,
         isForwarded: input.isForwarded || false,
+        isSilent: input.isSilent || false,
         isViewOnce: input.isViewOnce || false,
+        checklist: sanitizedChecklist,
         expiresAt,
     });
 

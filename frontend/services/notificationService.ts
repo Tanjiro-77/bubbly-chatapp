@@ -62,6 +62,19 @@ export function configureNotificationHandler() {
                 if (soundPref === "false") {
                     soundEnabled = false;
                 }
+                const focusRaw = await AsyncStorage.getItem("@bubbly_focus_mode_v1");
+                if (focusRaw) {
+                    const focus = JSON.parse(focusRaw);
+                    const focusActive = focus?.enabled && (!focus.until || Date.now() < focus.until);
+                    if (focusActive && data?.type !== "call") {
+                        return {
+                            shouldShowBanner: false,
+                            shouldShowList: true,
+                            shouldPlaySound: false,
+                            shouldSetBadge: true,
+                        };
+                    }
+                }
             } catch {
                 // ignore storage read errors
             }

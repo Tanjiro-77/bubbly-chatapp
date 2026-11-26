@@ -8,7 +8,12 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
         socket.emit('testSocket', { msg: "its working!!!" });
     });
 
-    socket.on("updateProfile", async (data: { name?: string; avatar?: string }) => {
+    socket.on("updateProfile", async (data: {
+        name?: string;
+        avatar?: string;
+        customStatus?: { emoji?: string; text?: string };
+        theme?: { mode?: string; accent?: string; bubbleStyle?: string };
+    }) => {
         console.log('updateprofile event:', data);
 
         try {
@@ -25,7 +30,7 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
                 });
             }
 
-            const updateData: { name?: string; avatar?: string } = {};
+            const updateData: Record<string, any> = {};
 
             if (typeof data.name === "string") {
                 const trimmedName = data.name.trim();
@@ -39,6 +44,28 @@ export function registerUserEvents(io: SocketIOServer, socket: Socket) {
 
             if (typeof data.avatar === "string") {
                 updateData.avatar = data.avatar.slice(0, 500);
+            }
+
+            if (data.customStatus && typeof data.customStatus === "object") {
+                updateData.customStatus = {
+                    emoji: typeof data.customStatus.emoji === "string" ? data.customStatus.emoji.slice(0, 12) : "",
+                    text: typeof data.customStatus.text === "string" ? data.customStatus.text.trim().slice(0, 80) : "",
+                    updatedAt: new Date(),
+                };
+            }
+
+            if (data.theme && typeof data.theme === "object") {
+                const allowedModes = ["light", "dark", "system"];
+                const allowedBubbles = ["rounded", "sharp", "minimal"];
+                if (data.theme.mode && allowedModes.includes(data.theme.mode)) {
+                    updateData["theme.mode"] = data.theme.mode;
+                }
+                if (typeof data.theme.accent === "string" && /^#[0-9a-f]{3,8}$/i.test(data.theme.accent)) {
+                    updateData["theme.accent"] = data.theme.accent;
+                }
+                if (data.theme.bubbleStyle && allowedBubbles.includes(data.theme.bubbleStyle)) {
+                    updateData["theme.bubbleStyle"] = data.theme.bubbleStyle;
+                }
             }
 
             const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });

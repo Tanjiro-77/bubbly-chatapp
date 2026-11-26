@@ -24,10 +24,21 @@ import Animated, {
 } from "react-native-reanimated"
 import ImageViewing from "react-native-image-viewing"
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
-import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pinMessage, unpinMessage, openViewOnce } from "../socket/socketEvents"
+import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pinMessage, unpinMessage, openViewOnce, toggleChecklistItem } from "../socket/socketEvents"
 import { getFileIcon, formatFileSize } from "../services/imageService"
 import { translateMessage } from "../services/chatService"
 import FormattedText from "./FormattedText"
+import { ChecklistCardBubble, CountdownCardBubble, GameCardBubble } from "./RichChatFeatures"
+import {
+    BubbleCornerStyle,
+    ChatFontScale,
+    formatRichPreviewText,
+    getLocalChecklistOverrides,
+    getLocalSilentIds,
+    parseBubblyCard,
+    toggleLocalChecklistOverride,
+} from "../utils/featureStorage"
+import { scheduleMessageReminder } from "../services/reminderService"
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1748,7 +1759,7 @@ const QuotedBubble = ({ replyTo, isMe }: { replyTo: ReplyToProps; isMe: boolean 
         <View style={quotedStyles.textWrap}>
             <Typo size={11} fontWeight="700" color={colors.neutral700}>{replyTo.senderName}</Typo>
             <Typo size={12} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
-                {replyTo.voiceUrl ? "🎤 Voice message" : replyTo.type === "file" ? "📎 File" : replyTo.content || "📷 Image"}
+                {(replyTo as any).isDeleted ? "This message was deleted" : replyTo.voiceUrl ? "🎤 Voice message" : replyTo.type === "file" ? "📎 File" : formatRichPreviewText(replyTo.content) || "📷 Image"}
             </Typo>
         </View>
     </View>
@@ -2016,6 +2027,14 @@ const MessageItem = ({
     isNotesToSelf = false,
     onLocalDelete,
     onLocalEdit,
+    isSelectionMode = false,
+    isSelected = false,
+    onToggleSelect,
+    onEnterSelectionMode,
+    onToggleChecklistLocal,
+    onReplayGame,
+    bubbleCornerStyle = "rounded",
+    chatFontScale = "standard",
 }: {
     item: MessageProps;
     isDirect: boolean;
@@ -2033,6 +2052,14 @@ const MessageItem = ({
     isNotesToSelf?: boolean;
     onLocalDelete?: (messageId: string) => void;
     onLocalEdit?: (messageId: string, newContent: string) => void;
+    isSelectionMode?: boolean;
+    isSelected?: boolean;
+    onToggleSelect?: (messageId: string) => void;
+    onEnterSelectionMode?: (messageId: string) => void;
+    onToggleChecklistLocal?: (messageId: string, itemId: string) => void;
+    onReplayGame?: (kind: "dice" | "coin" | "8ball" | "rps") => void;
+    bubbleCornerStyle?: BubbleCornerStyle;
+    chatFontScale?: ChatFontScale;
 }) => {
     const { user: currentUser } = useAuth();
     const insets = useSafeAreaInsets();
@@ -2050,7 +2077,66 @@ const MessageItem = ({
     const [selectedTargetLang, setSelectedTargetLang] = useState<{ code: string; label: string }>({ code: "es", label: "Spanish 🇪🇸" });
     const [isTranslating, setIsTranslating] = useState(false);
     const [showOriginal, setShowOriginal] = useState(false);
+    const [checklistOverrides, setChecklistOverrides] = useState<Record<string, boolean>>({});
+    const [isLocalSilent, setIsLocalSilent] = useState(false);
     const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const parsedRichCard = useMemo(() => parseBubblyCard(item.content), [item.content]);
+    const isChecklistMessage = item.type === "checklist" || parsedRichCard?.kind === "checklist";
+    const resolvedChecklist = useMemo(() => {
+        const base = item.checklist || (parsedRichCard?.kind === "checklist" ? parsedRichCard.data : null);
+        if (!base) return null;
+        return {
+            ...base,
+            items: (base.items || []).map((it) => ({
+                ...it,
+                completed: checklistOverrides[it.id] !== undefined ? checklistOverrides[it.id] : it.completed,
+            })),
+        };
+    }, [item.checklist, parsedRichCard, checklistOverrides]);
+
+    useEffect(() => {
+        setChecklistOverrides({});
+    }, [item.checklist]);
+
+    useEffect(() => {
+        if (!isChecklistMessage) return;
+        if (!isNotesToSelf && item.type === "checklist" && item.checklist) return;
+        getLocalChecklistOverrides(item.id).then((ov) => {
+            if (Object.keys(ov).length > 0) setChecklistOverrides(ov);
+        });
+    }, [item.id, isChecklistMessage, isNotesToSelf, item.type, item.checklist]);
+
+    useEffect(() => {
+        if (item.isSilent) return;
+        getLocalSilentIds().then((ids) => {
+            if (ids.has(item.id)) setIsLocalSilent(true);
+        });
+    }, [item.id, item.isSilent]);
+
+    const handleChecklistToggle = (itemId: string) => {
+        const base = item.checklist || (parsedRichCard?.kind === "checklist" ? parsedRichCard.data : null);
+        const target = base?.items?.find((it) => it.id === itemId);
+        const currentVal = checklistOverrides[itemId] !== undefined ? checklistOverrides[itemId] : !!target?.completed;
+        const nextVal = !currentVal;
+        setChecklistOverrides((prev) => ({ ...prev, [itemId]: nextVal }));
+        if (isNotesToSelf || item.type !== "checklist") {
+            toggleLocalChecklistOverride(item.id, itemId, nextVal);
+        }
+        if (isNotesToSelf) {
+            onToggleChecklistLocal?.(item.id, itemId);
+        } else if (item.conversationId && item.type === "checklist") {
+            toggleChecklistItem({ messageId: item.id, conversationId: item.conversationId, itemId });
+        }
+    };
+
+    const computedFontSize = chatFontScale === "compact" ? 13.5 : chatFontScale === "large" ? 17 : 15;
+    const cornerOverrideStyle =
+        bubbleCornerStyle === "sharp"
+            ? { borderRadius: radius._8 }
+            : bubbleCornerStyle === "minimal"
+            ? { borderRadius: radius._12, borderWidth: 0, shadowOpacity: 0, elevation: 0 }
+            : undefined;
 
     useEffect(() => {
         return () => {
@@ -2124,6 +2210,10 @@ const MessageItem = ({
     };
 
     const handleBubblePress = () => {
+        if (isSelectionMode) {
+            onToggleSelect?.(item.id);
+            return;
+        }
         const now = Date.now();
         if (now - lastTapRef.current < 320) {
             triggerHeartBurst();
@@ -2143,7 +2233,7 @@ const MessageItem = ({
         PanResponder.create({
             onStartShouldSetPanResponder: () => false,
             onMoveShouldSetPanResponder: (_, gestureState) => {
-                return !isDeleted && gestureState.dx > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+                return !isDeleted && !isSelectionMode && gestureState.dx > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
             },
             onPanResponderMove: (_, gestureState) => {
                 if (gestureState.dx > 0) {
@@ -2169,9 +2259,13 @@ const MessageItem = ({
                 }).start();
             },
         }),
-    [isDeleted, item, onReply]);
+    [isDeleted, isSelectionMode, item, onReply]);
 
     const handleLongPress = () => {
+        if (isSelectionMode) {
+            onToggleSelect?.(item.id);
+            return;
+        }
         if (isDeleted || isPollMessage) return;
         if (Platform.OS !== 'web') {
             try { Vibration.vibrate(30); } catch (_) {}
@@ -2181,7 +2275,9 @@ const MessageItem = ({
     const handleDismiss = () => setShowActions(false);
 
     const handleCopy = async () => {
-        if (item.content) await Clipboard.setStringAsync(item.content);
+        if (item.content) {
+            try { await Clipboard.setStringAsync(formatRichPreviewText(item.content)); } catch {}
+        }
         setShowActions(false);
         setShowToast(true);
         if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
@@ -2367,9 +2463,30 @@ const MessageItem = ({
                         styles.messageContainer,
                         isMe ? styles.myMessage : styles.theirMessage,
                         isTargetHighlight && styles.targetHighlight,
+                        isSelected && { backgroundColor: "rgba(245, 158, 11, 0.14)", borderRadius: radius._15, padding: 3 },
                         { transform: [{ translateX: swipeX }] },
                     ]}
                 >
+                    {isSelectionMode && (
+                        <TouchableOpacity
+                            onPress={() => onToggleSelect?.(item.id)}
+                            activeOpacity={0.7}
+                            style={{ alignSelf: "center", paddingRight: scale(4) }}
+                        >
+                            <View style={{
+                                width: scale(22),
+                                height: scale(22),
+                                borderRadius: radius.full,
+                                borderWidth: 2,
+                                borderColor: isSelected ? colors.primaryDark : colors.neutral400,
+                                backgroundColor: isSelected ? colors.primary : colors.white,
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}>
+                                {isSelected && <Icons.Check size={12} color={colors.black} weight="bold" />}
+                            </View>
+                        </TouchableOpacity>
+                    )}
                     {!isMe && !isDirect && (
                         <Avatar
                             size={28}
@@ -2427,6 +2544,7 @@ const MessageItem = ({
                                         ? (customBubbleMine ? { backgroundColor: customBubbleMine } : styles.myBubble)
                                         : (customBubbleOther ? { backgroundColor: customBubbleOther } : styles.theirBubble),
                                     isMe ? styles.myBubbleRadius : styles.theirBubbleRadius,
+                                    cornerOverrideStyle,
                                     pressed && styles.bubblePressed,
                                 ]}
                             >
@@ -2574,11 +2692,24 @@ const MessageItem = ({
                                 />
                             )}
 
-                            {/* ── Text content with Markdown ── */}
-                            {item.content ? (
+                            {/* ── Rich Card or Markdown Text Content ── */}
+                            {resolvedChecklist ? (
+                                <ChecklistCardBubble
+                                    checklist={resolvedChecklist}
+                                    isMe={isMe}
+                                    onToggleItem={handleChecklistToggle}
+                                />
+                            ) : parsedRichCard?.kind === "game" ? (
+                                <GameCardBubble
+                                    game={parsedRichCard.data}
+                                    onPlayAgain={onReplayGame}
+                                />
+                            ) : parsedRichCard?.kind === "countdown" ? (
+                                <CountdownCardBubble countdown={parsedRichCard.data} />
+                            ) : item.content ? (
                                 <FormattedText
                                     content={item.content}
-                                    size={15}
+                                    size={computedFontSize}
                                     searchHighlight={searchHighlight}
                                 />
                             ) : null}
@@ -2610,6 +2741,9 @@ const MessageItem = ({
 
                             {/* ── Time + edited ── */}
                             <View style={styles.timeRow}>
+                                {(item.isSilent || isLocalSilent) && (
+                                    <Icons.BellSlash size={verticalScale(11)} color={colors.neutral500} weight="bold" />
+                                )}
                                 {item.isSaved && (
                                     <Icons.Star size={verticalScale(11)} color="#eab308" weight="fill" />
                                 )}
@@ -2642,6 +2776,13 @@ const MessageItem = ({
                                 )}
                             </View>
                         </Pressable>
+                    )}
+
+                    {isSelectionMode && (
+                        <Pressable
+                            onPress={() => onToggleSelect?.(item.id)}
+                            style={[StyleSheet.absoluteFill, { zIndex: 25 }]}
+                        />
                     )}
 
                     {/* ── Reaction bar ── */}
@@ -2789,6 +2930,85 @@ const MessageItem = ({
                                         </TouchableOpacity>
                                     ) : null}
 
+                                    {/* ── Remind Me Alarm ── */}
+                                    <TouchableOpacity
+                                        style={styles.actionRow}
+                                        activeOpacity={0.7}
+                                        onPress={() => {
+                                            handleDismiss();
+                                            const preview = item.content || (isVoiceMessage ? "Voice message" : "Shared attachment");
+                                            if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+                                            pendingTimerRef.current = setTimeout(() => {
+                                                BubblyAlert.alert(
+                                                    "⏰ Set Message Reminder",
+                                                    "When should Bubbly remind you about this message?",
+                                                    [
+                                                        {
+                                                            text: "In 15 Minutes",
+                                                            onPress: async () => {
+                                                                const r = await scheduleMessageReminder({
+                                                                    messageId: item.id,
+                                                                    conversationId: item.conversationId,
+                                                                    senderName: item.sender?.name || "Contact",
+                                                                    preview,
+                                                                    delayMs: 15 * 60 * 1000,
+                                                                });
+                                                                BubblyAlert.alert(r.success ? "Reminder Set ⏰" : "Error", r.success ? "We'll remind you in 15 minutes." : (r.msg || "Failed"));
+                                                            },
+                                                        },
+                                                        {
+                                                            text: "In 1 Hour",
+                                                            onPress: async () => {
+                                                                const r = await scheduleMessageReminder({
+                                                                    messageId: item.id,
+                                                                    conversationId: item.conversationId,
+                                                                    senderName: item.sender?.name || "Contact",
+                                                                    preview,
+                                                                    delayMs: 60 * 60 * 1000,
+                                                                });
+                                                                BubblyAlert.alert(r.success ? "Reminder Set ⏰" : "Error", r.success ? "We'll remind you in 1 hour." : (r.msg || "Failed"));
+                                                            },
+                                                        },
+                                                        {
+                                                            text: "Tomorrow 9:00 AM",
+                                                            onPress: async () => {
+                                                                const now = new Date();
+                                                                const tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0);
+                                                                const r = await scheduleMessageReminder({
+                                                                    messageId: item.id,
+                                                                    conversationId: item.conversationId,
+                                                                    senderName: item.sender?.name || "Contact",
+                                                                    preview,
+                                                                    delayMs: Math.max(60000, tmr.getTime() - now.getTime()),
+                                                                });
+                                                                BubblyAlert.alert(r.success ? "Reminder Set ⏰" : "Error", r.success ? "Reminder scheduled for tomorrow 9:00 AM." : (r.msg || "Failed"));
+                                                            },
+                                                        },
+                                                        { text: "Cancel", style: "cancel" },
+                                                    ]
+                                                );
+                                            }, 100);
+                                        }}
+                                    >
+                                        <View style={styles.actionIconWrap}><Icons.Alarm size={verticalScale(18)} color={colors.primaryDark} weight="bold" /></View>
+                                        <Typo size={15} fontWeight="500" color={colors.neutral800}>Remind Me About This</Typo>
+                                    </TouchableOpacity>
+
+                                    {/* ── Multi-Select ── */}
+                                    {onEnterSelectionMode && (
+                                        <TouchableOpacity
+                                            style={styles.actionRow}
+                                            activeOpacity={0.7}
+                                            onPress={() => {
+                                                handleDismiss();
+                                                onEnterSelectionMode(item.id);
+                                            }}
+                                        >
+                                            <View style={styles.actionIconWrap}><Icons.CheckCircle size={verticalScale(18)} color={colors.neutral700} weight="regular" /></View>
+                                            <Typo size={15} fontWeight="500" color={colors.neutral800}>Select Messages</Typo>
+                                        </TouchableOpacity>
+                                    )}
+
                                     {/* ── View Image ── */}
                                     {isImageMessage ? (
                                         <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={() => { handleDismiss(); if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current); pendingTimerRef.current = setTimeout(() => setShowImageViewer(true), 200); }}>
@@ -2882,7 +3102,13 @@ export default React.memo(MessageItem, (prev, next) => {
         prev.isTargetHighlight === next.isTargetHighlight &&
         prev.customBubbleMine === next.customBubbleMine &&
         prev.customBubbleOther === next.customBubbleOther &&
-        prev.isDirect === next.isDirect
+        prev.isDirect === next.isDirect &&
+        prev.isSelectionMode === next.isSelectionMode &&
+        prev.isSelected === next.isSelected &&
+        prev.bubbleCornerStyle === next.bubbleCornerStyle &&
+        prev.chatFontScale === next.chatFontScale &&
+        prev.item.checklist === next.item.checklist &&
+        prev.item.isSilent === next.item.isSilent
     );
 });
 

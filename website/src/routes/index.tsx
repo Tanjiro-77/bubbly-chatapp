@@ -27,13 +27,13 @@ import { sounds } from "@/lib/sound";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Bubbly v3.4 — Connect Beyond Messages | Real-Time Chat & Calls" },
+      { title: "Bubbly v4.0.1 — Connect Beyond Messages | Real-Time Chat & Calls" },
       {
         name: "description",
         content:
-          "Bubbly is a full-stack, real-time messaging application with instant chat, background push & call alerts, Agora voice & video calls, Story Studio, and Biometric Vault.",
+          "Bubbly is a full-stack, real-time messaging application with instant chat, 20 new flagship features (Checklists, Reminders, Focus Mode, Chat Insights, Archives, Games), Agora voice & video calls, Story Studio, and Biometric Vault.",
       },
-      { property: "og:title", content: "Bubbly v3.4 — Connect Beyond Messages" },
+      { property: "og:title", content: "Bubbly v4.0.1 — Connect Beyond Messages" },
       {
         property: "og:description",
         content:
@@ -131,13 +131,13 @@ function IndexPage() {
             {/* Quick feature tick badges */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Background Call Alerts
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 20 New v4.0.1 Features
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora HD Calling
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Biometric PIN Vault
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Checklists & Reminders
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Zero Ads
@@ -268,27 +268,27 @@ function IndexPage() {
                 </span>
                 <div>
                   <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-emerald-400">
-                    Smart Features
+                    v4.0.1 Superpowers
                   </span>
                   <h3 className="font-display text-2xl font-extrabold text-foreground">
-                    Spanish Translation & Audio Speeds
+                    6-Language Translation, Checklists & Chat Insights
                   </h3>
                 </div>
               </div>
               <p className="mt-4 text-muted-foreground text-sm leading-relaxed max-w-lg">
-                Translate any message directly inside the chat between English and Spanish. Listen
-                to voice notes at 1.0x, 1.5x, or 2.0x playback speeds with interactive waveform
-                scrub.
+                Translate messages across 6 languages on the fly, run shared live checklists and
+                countdown timers in chat, roll icebreaker games, set message reminder alarms, and
+                customize every bubble shape and folder tag.
               </p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  1.0x / 1.5x / 2.0x Audio
+                  Shared Checklists & Timers
                 </span>
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  Spanish One-Tap
+                  Focus Mode & Silent Send
                 </span>
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  Group Polls & Media
+                  Bubble Studio & Folders
                 </span>
               </div>
             </div>

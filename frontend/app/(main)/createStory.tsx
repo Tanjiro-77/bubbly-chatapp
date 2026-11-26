@@ -81,15 +81,29 @@ const CreateStory = () => {
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [textAlign, setTextAlign] = useState<'center' | 'left' | 'right'>('center');
+    const [fontStyle, setFontStyle] = useState<'classic' | 'serif' | 'mono' | 'neon'>('classic');
+    const [selectedSticker, setSelectedSticker] = useState<string>('');
+
+    const STORY_STICKERS = ["", "📍 On The Go", "🔥 Daily Vibe", "🎧 Now Playing", "💯 Mood", "☕ Chill"];
+    const STORY_FONTS: { id: 'classic' | 'serif' | 'mono' | 'neon'; label: string }[] = [
+        { id: 'classic', label: 'Classic' },
+        { id: 'serif', label: 'Serif' },
+        { id: 'mono', label: 'Mono' },
+        { id: 'neon', label: 'Neon' },
+    ];
 
     const pickImage = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            quality: 0.85,
-        });
-        if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
-            setStoryType('image');
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                quality: 0.85,
+            });
+            if (!result.canceled && result.assets?.length) {
+                setImageUri(result.assets[0].uri);
+                setStoryType('image');
+            }
+        } catch {
+            BubblyAlert.alert('Story Studio', 'Could not open image library.');
         }
     };
 
@@ -146,6 +160,8 @@ const CreateStory = () => {
                     text: text.trim(),
                     backgroundColor: selectedGradient.colors[0],
                     mediaUrl,
+                    fontStyle: storyType === 'text' ? fontStyle : 'classic',
+                    sticker: storyType === 'text' ? selectedSticker : '',
                 });
             });
 
@@ -258,12 +274,31 @@ const CreateStory = () => {
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                         >
+                            {!!selectedSticker && (
+                                <View style={{
+                                    position: 'absolute',
+                                    top: spacingY._15,
+                                    left: spacingX._15,
+                                    backgroundColor: 'rgba(255,255,255,0.22)',
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 4,
+                                    borderRadius: radius.full,
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(255,255,255,0.35)',
+                                }}>
+                                    <Typo size={11.5} fontWeight="800" color={colors.white}>{selectedSticker}</Typo>
+                                </View>
+                            )}
                             <TextInput
                                 style={[
                                     styles.textInput,
                                     {
                                         color: selectedGradient.textColor,
                                         textAlign: textAlign,
+                                        fontFamily: fontStyle === 'mono' ? 'monospace' : fontStyle === 'serif' ? 'serif' : undefined,
+                                        fontStyle: fontStyle === 'serif' ? 'italic' : 'normal',
+                                        textShadowColor: fontStyle === 'neon' ? '#fde047' : 'transparent',
+                                        textShadowRadius: fontStyle === 'neon' ? 12 : 0,
                                     }
                                 ]}
                                 placeholder="What's on your mind today?"
@@ -371,6 +406,47 @@ const CreateStory = () => {
                                             color={isSelected ? colors.neutral900 : colors.neutral600}
                                         >
                                             {preset.name}
+                                        </Typo>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+
+                        {/* Typography & Stickers */}
+                        <View style={styles.sectionHeaderRow}>
+                            <Typo size={13} fontWeight="700" color={colors.neutral700}>Typography Style</Typo>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {STORY_FONTS.map((f) => {
+                                const act = fontStyle === f.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={f.id}
+                                        onPress={() => setFontStyle(f.id)}
+                                        style={[styles.gradientPill, { flex: 1, justifyContent: 'center' }, act && styles.gradientPillActive]}
+                                    >
+                                        <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.primaryDark : colors.neutral600}>
+                                            {f.label}
+                                        </Typo>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+
+                        <View style={styles.sectionHeaderRow}>
+                            <Typo size={13} fontWeight="700" color={colors.neutral700}>Mood Sticker</Typo>
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteScroll}>
+                            {STORY_STICKERS.map((st, idx) => {
+                                const act = selectedSticker === st;
+                                return (
+                                    <TouchableOpacity
+                                        key={idx}
+                                        onPress={() => setSelectedSticker(st)}
+                                        style={[styles.gradientPill, act && styles.gradientPillActive]}
+                                    >
+                                        <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.neutral900 : colors.neutral600}>
+                                            {st || "None"}
                                         </Typo>
                                     </TouchableOpacity>
                                 );

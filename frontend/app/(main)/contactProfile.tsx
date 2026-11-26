@@ -14,6 +14,7 @@ import {
     ScrollView,
     Platform,
     Share,
+    TextInput,
 } from "react-native";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -33,6 +34,16 @@ import {
     deleteConversation,
 } from "../../socket/socketEvents";
 import { useAuth } from "../../contexts/authContext";
+import {
+    CHAT_FOLDER_META,
+    ChatFolderTag,
+    getChatTagsMap,
+    getContactNotesMap,
+    getNicknamesMap,
+    setChatTag,
+    setContactNote,
+    setEntityNickname,
+} from "../../utils/featureStorage";
 
 const ContactProfileScreen = () => {
     const router = useRouter();
@@ -46,8 +57,23 @@ const ContactProfileScreen = () => {
     const [lastSeen, setLastSeen] = useState<string | null>(null);
     const [isLocked, setIsLocked] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
+    const [contactCustomStatus, setContactCustomStatus] = useState<{ emoji?: string; text?: string } | null>(null);
+    const [nicknameInput, setNicknameInput] = useState("");
+    const [noteInput, setNoteInput] = useState("");
+    const [folderTag, setFolderTag] = useState<ChatFolderTag | null>(null);
 
-    const displayName = nameStr || "Contact";
+    const entityKey = conversationIdStr || userIdStr;
+
+    useEffect(() => {
+        if (!entityKey) return;
+        Promise.all([getNicknamesMap(), getContactNotesMap(), getChatTagsMap()]).then(([nicks, notes, tags]) => {
+            setNicknameInput(nicks[conversationIdStr] || nicks[userIdStr] || "");
+            setNoteInput(notes[entityKey] || "");
+            setFolderTag(tags[conversationIdStr] || null);
+        });
+    }, [entityKey, conversationIdStr, userIdStr]);
+
+    const displayName = nicknameInput.trim() || nameStr || "Contact";
     const isDirectChat = isDirect !== "false";
 
     const lockedStorageKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : "@bubbly_locked_chats";
@@ -84,6 +110,7 @@ const ContactProfileScreen = () => {
             if (res?.success && res.data && res.data.userId === userIdStr) {
                 setIsOnline(!!res.data.isOnline);
                 if (res.data.lastSeen) setLastSeen(res.data.lastSeen);
+                if (res.data.customStatus) setContactCustomStatus(res.data.customStatus);
             }
         };
 
@@ -118,7 +145,7 @@ const ContactProfileScreen = () => {
 
     // ── Vault Lock Toggle ──
     const handleToggleVault = async () => {
-        if (!conversationId) return;
+        if (!conversationIdStr) return;
         try {
             const stored = await AsyncStorage.getItem(lockedStorageKey);
             let list: string[] = [];
@@ -129,13 +156,13 @@ const ContactProfileScreen = () => {
             }
 
             if (isLocked) {
-                list = list.filter((id) => id !== (conversationId as string));
+                list = list.filter((id) => id !== conversationIdStr);
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
                 setIsLocked(false);
                 BubblyAlert.alert("Chat Unlocked", "Conversation removed from your Secret Vault.");
             } else {
-                if (!list.includes(conversationId as string)) {
-                    list.push(conversationId as string);
+                if (!list.includes(conversationIdStr)) {
+                    list.push(conversationIdStr);
                 }
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
                 setIsLocked(true);
@@ -148,6 +175,7 @@ const ContactProfileScreen = () => {
 
     // ── Mute Toggle ──
     const handleMuteOptions = () => {
+        if (!conversationIdStr) return;
         BubblyAlert.alert(
             "Mute Notifications",
             "Choose duration to mute notifications:",
@@ -155,28 +183,28 @@ const ContactProfileScreen = () => {
                 {
                     text: "8 Hours",
                     onPress: () => {
-                        toggleMuteConversation({ conversationId: conversationId as string, durationHours: 8 });
+                        toggleMuteConversation({ conversationId: conversationIdStr, durationHours: 8 });
                         setIsMuted(true);
                     },
                 },
                 {
                     text: "1 Week",
                     onPress: () => {
-                        toggleMuteConversation({ conversationId: conversationId as string, durationHours: 168 });
+                        toggleMuteConversation({ conversationId: conversationIdStr, durationHours: 168 });
                         setIsMuted(true);
                     },
                 },
                 {
                     text: "Always",
                     onPress: () => {
-                        toggleMuteConversation({ conversationId: conversationId as string, durationHours: 0 });
+                        toggleMuteConversation({ conversationId: conversationIdStr, durationHours: 0 });
                         setIsMuted(true);
                     },
                 },
                 {
                     text: "Unmute",
                     onPress: () => {
-                        toggleMuteConversation({ conversationId: conversationId as string, unmute: true });
+                        toggleMuteConversation({ conversationId: conversationIdStr, unmute: true });
                         setIsMuted(false);
                     },
                 },
@@ -229,6 +257,13 @@ const ContactProfileScreen = () => {
                                 ? (isOnline ? "Active Now 🟢" : "Bubbly Contact ✨")
                                 : "Group Conversation 👥"}
                         </Typo>
+                        {!!(contactCustomStatus?.text || contactCustomStatus?.emoji) && (
+                            <View style={{ backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full }}>
+                                <Typo size={12} fontWeight="700" color={colors.primaryDark}>
+                                    {contactCustomStatus.emoji || "💬"} {contactCustomStatus.text}
+                                </Typo>
+                            </View>
+                        )}
                     </View>
 
                     {/* ── Quick Action Dock ── */}
@@ -265,7 +300,7 @@ const ContactProfileScreen = () => {
                                 router.push({
                                     pathname: "/(main)/sharedMedia",
                                     params: {
-                                        conversationId: conversationId as string,
+                                        conversationId: conversationIdStr,
                                         name: displayName,
                                     },
                                 });
@@ -302,6 +337,95 @@ const ContactProfileScreen = () => {
                             <Typo size={11.5} fontWeight="600" color={colors.neutral700}>
                                 {isLocked ? "Locked" : "Vault"}
                             </Typo>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* ── Private Nickname, Notes & Folder Tag ── */}
+                    <View style={styles.card}>
+                        <Typo size={12} fontWeight="700" color={colors.neutral400} style={styles.cardHeader}>
+                            PERSONALIZE CONTACT
+                        </Typo>
+                        <TextInput
+                            style={{
+                                backgroundColor: colors.neutral50,
+                                borderWidth: 1,
+                                borderColor: colors.neutral200,
+                                borderRadius: radius._12,
+                                paddingHorizontal: spacingX._12,
+                                paddingVertical: verticalScale(9),
+                                fontSize: verticalScale(13.5),
+                                color: colors.neutral900,
+                            }}
+                            placeholder={`Set private nickname for ${nameStr || "contact"}...`}
+                            placeholderTextColor={colors.neutral400}
+                            value={nicknameInput}
+                            onChangeText={setNicknameInput}
+                            maxLength={40}
+                        />
+                        <TextInput
+                            style={{
+                                backgroundColor: colors.neutral50,
+                                borderWidth: 1,
+                                borderColor: colors.neutral200,
+                                borderRadius: radius._12,
+                                paddingHorizontal: spacingX._12,
+                                paddingVertical: verticalScale(9),
+                                fontSize: verticalScale(13),
+                                color: colors.neutral900,
+                                minHeight: verticalScale(56),
+                                textAlignVertical: "top",
+                            }}
+                            placeholder="Private note (timezone, role, birthday)..."
+                            placeholderTextColor={colors.neutral400}
+                            value={noteInput}
+                            onChangeText={setNoteInput}
+                            multiline
+                            maxLength={250}
+                        />
+                        {!!conversationIdStr && (
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                {(["work", "friends", "family", "vip"] as ChatFolderTag[]).map((t) => {
+                                    const meta = CHAT_FOLDER_META[t];
+                                    const active = folderTag === t;
+                                    return (
+                                        <TouchableOpacity
+                                            key={t}
+                                            onPress={async () => {
+                                                const nextTag = active ? null : t;
+                                                setFolderTag(nextTag);
+                                                await setChatTag(conversationIdStr, nextTag);
+                                            }}
+                                            style={{
+                                                backgroundColor: active ? meta.bg : colors.neutral100,
+                                                borderWidth: 1,
+                                                borderColor: active ? meta.color : colors.neutral200,
+                                                borderRadius: radius.full,
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                            }}
+                                        >
+                                            <Typo size={11.5} fontWeight="700" color={active ? meta.color : colors.neutral600}>
+                                                {meta.emoji} {meta.label}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        )}
+                        <TouchableOpacity
+                            style={{
+                                backgroundColor: colors.primary,
+                                borderRadius: radius.full,
+                                paddingVertical: verticalScale(9),
+                                alignItems: "center",
+                            }}
+                            onPress={async () => {
+                                await setEntityNickname(entityKey, nicknameInput);
+                                await setContactNote(entityKey, noteInput);
+                                BubblyAlert.alert("Saved ✨", "Private nickname and note updated.");
+                            }}
+                        >
+                            <Typo size={13} fontWeight="800" color={colors.black}>Save Nickname & Note</Typo>
                         </TouchableOpacity>
                     </View>
 
@@ -352,7 +476,7 @@ const ContactProfileScreen = () => {
                             onPress={() => {
                                 router.push({
                                     pathname: "/(main)/sharedMedia",
-                                    params: { conversationId: conversationId as string, name: displayName },
+                                    params: { conversationId: conversationIdStr, name: displayName },
                                 });
                             }}
                             activeOpacity={0.7}

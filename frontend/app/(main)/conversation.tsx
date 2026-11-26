@@ -45,12 +45,44 @@ import {
     setGroupAdmin, removeGroupMember, leaveGroup, getConversations, onGroupUpdated, onRemovedFromGroup,
     setDisappearingTimer, scheduleMessage, getScheduledMessages, cancelScheduledMessage, onScheduledMessageSent,
     onMessageAck,
+    onChecklistUpdated,
     isSocketConnected, onSocketConnectionChange,
 } from "../../socket/socketEvents"
 import {
     MessageProps, ReplyToProps, ResponseProps,
-    TypingPayload, UserStatusPayload, SelectedFileProps,
+    TypingPayload, UserStatusPayload, SelectedFileProps, ChecklistProps,
 } from "../../types"
+import { ComposerFormatBar, QuickReplyBar } from "../../components/RichChatFeatures"
+import {
+    ChatInsightsModal,
+    ChecklistCreatorModal,
+    CountdownCreatorModal,
+    GamePickerModal,
+    QuickRepliesManagerModal,
+    rollBubblyGame,
+} from "../../components/ConversationFeatureModals"
+import {
+    ACCENT_SWATCHES,
+    BubblyCountdownPayload,
+    BubblyGameKind,
+    BubblyGamePayload,
+    ChatAppearanceConfig,
+    DEFAULT_APPEARANCE,
+    encodeChecklistFallback,
+    encodeCountdownCard,
+    encodeGameCard,
+    formatRichPreviewText,
+    getChatAppearance,
+    getFocusMode,
+    getLocalSilentIds,
+    getNicknamesMap,
+    getPrivacyShield,
+    getQuickReplies,
+    markLocalSilentMessage,
+    QuickReplyTemplate,
+    saveQuickReplies,
+    subscribeFeatureUpdates,
+} from "../../utils/featureStorage"
 import Animated, {
     FadeInDown, FadeInUp, FadeIn, FadeOut, FadeOutDown,
     useSharedValue, useAnimatedStyle,
@@ -147,7 +179,7 @@ const ReplyPreviewBar = ({ replyTo, onCancel }: { replyTo: ReplyToProps; onCance
         <View style={replyStyles.textWrap}>
             <Typo size={12} fontWeight="700" color={colors.neutral800}>{replyTo.senderName}</Typo>
             <Typo size={12} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
-                {replyTo.voiceUrl ? "🎤 Voice message" : replyTo.content || "📷 Image"}
+                {replyTo.voiceUrl ? "🎤 Voice message" : replyTo.type === "file" ? "📎 File" : formatRichPreviewText(replyTo.content) || "📷 Image"}
             </Typo>
         </View>
         <TouchableOpacity onPress={onCancel} style={replyStyles.closeBtn} activeOpacity={0.7}>
@@ -641,8 +673,10 @@ const PinnedMessageBanner = ({
     onPress: (id: string) => void;
     onUnpin: (id: string) => void;
 }) => {
+    const [pinIdx, setPinIdx] = useState(0);
     if (!pinnedMessages || pinnedMessages.length === 0) return null;
-    const current = pinnedMessages[0];
+    const safeIdx = pinIdx % pinnedMessages.length;
+    const current = pinnedMessages[safeIdx];
 
     return (
         <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)} style={pinnedBannerStyles.container}>
@@ -652,13 +686,22 @@ const PinnedMessageBanner = ({
                 </View>
                 <View style={pinnedBannerStyles.textWrap}>
                     <Typo size={11} fontWeight="700" color={colors.neutral800}>
-                        Pinned Message {pinnedMessages.length > 1 ? `(${pinnedMessages.length})` : ''}
+                        Pinned Message {pinnedMessages.length > 1 ? `(${safeIdx + 1} of ${pinnedMessages.length})` : ''}
                     </Typo>
                     <Typo size={12} color={colors.neutral600} textProps={{ numberOfLines: 1 }}>
-                        {current.content || (current.type === "image" ? "📷 Photo" : "📎 Attachment")}
+                        {formatRichPreviewText(current.content) || (current.type === "image" ? "📷 Photo" : "📎 Attachment")}
                     </Typo>
                 </View>
             </TouchableOpacity>
+            {pinnedMessages.length > 1 && (
+                <TouchableOpacity
+                    onPress={() => setPinIdx((p) => (p + 1) % pinnedMessages.length)}
+                    activeOpacity={0.7}
+                    style={pinnedBannerStyles.closeBtn}
+                >
+                    <Icons.CaretRight size={verticalScale(14)} color={colors.primaryDark} weight="bold" />
+                </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => onUnpin(current.id)} activeOpacity={0.7} style={pinnedBannerStyles.closeBtn}>
                 <Icons.X size={verticalScale(13)} color={colors.neutral400} weight="bold" />
             </TouchableOpacity>
@@ -1169,62 +1212,92 @@ const groupInfoStyles = StyleSheet.create({
 
 // ── Attachment Options ──
 const AttachmentOptions = ({
-    onPickImage, onPickFile, onCreatePoll, onSchedule, onClose,
+    onPickImage, onPickFile, onCreatePoll, onSchedule, onCreateChecklist, onOpenGames, onCreateCountdown, onClose,
 }: {
     onPickImage: () => void;
     onPickFile: () => void;
     onCreatePoll: () => void;
     onSchedule: () => void;
+    onCreateChecklist: () => void;
+    onOpenGames: () => void;
+    onCreateCountdown: () => void;
     onClose: () => void;
 }) => (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={attachStyles.container}>
-        <TouchableOpacity style={attachStyles.option} onPress={onPickImage} activeOpacity={0.7}>
-            <View style={[attachStyles.iconWrap, { backgroundColor: colors.primaryLight }]}>
-                <Icons.Image size={verticalScale(20)} color={colors.primaryDark} weight="fill" />
-            </View>
-            <Typo size={12} fontWeight="600" color={colors.neutral700}>Image</Typo>
-        </TouchableOpacity>
+        <View style={attachStyles.headerRow}>
+            <Typo size={11.5} fontWeight="800" color={colors.neutral500}>ATTACH & INTERACTIVE</Typo>
+            <TouchableOpacity style={attachStyles.closeOption} onPress={onClose} activeOpacity={0.7}>
+                <Icons.X size={verticalScale(14)} color={colors.neutral500} weight="bold" />
+            </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity style={attachStyles.option} onPress={onPickFile} activeOpacity={0.7}>
-            <View style={[attachStyles.iconWrap, { backgroundColor: colors.neutral100 }]}>
-                <Icons.FileText size={verticalScale(20)} color={colors.neutral600} weight="fill" />
-            </View>
-            <Typo size={12} fontWeight="600" color={colors.neutral700}>File</Typo>
-        </TouchableOpacity>
+        <View style={attachStyles.gridRow}>
+            <TouchableOpacity style={attachStyles.option} onPress={onPickImage} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: colors.primaryLight }]}>
+                    <Icons.Image size={verticalScale(20)} color={colors.primaryDark} weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Image</Typo>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={attachStyles.option} onPress={onCreatePoll} activeOpacity={0.7}>
-            <View style={[attachStyles.iconWrap, { backgroundColor: '#f0fdf4' }]}>
-                <Icons.ChartBar size={verticalScale(20)} color={colors.green} weight="fill" />
-            </View>
-            <Typo size={12} fontWeight="600" color={colors.neutral700}>Poll</Typo>
-        </TouchableOpacity>
+            <TouchableOpacity style={attachStyles.option} onPress={onPickFile} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: colors.neutral100 }]}>
+                    <Icons.FileText size={verticalScale(20)} color={colors.neutral600} weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>File</Typo>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={attachStyles.option} onPress={onSchedule} activeOpacity={0.7}>
-            <View style={[attachStyles.iconWrap, { backgroundColor: '#fef3c7' }]}>
-                <Icons.ClockCountdown size={verticalScale(20)} color="#d97706" weight="fill" />
-            </View>
-            <Typo size={12} fontWeight="600" color={colors.neutral700}>Schedule</Typo>
-        </TouchableOpacity>
+            <TouchableOpacity style={attachStyles.option} onPress={onCreatePoll} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#f0fdf4' }]}>
+                    <Icons.ChartBar size={verticalScale(20)} color={colors.green} weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Poll</Typo>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={attachStyles.closeOption} onPress={onClose} activeOpacity={0.7}>
-            <Icons.X size={verticalScale(16)} color={colors.neutral500} weight="bold" />
-        </TouchableOpacity>
+            <TouchableOpacity style={attachStyles.option} onPress={onCreateChecklist} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#eff6ff' }]}>
+                    <Icons.CheckSquare size={verticalScale(20)} color="#0284c7" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Checklist</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={onSchedule} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#fef3c7' }]}>
+                    <Icons.ClockCountdown size={verticalScale(20)} color="#d97706" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Schedule</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={onOpenGames} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#f5f3ff' }]}>
+                    <Icons.GameController size={verticalScale(20)} color="#7c3aed" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Games</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={onCreateCountdown} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#fff1f2' }]}>
+                    <Icons.HourglassMedium size={verticalScale(20)} color="#e11d48" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Timer</Typo>
+            </TouchableOpacity>
+        </View>
     </Animated.View>
 );
 
 const attachStyles = StyleSheet.create({
     container: {
-        flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between",
         backgroundColor: colors.white, borderRadius: radius._15,
         borderWidth: 1, borderColor: colors.neutral200,
         marginBottom: spacingY._7, paddingHorizontal: spacingX._12,
-        paddingVertical: spacingY._10, gap: spacingX._8,
+        paddingVertical: spacingY._10, gap: spacingY._8,
         shadowColor: colors.black, shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
     },
-    option: { alignItems: "center", gap: spacingY._5 },
+    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 },
+    gridRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", rowGap: spacingY._10, columnGap: "2%" },
+    option: { width: "23%", alignItems: "center", gap: spacingY._5 },
     iconWrap: { width: verticalScale(44), height: verticalScale(44), borderRadius: radius._12, alignItems: "center", justifyContent: "center" },
-    closeOption: { padding: spacingX._5, backgroundColor: colors.neutral100, borderRadius: radius.full, width: verticalScale(30), height: verticalScale(30), alignItems: "center", justifyContent: "center" },
+    closeOption: { padding: spacingX._5, backgroundColor: colors.neutral100, borderRadius: radius.full, width: verticalScale(26), height: verticalScale(26), alignItems: "center", justifyContent: "center" },
 });
 
 // ─────────────────────────────────────────────
@@ -1347,13 +1420,53 @@ const Conversation = () => {
     let conversationAvatar = avatar;
     if (isNotesToSelf) conversationAvatar = currentUser?.avatar || avatar;
     else if (isDirect && otherParticipant) conversationAvatar = otherParticipant.avatar;
-    let conversationName = isNotesToSelf ? "Notes to Self 📝" : (isDirect ? otherParticipant?.name : name);
+    const baseConversationName = isNotesToSelf ? "Notes to Self 📝" : (isDirect ? otherParticipant?.name : name);
+
+    // ── v4.0.1 Flagship Feature States ──
+    const [nicknamesMap, setNicknamesMap] = useState<Record<string, string>>({});
+    const [appearance, setAppearance] = useState<ChatAppearanceConfig>(DEFAULT_APPEARANCE);
+    const [quickReplies, setQuickReplies] = useState<QuickReplyTemplate[]>([]);
+    const [showFormatBar, setShowFormatBar] = useState(false);
+    const [isSilentSend, setIsSilentSend] = useState(false);
+    const [showChecklistModal, setShowChecklistModal] = useState(false);
+    const [showGameModal, setShowGameModal] = useState(false);
+    const [showCountdownModal, setShowCountdownModal] = useState(false);
+    const [showQuickRepliesMgr, setShowQuickRepliesMgr] = useState(false);
+    const [showInsightsModal, setShowInsightsModal] = useState(false);
+    const [selectedMsgIds, setSelectedMsgIds] = useState<string[]>([]);
+    const [outboxCount, setOutboxCount] = useState(0);
+    const [contactCustomStatus, setContactCustomStatus] = useState<{ emoji?: string; text?: string } | null>(null);
+    const focusActiveRef = useRef(false);
+    const hideNotifPreviewRef = useRef(false);
+
+    useEffect(() => {
+        const loadFeatureState = () => {
+            getNicknamesMap().then(setNicknamesMap);
+            getChatAppearance().then(setAppearance);
+            getQuickReplies().then(setQuickReplies);
+            getFocusMode().then((f) => { focusActiveRef.current = f.enabled; });
+            getPrivacyShield().then((p) => { hideNotifPreviewRef.current = p.hideNotificationPreview; });
+        };
+        loadFeatureState();
+        return subscribeFeatureUpdates(loadFeatureState);
+    }, []);
+
+    let conversationName = baseConversationName;
+    if (!isNotesToSelf) {
+        const alias = (conversationId && nicknamesMap[conversationId])
+            || (otherParticipant?._id && nicknamesMap[otherParticipant._id]);
+        if (alias) conversationName = alias;
+    }
+
+    const isSelectionMode = selectedMsgIds.length > 0;
 
     // ── Advanced Features State (Features 2, 3, 4, 5, 7, 9, 10, V3.1.2) ──
     const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
     const [isViewOnce, setIsViewOnce] = useState(false);
     const [isHd, setIsHd] = useState(false);
     const [voiceReview, setVoiceReview] = useState<{ uri: string; duration: number } | null>(null);
+    const voiceReviewRef = useRef(voiceReview);
+    voiceReviewRef.current = voiceReview;
     const reviewPlayer = useAudioPlayer(voiceReview?.uri ? { uri: voiceReview.uri } : null);
     const reviewPlayerStatus = useAudioPlayerStatus(reviewPlayer);
     const [isSearching, setIsSearching] = useState(false);
@@ -1402,6 +1515,13 @@ const Conversation = () => {
             minLoadedPageRef.current = 0;
             loadingNewerRef.current = false;
             pendingJumpIdRef.current = null;
+            setIsSearching(false);
+            setSearchQuery('');
+            setScheduledMessages([]);
+            setSelectedMsgIds([]);
+            setIsSilentSend(false);
+            setShowFormatBar(false);
+            setContactCustomStatus(null);
             setPollError('');
             const parsedDisappearing = parseInt(String(initialDisappearing || "0"), 10);
             setDisappearingSeconds(isNaN(parsedDisappearing) ? 0 : parsedDisappearing);
@@ -1592,6 +1712,10 @@ const Conversation = () => {
 
     // ── Chat Wallpaper & Theme (Feature 14 & V3.2.0 Custom Wallpaper) ──
     const [selectedTheme, setSelectedTheme] = useState<ChatTheme>(CHAT_THEMES[0]);
+    const accentMineBubble = useMemo(
+        () => ACCENT_SWATCHES.find((s) => s.color === appearance.accentColor)?.myBubble,
+        [appearance.accentColor]
+    );
     const [customWallpaperUri, setCustomWallpaperUri] = useState<string | null>(null);
     const [showThemeModal, setShowThemeModal] = useState(false);
 
@@ -1726,13 +1850,22 @@ const Conversation = () => {
 
     // ── Offline Message Outbox & Auto-Sync (Feature 1) ──
     const flushOutbox = useCallback(async () => {
-        if (!conversationId || isNotesToSelf || !isSocketConnected()) return;
+        if (!conversationId || isNotesToSelf || !isSocketConnected()) {
+            if (conversationId && !isNotesToSelf) {
+                AsyncStorage.getItem(`@bubbly_outbox_${conversationId}`).then((raw) => {
+                    const q = raw ? JSON.parse(raw) : [];
+                    setOutboxCount(Array.isArray(q) ? q.length : 0);
+                }).catch(() => setOutboxCount(0));
+            }
+            return;
+        }
         try {
             const key = `@bubbly_outbox_${conversationId}`;
             const raw = await AsyncStorage.getItem(key);
-            if (!raw) return;
+            if (!raw) { setOutboxCount(0); return; }
             const queue: any[] = JSON.parse(raw);
-            if (!Array.isArray(queue) || queue.length === 0) return;
+            if (!Array.isArray(queue) || queue.length === 0) { setOutboxCount(0); return; }
+            setOutboxCount(queue.length);
 
             for (const item of queue) {
                 newMessage({
@@ -1743,6 +1876,7 @@ const Conversation = () => {
                     attachmentMeta: item.attachmentMeta,
                     type: item.type,
                     replyTo: item.replyTo,
+                    isSilent: !!item.isSilent,
                     clientId: item.tempId,
                 });
                 if (item.tempId) {
@@ -1766,6 +1900,10 @@ const Conversation = () => {
     // ── Android Back Button Listener ──
     useEffect(() => {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (isSelectionMode) {
+                setSelectedMsgIds([]);
+                return true;
+            }
             if (isSearching) {
                 setIsSearching(false);
                 setSearchQuery('');
@@ -1802,7 +1940,7 @@ const Conversation = () => {
             return false;
         });
         return () => backHandler.remove();
-    }, [isSearching, showThemeModal, showDisappearingModal, showPollModal, groupInfoVisible, forwardModalVisible, showScheduleModal, showAttachOptions]);
+    }, [isSelectionMode, isSearching, showThemeModal, showDisappearingModal, showPollModal, groupInfoVisible, forwardModalVisible, showScheduleModal, showAttachOptions]);
 
     // ── Connection Status Listener ──
     useEffect(() => {
@@ -1864,7 +2002,7 @@ const Conversation = () => {
                     try { recordingRef.current.stop(); } catch {}
                     recordingRef.current = null;
                 }
-                if (voiceReview?.uri) {
+                if (voiceReviewRef.current?.uri) {
                     try { reviewPlayer.pause(); } catch (_) {}
                 }
             };
@@ -1910,13 +2048,27 @@ const Conversation = () => {
             }
         };
 
+        const checklistUpdatedHandler = (res: any) => {
+            if (res?.success && res.data?.conversationId === conversationId && res.data?.messageId) {
+                setMessages(prev => prev.map(m =>
+                    m.id === res.data.messageId ? { ...m, checklist: res.data.checklist } : m
+                ));
+            }
+        };
+
         const messageAckHandler = async (ack: any) => {
             if (!ack?.success || !ack.clientId || !ack.data?.id) return;
+            const localSilent = (await getLocalSilentIds()).has(ack.clientId);
+            if (localSilent || ack.data.isSilent) {
+                await markLocalSilentMessage(ack.data.id);
+            }
             setMessages(prev => {
                 const hasTemp = prev.some(m => m.id === ack.clientId);
                 if (!hasTemp) return prev;
+                const tempMsg = prev.find(m => m.id === ack.clientId);
+                const resolvedSilent = Boolean(ack.data.isSilent || tempMsg?.isSilent || localSilent);
                 const deduped = prev.filter(m => m.id !== ack.data.id);
-                return deduped.map(m => m.id === ack.clientId ? { ...ack.data, conversationId: conversationId as string } : m);
+                return deduped.map(m => m.id === ack.clientId ? { ...ack.data, isSilent: resolvedSilent, conversationId: conversationId as string } : m);
             });
             setMessageStatuses(prev => {
                 const next = { ...prev };
@@ -1931,6 +2083,7 @@ const Conversation = () => {
                     const queue = JSON.parse(raw);
                     if (Array.isArray(queue)) {
                         const remaining = queue.filter((q: any) => q.tempId !== ack.clientId);
+                        setOutboxCount(remaining.length);
                         if (remaining.length === 0) await AsyncStorage.removeItem(key);
                         else await AsyncStorage.setItem(key, JSON.stringify(remaining));
                     }
@@ -1959,6 +2112,7 @@ const Conversation = () => {
         onRemovedFromGroup(removedFromGroupHandler);
         setDisappearingTimer(disappearingHandler);
         onScheduledMessageSent(scheduledSentHandler);
+        onChecklistUpdated(checklistUpdatedHandler);
         onMessageAck(messageAckHandler);
 
         getMessages({
@@ -1991,6 +2145,7 @@ const Conversation = () => {
             onRemovedFromGroup(removedFromGroupHandler, true);
             setDisappearingTimer(disappearingHandler, true);
             onScheduledMessageSent(scheduledSentHandler, true);
+            onChecklistUpdated(checklistUpdatedHandler, true);
             onMessageAck(messageAckHandler, true);
             if (pendingSchedAckRef.current) {
                 scheduleMessage(pendingSchedAckRef.current, true);
@@ -2006,7 +2161,7 @@ const Conversation = () => {
                 try { recordingRef.current.stop(); } catch {}
                 recordingRef.current = null;
             }
-            if (voiceReview?.uri) {
+            if (voiceReviewRef.current?.uri) {
                 try { reviewPlayer.pause(); } catch (_) {}
             }
         };
@@ -2061,10 +2216,15 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     const handleStartCall = useCallback((callKind: 'voice' | 'video') => {
         if (!otherParticipant || !currentUser) return;
+        if (!isSocketConnected()) {
+            BubblyAlert.alert("Offline", "Connect to the internet to start a call.");
+            return;
+        }
         callInvite({ conversationId: conversationId as string, calleeId: otherParticipant._id, kind: callKind });
     }, [otherParticipant, currentUser, conversationId]);
 
     const callRingingHandler = useCallback((data: any) => {
+        if (data?.conversationId && data.conversationId.toString() !== conversationId?.toString()) return;
         router.push({
             pathname: '/(main)/callScreen',
             params: {
@@ -2156,19 +2316,27 @@ const Conversation = () => {
             res.data.conversationId?.toString() !==
             conversationId?.toString()
         ) {
-            if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-            setIncomingToast({
-                convId: res.data.conversationId,
-                senderName: res.data.sender?.name || "New Message",
-                text: res.data.content || (res.data.attachement ? "📷 Attachment" : "New message"),
-                avatar: res.data.sender?.avatar,
-                senderId: res.data.sender?.id,
-                conversationType: (res as any).conversationType || "direct",
-                conversationName: (res as any).conversationName || undefined,
-            } as any);
-            toastTimeoutRef.current = setTimeout(() => {
-                setIncomingToast(null);
-            }, 4000);
+            Promise.all([getFocusMode(), getPrivacyShield()]).then(([f, p]) => {
+                focusActiveRef.current = f.enabled;
+                hideNotifPreviewRef.current = p.hideNotificationPreview;
+                if (f.enabled || res.data.isSilent) return;
+                if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                const previewText = p.hideNotificationPreview
+                    ? "🔒 New encrypted message"
+                    : (formatRichPreviewText(res.data.content) || (res.data.attachement ? "📷 Attachment" : "New message"));
+                setIncomingToast({
+                    convId: res.data.conversationId,
+                    senderName: p.hideNotificationPreview ? "Bubbly" : (res.data.sender?.name || "New Message"),
+                    text: previewText,
+                    avatar: p.hideNotificationPreview ? undefined : res.data.sender?.avatar,
+                    senderId: res.data.sender?.id,
+                    conversationType: (res as any).conversationType || "direct",
+                    conversationName: (res as any).conversationName || undefined,
+                } as any);
+                toastTimeoutRef.current = setTimeout(() => {
+                    setIncomingToast(null);
+                }, 4000);
+            }).catch(() => {});
             return;
         }
 
@@ -2372,8 +2540,191 @@ const Conversation = () => {
     }, [isDirect]);
 
     const getUserStatusHandler = useCallback((res: ResponseProps) => {
-        if (res.success) { setContactIsOnline(res.data.isOnline); setContactLastSeen(res.data.lastSeen); }
+        if (res.success) {
+            setContactIsOnline(res.data.isOnline);
+            setContactLastSeen(res.data.lastSeen);
+            if (res.data.customStatus?.text || res.data.customStatus?.emoji) {
+                setContactCustomStatus(res.data.customStatus);
+            } else {
+                setContactCustomStatus(null);
+            }
+        }
     }, []);
+
+    // ── Rich Card & Feature Handlers (v4.0.1) ──
+    const sendRichTextPayload = useCallback((textPayload: string, checklistObj?: ChecklistProps) => {
+        if (!currentUser || !conversationId) return;
+        if (isNotesToSelf) {
+            const noteMsg: MessageProps = {
+                id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: textPayload,
+                type: checklistObj ? "checklist" : "text",
+                checklist: checklistObj || null,
+                reactions: [],
+                createdAt: new Date().toISOString(),
+                isSilent: isSilentSend,
+            };
+            setMessages(prev => {
+                const updated = [noteMsg, ...prev];
+                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                return updated;
+            });
+            setIsSilentSend(false);
+            return;
+        }
+        if (!isSocketConnected()) {
+            BubblyAlert.alert("Offline", "Connect to the internet to send rich cards.");
+            return;
+        }
+        newMessage({
+            conversationId,
+            sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+            content: textPayload,
+            type: "text",
+            isSilent: isSilentSend,
+        });
+        setIsSilentSend(false);
+    }, [currentUser, conversationId, isNotesToSelf, isSilentSend]);
+
+    const handleCreateChecklist = useCallback((checklist: ChecklistProps) => {
+        setShowChecklistModal(false);
+        sendRichTextPayload(encodeChecklistFallback(checklist), checklist);
+    }, [sendRichTextPayload]);
+
+    const handleSendGame = useCallback((game: BubblyGamePayload) => {
+        setShowGameModal(false);
+        sendRichTextPayload(encodeGameCard(game));
+    }, [sendRichTextPayload]);
+
+    const handleReplayGame = useCallback((kind: BubblyGameKind) => {
+        sendRichTextPayload(encodeGameCard(rollBubblyGame(kind)));
+    }, [sendRichTextPayload]);
+
+    const handleSendCountdown = useCallback((payload: BubblyCountdownPayload) => {
+        setShowCountdownModal(false);
+        sendRichTextPayload(encodeCountdownCard(payload));
+    }, [sendRichTextPayload]);
+
+    const handleToggleChecklistLocal = useCallback((messageId: string, itemId: string) => {
+        if (!conversationId) return;
+        setMessages(prev => {
+            const updated = prev.map(m => {
+                if (m.id !== messageId || !m.checklist) return m;
+                return {
+                    ...m,
+                    checklist: {
+                        ...m.checklist,
+                        items: m.checklist.items.map(it =>
+                            it.id === itemId ? { ...it, completed: !it.completed } : it
+                        ),
+                    },
+                };
+            });
+            if (isNotesToSelf) {
+                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+            }
+            return updated;
+        });
+    }, [conversationId, isNotesToSelf]);
+
+    const handleApplyFormat = useCallback((fmt: "bold" | "italic" | "strike" | "code" | "quote") => {
+        const trimmed = message;
+        if (fmt === "quote") {
+            setMessage(trimmed.startsWith("> ") ? trimmed.slice(2) : `> ${trimmed}`);
+            return;
+        }
+        const wrap = fmt === "bold" ? "*" : fmt === "italic" ? "_" : fmt === "strike" ? "~" : "`";
+        if (!trimmed.trim()) {
+            setMessage(`${wrap}text${wrap}`);
+        } else if (trimmed.endsWith(" ")) {
+            setMessage(`${trimmed}${wrap}text${wrap}`);
+        } else {
+            setMessage(`${wrap}${trimmed}${wrap}`);
+        }
+    }, [message]);
+
+    const quickReplyCandidates = useMemo(() => {
+        if (!message.startsWith("/")) return [];
+        const prefix = message.slice(1).toLowerCase();
+        return quickReplies.filter((q) => q.trigger.toLowerCase().startsWith(prefix));
+    }, [message, quickReplies]);
+
+    const handleSelectQuickReply = useCallback((tpl: QuickReplyTemplate) => {
+        setMessage(tpl.text);
+    }, []);
+
+    const handleToggleSelectMsg = useCallback((msgId: string) => {
+        setSelectedMsgIds((prev) =>
+            prev.includes(msgId) ? prev.filter((id) => id !== msgId) : [...prev, msgId]
+        );
+    }, []);
+
+    const handleEnterSelectionMode = useCallback((msgId: string) => {
+        setSelectedMsgIds([msgId]);
+    }, []);
+
+    const handleBulkCopy = useCallback(async () => {
+        const chosen = messages.filter((m) => selectedMsgIds.includes(m.id)).reverse();
+        const combined = chosen
+            .map((m) => `${m.sender?.name || "User"}: ${formatRichPreviewText(m.content) || "[Media]"}`)
+            .join("\n");
+        if (combined) {
+            await Clipboard.setStringAsync(combined).catch(() => {});
+            BubblyAlert.alert("Copied", `${chosen.length} message(s) copied to clipboard.`);
+        }
+        setSelectedMsgIds([]);
+    }, [messages, selectedMsgIds]);
+
+    const handleBulkStar = useCallback(() => {
+        if (isNotesToSelf) {
+            BubblyAlert.alert("Notes to Self", "Notes are already saved locally on your device.");
+            setSelectedMsgIds([]);
+            return;
+        }
+        selectedMsgIds.forEach((id) => {
+            toggleStarMessage({ messageId: id, conversationId: conversationId as string });
+        });
+        setSelectedMsgIds([]);
+        BubblyAlert.alert("Updated ⭐", `${selectedMsgIds.length} message(s) toggled in Starred.`);
+    }, [selectedMsgIds, conversationId, isNotesToSelf]);
+
+    const handleBulkDelete = useCallback(() => {
+        const ownIds = selectedMsgIds.filter((id) => {
+            const msg = messages.find((m) => m.id === id);
+            return isNotesToSelf || msg?.sender?.id === currentUser?.id;
+        });
+        if (ownIds.length === 0) {
+            BubblyAlert.alert("Delete", "You can only delete your own messages.");
+            return;
+        }
+        BubblyAlert.alert(
+            "Delete Selected Messages",
+            `Delete ${ownIds.length} message(s)?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => {
+                        if (isNotesToSelf) {
+                            setMessages(prev => {
+                                const updated = prev.map(m =>
+                                    ownIds.includes(m.id) ? { ...m, isDeleted: true, content: "", attachement: null, voiceUrl: null } : m
+                                );
+                                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                                return updated;
+                            });
+                        } else {
+                            ownIds.forEach((id) => deleteMessage({ messageId: id, conversationId: conversationId as string }));
+                        }
+                        setSelectedMsgIds([]);
+                    },
+                },
+            ]
+        );
+    }, [selectedMsgIds, messages, isNotesToSelf, currentUser?.id, conversationId]);
 
     // ─────────────────────────────────────────────
     // LOAD MORE
@@ -2547,6 +2898,7 @@ const Conversation = () => {
                 voiceDuration: duration,
                 replyTo: replyTo || null,
                 reactions: [],
+                isSilent: isSilentSend,
                 createdAt: new Date().toISOString(),
             };
             setMessages(prev => {
@@ -2555,6 +2907,7 @@ const Conversation = () => {
                 return updated;
             });
             setReplyTo(null);
+            setIsSilentSend(false);
             return;
         }
         if (!isSocketConnected()) {
@@ -2565,8 +2918,9 @@ const Conversation = () => {
         try {
             const uploadResult = await uploadAudioToCloudinary(uri, "voice-messages");
             if (!uploadResult.success || !uploadResult.data) { BubblyAlert.alert("Error", "Could not upload voice message"); return; }
-            newMessage({ conversationId, sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }, content: "", attachement: null, replyTo: replyTo?.id || null, voiceUrl: uploadResult.data, voiceDuration: duration });
+            newMessage({ conversationId, sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }, content: "", attachement: null, replyTo: replyTo?.id || null, voiceUrl: uploadResult.data, voiceDuration: duration, isSilent: isSilentSend });
             setReplyTo(null);
+            setIsSilentSend(false);
         } catch { BubblyAlert.alert("Error", "Failed to send voice message"); }
         finally { setIsUploadingVoice(false); }
     };
@@ -2576,10 +2930,14 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     const onPickImage = async () => {
         setShowAttachOptions(false);
-        let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], aspect: [4, 3], quality: isHd ? 1.0 : 0.7 });
-        if (!result.canceled) {
-            const asset = result.assets[0];
-            setSelectedFile({ uri: asset.uri, name: asset.uri.split('/').pop() || 'image.jpg', mimeType: asset.mimeType || 'image/jpeg', size: asset.fileSize || 0, isImage: true });
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], aspect: [4, 3], quality: isHd ? 1.0 : 0.7 });
+            if (!result.canceled && result.assets?.length) {
+                const asset = result.assets[0];
+                setSelectedFile({ uri: asset.uri, name: asset.uri.split('/').pop() || 'image.jpg', mimeType: asset.mimeType || 'image/jpeg', size: asset.fileSize || 0, isImage: true });
+            }
+        } catch {
+            BubblyAlert.alert("Error", "Could not open image library.");
         }
     };
 
@@ -2662,6 +3020,7 @@ const Conversation = () => {
                 type: selectedFile ? (selectedFile.isImage ? 'image' : 'file') : 'text',
                 replyTo: replyTo || null,
                 reactions: [],
+                isSilent: isSilentSend,
                 createdAt: new Date().toISOString(),
             };
             setMessages(prev => {
@@ -2675,6 +3034,7 @@ const Conversation = () => {
             setMessage("");
             setSelectedFile(null);
             setReplyTo(null);
+            setIsSilentSend(false);
             return;
         }
 
@@ -2696,11 +3056,15 @@ const Conversation = () => {
                 type: 'text',
                 replyTo: replyTo || null,
                 reactions: [],
+                isSilent: isSilentSend,
                 createdAt: new Date().toISOString(),
             };
 
             setMessages(prev => [offlineMsg, ...prev]);
             setMessageStatuses(prev => ({ ...prev, [tempId]: "sending" }));
+            if (isSilentSend) {
+                markLocalSilentMessage(tempId);
+            }
 
             try {
                 const key = `@bubbly_outbox_${conversationId}`;
@@ -2714,9 +3078,11 @@ const Conversation = () => {
                     attachmentMeta: null,
                     type: 'text',
                     replyTo: replyTo?.id || null,
+                    isSilent: isSilentSend,
                     tempId,
                 });
                 await AsyncStorage.setItem(key, JSON.stringify(queue));
+                setOutboxCount(queue.length);
             } catch (e) {
                 console.log("Failed to queue offline message:", e);
             }
@@ -2726,6 +3092,7 @@ const Conversation = () => {
             }
             setMessage("");
             setReplyTo(null);
+            setIsSilentSend(false);
             return;
         }
 
@@ -2759,12 +3126,13 @@ const Conversation = () => {
                 attachmentMeta,
                 type: messageType,
                 replyTo: replyTo?.id || null,
+                isSilent: isSilentSend,
                 isViewOnce: selectedFile?.isImage ? isViewOnce : false,
             });
             if (conversationId) {
                 AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
             }
-            setMessage(""); setSelectedFile(null); setReplyTo(null); setIsViewOnce(false); setIsHd(false);
+            setMessage(""); setSelectedFile(null); setReplyTo(null); setIsViewOnce(false); setIsHd(false); setIsSilentSend(false);
         } catch { BubblyAlert.alert("Error", "Failed to send message"); }
         finally { setLoading(false); }
     };
@@ -2904,7 +3272,7 @@ const Conversation = () => {
                         const lines = [...messages].reverse().map(m => {
                             const time = moment(m.createdAt).format('YYYY-MM-DD HH:mm');
                             const sender = m.sender?.name || (m.sender?.id === currentUser?.id ? "You" : "User");
-                            const content = m.content || (m.type === 'image' ? '[Photo]' : m.type === 'voice' ? '[Voice Note]' : '[Attachment]');
+                            const content = formatRichPreviewText(m.content) || (m.type === 'image' ? '[Photo]' : m.type === 'voice' ? '[Voice Note]' : '[Attachment]');
                             return `[${time}] ${sender}: ${content}`;
                         });
                         const chatText = `--- Bubbly Chat Export: ${conversationName} ---\nExported on: ${moment().format('LLL')}\nTotal Messages: ${messages.length}\n\n` + lines.join('\n');
@@ -2914,10 +3282,10 @@ const Conversation = () => {
                                 message: chatText,
                             });
                             if (res.action === Share.dismissedAction) {
-                                await Clipboard.setStringAsync(chatText);
+                                await Clipboard.setStringAsync(chatText).catch(() => {});
                             }
                         } catch (e) {
-                            await Clipboard.setStringAsync(chatText);
+                            await Clipboard.setStringAsync(chatText).catch(() => {});
                             BubblyAlert.alert("Copied to Clipboard", "Chat export copied to clipboard.");
                         }
                     }
@@ -2933,7 +3301,7 @@ const Conversation = () => {
                             messages: [...messages].reverse().map(m => ({
                                 id: m.id,
                                 sender: m.sender?.name || m.sender?.id,
-                                content: m.content,
+                                content: formatRichPreviewText(m.content),
                                 type: m.type,
                                 createdAt: m.createdAt,
                             })),
@@ -2945,7 +3313,7 @@ const Conversation = () => {
                                 message: jsonStr,
                             });
                         } catch (e) {
-                            await Clipboard.setStringAsync(jsonStr);
+                            await Clipboard.setStringAsync(jsonStr).catch(() => {});
                             BubblyAlert.alert("Copied to Clipboard", "JSON chat export copied to clipboard.");
                         }
                     }
@@ -3023,6 +3391,21 @@ const Conversation = () => {
             {
                 text: "Export Chat History 📤",
                 onPress: handleExportChat,
+            },
+            {
+                text: "Chat Insights 📊",
+                onPress: () => setShowInsightsModal(true),
+            },
+            {
+                text: "Quick Reply Templates ⚡",
+                onPress: () => setShowQuickRepliesMgr(true),
+            },
+            {
+                text: "Select Multiple Messages ☑️",
+                onPress: () => {
+                    if (messages.length > 0) setSelectedMsgIds([messages[0].id]);
+                    else BubblyAlert.alert("Select", "No messages to select yet.");
+                },
             },
             {
                 text: "Chat Wallpaper & Theme",
@@ -3154,11 +3537,19 @@ const Conversation = () => {
                 deliveryStatus={messageStatuses[item.message.id]}
                 searchHighlight={isSearching && searchQuery.trim() ? searchQuery.trim() : undefined}
                 isTargetHighlight={highlightMessageId === item.message.id}
-                customBubbleMine={selectedTheme.bubbleMine}
+                customBubbleMine={selectedTheme.id === 'default' && accentMineBubble ? accentMineBubble : selectedTheme.bubbleMine}
                 customBubbleOther={selectedTheme.bubbleOther}
                 isNotesToSelf={isNotesToSelf}
                 onLocalDelete={handleLocalDelete}
                 onLocalEdit={handleLocalEdit}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedMsgIds.includes(item.message.id)}
+                onToggleSelect={handleToggleSelectMsg}
+                onEnterSelectionMode={handleEnterSelectionMode}
+                onToggleChecklistLocal={handleToggleChecklistLocal}
+                onReplayGame={handleReplayGame}
+                bubbleCornerStyle={appearance.bubbleStyle}
+                chatFontScale={appearance.fontScale}
             />
         );
     }, [
@@ -3172,12 +3563,22 @@ const Conversation = () => {
         handleUnpin,
         handleLocalDelete,
         handleLocalEdit,
+        isSelectionMode,
+        selectedMsgIds,
+        handleToggleSelectMsg,
+        handleEnterSelectionMode,
+        handleToggleChecklistLocal,
+        handleReplayGame,
+        appearance.bubbleStyle,
+        appearance.fontScale,
         messageStatuses,
         isSearching,
         searchQuery,
         highlightMessageId,
+        selectedTheme.id,
         selectedTheme.bubbleMine,
         selectedTheme.bubbleOther,
+        accentMineBubble,
     ]);
 
     // ─────────────────────────────────────────────
@@ -3258,8 +3659,16 @@ const Conversation = () => {
                                         </Typo>
                                     </Animated.View>
                                 ) : (
-                                    <Typo color={'rgba(255,255,255,0.55)'} size={11.5} fontWeight="400" textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
-                                        {isDirect ? contactIsOnline ? 'Online' : formatLastSeen(contactLastSeen) : `${participants.length} members`}
+                                    <Typo color={'rgba(255,255,255,0.65)'} size={11.5} fontWeight="400" textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
+                                        {isDirect
+                                            ? (() => {
+                                                const presenceText = contactIsOnline ? 'Online' : formatLastSeen(contactLastSeen);
+                                                const hasStatus = !!(contactCustomStatus?.emoji || contactCustomStatus?.text);
+                                                if (!hasStatus) return presenceText;
+                                                const statusStr = `${contactCustomStatus?.emoji || '💬'} ${contactCustomStatus?.text || ''}`.trim();
+                                                return `${presenceText} · ${statusStr}`;
+                                            })()
+                                            : `${participants.length} members`}
                                     </Typo>
                                 )}
                             </View>
@@ -3293,6 +3702,63 @@ const Conversation = () => {
                         <Icons.WifiSlash size={verticalScale(14)} color={colors.rose} weight="bold" />
                         <Typo size={12} color={colors.rose} fontWeight="600">Waiting for network...</Typo>
                     </Animated.View>
+                )}
+
+                {/* ── Outbox Inspector Banner ── */}
+                {outboxCount > 0 && (
+                    <View style={styles.scheduledBanner}>
+                        <View style={styles.scheduledInfo}>
+                            <Icons.CloudArrowUp size={16} color="#d97706" weight="bold" />
+                            <Typo size={12} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                {outboxCount} queued offline message{outboxCount > 1 ? "s" : ""}
+                            </Typo>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity onPress={flushOutbox} style={styles.manageSchedBtn}>
+                                <Typo size={11} fontWeight="700" color="#d97706">Send Now</Typo>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    if (conversationId) await AsyncStorage.removeItem(`@bubbly_outbox_${conversationId}`).catch(() => {});
+                                    setOutboxCount(0);
+                                    setMessages(prev => prev.filter(m => !m.id.startsWith('temp_')));
+                                    setMessageStatuses(prev => {
+                                        const next = { ...prev };
+                                        for (const k of Object.keys(next)) {
+                                            if (k.startsWith('temp_')) delete next[k];
+                                        }
+                                        return next;
+                                    });
+                                }}
+                                style={[styles.manageSchedBtn, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+                            >
+                                <Typo size={11} fontWeight="700" color={colors.rose}>Clear</Typo>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+
+                {/* ── Multi-Select Top Toolbar ── */}
+                {isSelectionMode && (
+                    <View style={[styles.scheduledBanner, { backgroundColor: '#1c1917', borderTopWidth: 0 }]}>
+                        <Typo size={13} fontWeight="800" color={colors.white}>
+                            {selectedMsgIds.length} Selected
+                        </Typo>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                                onPress={() => setSelectedMsgIds(messages.filter(m => !m.isDeleted && m.type !== 'system').map(m => m.id))}
+                                style={[styles.manageSchedBtn, { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'transparent' }]}
+                            >
+                                <Typo size={11} fontWeight="700" color={colors.white}>All</Typo>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => setSelectedMsgIds([])}
+                                style={[styles.manageSchedBtn, { backgroundColor: colors.primary, borderColor: 'transparent' }]}
+                            >
+                                <Typo size={11} fontWeight="800" color={colors.black}>Cancel</Typo>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 )}
 
                 {/* ── Content Sheet with Custom Theme Background ── */}
@@ -3389,6 +3855,13 @@ const Conversation = () => {
                     {/* ── Group Mention Autocomplete Bar (Feature 7) ── */}
                     <GroupMentionBar candidates={mentionCandidates} onSelect={handleSelectMention} />
 
+                    {/* ── Slash Quick Replies Autocomplete Bar ── */}
+                    <QuickReplyBar
+                        templates={quickReplyCandidates}
+                        onSelect={handleSelectQuickReply}
+                        onManage={() => setShowQuickRepliesMgr(true)}
+                    />
+
                     {/* ── Scheduled Messages Floating Banner (Feature 3) ── */}
                     {scheduledMessages.length > 0 && (
                         <View style={styles.scheduledBanner}>
@@ -3420,9 +3893,43 @@ const Conversation = () => {
                         </View>
                     )}
 
-                    {/* ── Input Bar ── */}
+                    {/* ── Bulk Multi-Select Dock or Input Bar ── */}
+                    {isSelectionMode ? (
+                        <View style={[styles.inputBar, { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: spacingY._12 }]}>
+                            <TouchableOpacity onPress={handleBulkCopy} style={{ alignItems: 'center', gap: 3 }}>
+                                <Icons.Copy size={20} color={colors.neutral800} weight="bold" />
+                                <Typo size={11} fontWeight="700" color={colors.neutral700}>Copy</Typo>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={handleBulkStar} style={{ alignItems: 'center', gap: 3 }}>
+                                <Icons.Star size={20} color="#eab308" weight="fill" />
+                                <Typo size={11} fontWeight="700" color={colors.neutral700}>Star</Typo>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={handleBulkDelete} style={{ alignItems: 'center', gap: 3 }}>
+                                <Icons.Trash size={20} color={colors.rose} weight="bold" />
+                                <Typo size={11} fontWeight="700" color={colors.rose}>Delete</Typo>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
                     <View style={styles.inputBar}>
+                        {showFormatBar && (
+                            <ComposerFormatBar
+                                onApplyFormat={handleApplyFormat}
+                                isSilent={isSilentSend}
+                                onToggleSilent={() => setIsSilentSend(p => !p)}
+                                onOpenQuickReplies={() => setShowQuickRepliesMgr(true)}
+                            />
+                        )}
                         {replyTo && <ReplyPreviewBar replyTo={replyTo} onCancel={handleCancelReply} />}
+                        {isSilentSend && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fef3c7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius._10 }}>
+                                <Typo size={11} fontWeight="700" color="#b45309">
+                                    🔕 Silent Send active — recipient notification will be quiet
+                                </Typo>
+                                <TouchableOpacity onPress={() => setIsSilentSend(false)}>
+                                    <Icons.X size={13} color="#b45309" weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                        )}
                         {selectedFile && (
                             <FilePreviewBar
                                 file={selectedFile}
@@ -3439,6 +3946,9 @@ const Conversation = () => {
                                 onPickFile={onPickFile}
                                 onCreatePoll={() => { setShowAttachOptions(false); setShowPollModal(true); }}
                                 onSchedule={() => { setShowAttachOptions(false); setShowScheduleModal(true); }}
+                                onCreateChecklist={() => { setShowAttachOptions(false); setShowChecklistModal(true); }}
+                                onOpenGames={() => { setShowAttachOptions(false); setShowGameModal(true); }}
+                                onCreateCountdown={() => { setShowAttachOptions(false); setShowCountdownModal(true); }}
                                 onClose={() => setShowAttachOptions(false)}
                             />
                         )}
@@ -3527,6 +4037,14 @@ const Conversation = () => {
                                         <Icons.Paperclip color={showAttachOptions ? colors.primaryDark : colors.neutral600} weight="bold" size={verticalScale(20)} />
                                     </TouchableOpacity>
 
+                                    <TouchableOpacity
+                                        style={[styles.actionBtn, { width: verticalScale(38), height: verticalScale(44) }, showFormatBar && { backgroundColor: colors.primaryLight }]}
+                                        onPress={() => setShowFormatBar(prev => !prev)}
+                                        activeOpacity={0.75}
+                                    >
+                                        <Typo size={13} fontWeight="800" color={showFormatBar ? colors.primaryDark : colors.neutral600}>Aa</Typo>
+                                    </TouchableOpacity>
+
                                     <Input
                                         value={message}
                                         onChangeText={handleMessageChange}
@@ -3534,11 +4052,17 @@ const Conversation = () => {
                                         maxLength={4000}
                                         containerStyle={styles.textInput}
                                         inputStyle={styles.composerInput}
-                                        placeholder={replyTo ? "Reply..." : "Message..."}
+                                        placeholder={replyTo ? "Reply..." : "Message or /template..."}
                                     />
 
                                     {canSend ? (
-                                        <TouchableOpacity style={styles.sendBtn} onPress={onSend} activeOpacity={0.8}>
+                                        <TouchableOpacity
+                                            style={styles.sendBtn}
+                                            onPress={onSend}
+                                            onLongPress={() => setIsSilentSend(prev => !prev)}
+                                            delayLongPress={320}
+                                            activeOpacity={0.8}
+                                        >
                                             {loading || isUploadingVoice ? (
                                                 <Loading size="small" color={colors.black} />
                                             ) : (
@@ -3560,6 +4084,7 @@ const Conversation = () => {
                             )}
                         </View>
                     </View>
+                    )}
                 </View>
             </KeyboardAvoidingView>
 
@@ -3710,6 +4235,43 @@ const Conversation = () => {
                 currentSeconds={disappearingSeconds}
                 onSelect={handleSelectDisappearing}
                 onClose={() => setShowDisappearingModal(false)}
+            />
+
+            {/* ── v4.0.1 Flagship Interactive Modals ── */}
+            <ChecklistCreatorModal
+                visible={showChecklistModal}
+                onCreate={handleCreateChecklist}
+                onClose={() => setShowChecklistModal(false)}
+            />
+
+            <GamePickerModal
+                visible={showGameModal}
+                onSelectGame={handleSendGame}
+                onClose={() => setShowGameModal(false)}
+            />
+
+            <CountdownCreatorModal
+                visible={showCountdownModal}
+                onCreate={handleSendCountdown}
+                onClose={() => setShowCountdownModal(false)}
+            />
+
+            <QuickRepliesManagerModal
+                visible={showQuickRepliesMgr}
+                templates={quickReplies}
+                onSave={async (nextList) => {
+                    setQuickReplies(nextList);
+                    await saveQuickReplies(nextList);
+                }}
+                onClose={() => setShowQuickRepliesMgr(false)}
+            />
+
+            <ChatInsightsModal
+                visible={showInsightsModal}
+                chatName={conversationName || "Chat"}
+                messages={messages}
+                currentUserId={currentUser?.id}
+                onClose={() => setShowInsightsModal(false)}
             />
         </ScreenWrapper>
     );

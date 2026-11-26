@@ -43,16 +43,16 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
             }
 
             const changes: string[] = [];
-            if (typeof data.name === "string" && data.name.trim() && data.name !== conversation.name) {
-                conversation.name = data.name.trim();
+            if (typeof data.name === "string" && data.name.trim() && data.name.trim().slice(0, 100) !== conversation.name) {
+                conversation.name = data.name.trim().slice(0, 100);
                 changes.push("name");
             }
             if (typeof data.description === "string" && data.description !== conversation.description) {
                 conversation.description = data.description.slice(0, 500);
                 changes.push("description");
             }
-            if (typeof data.avatar === "string" && data.avatar !== conversation.avatar) {
-                conversation.avatar = data.avatar;
+            if (typeof data.avatar === "string" && data.avatar.slice(0, 500) !== conversation.avatar) {
+                conversation.avatar = data.avatar.slice(0, 500);
                 changes.push("image");
             }
             if (typeof data.wallpaper === "string") conversation.wallpaper = data.wallpaper;
@@ -60,10 +60,12 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 conversation.disappearingSeconds = Math.max(0, data.disappearingSeconds);
             }
             if (data.permissions && isAdmin) {
+                const validPerm = (v: unknown, fallback: "all" | "admins"): "all" | "admins" =>
+                    v === "all" || v === "admins" ? v : fallback;
                 conversation.permissions = {
-                    sendMessages: (data.permissions.sendMessages as any) || conversation.permissions.sendMessages,
-                    editInfo: (data.permissions.editInfo as any) || conversation.permissions.editInfo,
-                    addMembers: (data.permissions.addMembers as any) || conversation.permissions.addMembers,
+                    sendMessages: validPerm(data.permissions.sendMessages, conversation.permissions.sendMessages),
+                    editInfo: validPerm(data.permissions.editInfo, conversation.permissions.editInfo),
+                    addMembers: validPerm(data.permissions.addMembers, conversation.permissions.addMembers),
                 };
             }
             await conversation.save();
@@ -233,6 +235,10 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("setGroupAdmin", async (data: { conversationId: string; targetUserId: string; promote: boolean }) => {
         try {
             const userId = socket.data.userId;
+            if (!data?.targetUserId || !isValidObjectId(data.targetUserId) || typeof data.promote !== "boolean") {
+                socket.emit("setGroupAdmin", { success: false, msg: "Invalid request" });
+                return;
+            }
             const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember || !isAdmin) {
                 socket.emit("setGroupAdmin", { success: false, msg: "Only admins can change roles" });
@@ -343,13 +349,19 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("getGroupMedia", { success: false, msg: "Not a member" });
                 return;
             }
+            const now = new Date();
             const media = await Message.find({
                 conversationId: data.conversationId,
                 isDeleted: { $ne: true },
                 isViewOnce: { $ne: true },
-                $or: [
-                    { type: { $in: ["image", "video", "file"] } },
-                    { attachement: { $exists: true, $nin: [null, ""] } },
+                $and: [
+                    { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
+                    {
+                        $or: [
+                            { type: { $in: ["image", "video", "file"] } },
+                            { attachement: { $exists: true, $nin: [null, ""] } },
+                        ],
+                    },
                 ],
             })
                 .sort({ createdAt: -1 })

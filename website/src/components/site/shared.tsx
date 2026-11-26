@@ -38,6 +38,18 @@ import {
   Lock,
   QrCode,
   Timer,
+  CheckSquare,
+  Gamepad2,
+  AlarmClock,
+  Archive,
+  Tag,
+  BarChart2,
+  Sliders,
+  BellOff,
+  Hourglass,
+  Smile,
+  Type,
+  ShieldAlert,
 } from "lucide-react";
 import { sounds } from "@/lib/sound";
 
@@ -70,8 +82,8 @@ export const featureGroups = [
       },
       {
         icon: Languages,
-        title: "Live Spanish Message Translation",
-        text: "Instantly translate incoming or outgoing messages with a single tap toggle.",
+        title: "Live 6-Language Translation",
+        text: "Instantly translate incoming or outgoing messages across English, Spanish, French, German, Hindi & Japanese.",
       },
       {
         icon: Pin,
@@ -255,6 +267,130 @@ export const featureGroups = [
         icon: ArrowUpRight,
         title: "Custom Deep Links (bubbly://)",
         text: "Direct deep-link integration for opening specific conversations and invitations.",
+      },
+    ],
+  },
+  {
+    name: "v4.0.1 Rich Messaging & Play",
+    badge: "New in 4.0.1",
+    color: "from-amber-500/25 to-yellow-500/10",
+    textCol: "text-amber-500",
+    items: [
+      {
+        icon: Type,
+        title: "Quick Formatting Toolbar & Quotes",
+        text: "1-tap Bold, Italic, Strike, Inline Code, and styled amber > blockquote rendering inside chat.",
+      },
+      {
+        icon: Zap,
+        title: "Slash Command Quick Replies",
+        text: "Type '/' in the composer for instant reusable snippets (/omw, /busy, /thx) plus custom templates.",
+      },
+      {
+        icon: CheckSquare,
+        title: "Interactive Shared Checklists",
+        text: "Create real-time collaborative checklists in chat with live task completion progress bars.",
+      },
+      {
+        icon: Gamepad2,
+        title: "Chat Icebreakers & Mini-Games",
+        text: "Roll D6 dice, flip a coin, ask Magic 8-Ball, or throw Rock-Paper-Scissors directly in chat.",
+      },
+      {
+        icon: Hourglass,
+        title: "Live Event Countdown Stickers",
+        text: "Drop real-time ticking countdown cards (days, hours, mins, secs) for launches and meetups.",
+      },
+      {
+        icon: Pin,
+        title: "Multi-Pinned Message Carousel",
+        text: "Cycle cleanly through all pinned messages in a chat and jump directly to any anchored note.",
+      },
+    ],
+  },
+  {
+    name: "Productivity, Focus & Analytics",
+    badge: "Smart Workflows",
+    color: "from-indigo-500/20 to-sky-500/10",
+    textCol: "text-sky-400",
+    items: [
+      {
+        icon: CheckCheck,
+        title: "Multi-Message Bulk Selection Dock",
+        text: "Select multiple bubbles to bulk-copy, bulk-star, or batch-delete messages effortlessly.",
+      },
+      {
+        icon: AlarmClock,
+        title: "Message Reminder Alarms",
+        text: "Long-press any message to schedule real OS notification alarms (15m, 1h, Tomorrow 9 AM) with a Reminders drawer.",
+      },
+      {
+        icon: Moon,
+        title: "Focus / Quiet Mode Timer",
+        text: "Silence foreground sounds and toast banners for 30m, 1h, 2h, or manually with a live timer badge.",
+      },
+      {
+        icon: BellOff,
+        title: "Silent Send Delivery",
+        text: "Long-press Send or toggle Silent mode to deliver messages quietly without ringing notifications.",
+      },
+      {
+        icon: BarChart2,
+        title: "In-Chat Insights & Analytics",
+        text: "Inspect message counts, sent/received split, voice minutes, peak hour, active days, and top reactions.",
+      },
+      {
+        icon: Search,
+        title: "Unified Quick Jump Switcher & Outbox",
+        text: "Jump in one tap across chats, Vault, Settings, Focus Mode, and inspect/flush queued offline messages.",
+      },
+      {
+        icon: Phone,
+        title: "Clickable Phone, Email & @Mention Chips",
+        text: "Automatically detect inline phone numbers, email addresses, URLs, and @mentions inside message bubbles.",
+      },
+    ],
+  },
+  {
+    name: "Organization, Status & Personalization",
+    badge: "Your Bubbly",
+    color: "from-rose-500/20 to-fuchsia-500/10",
+    textCol: "text-rose-400",
+    items: [
+      {
+        icon: Archive,
+        title: "Chat Archive System",
+        text: "Archive quieter threads out of your main inbox with a dedicated collapsible Archived Chats filter.",
+      },
+      {
+        icon: Tag,
+        title: "Smart Chat Folders (Work/Friends/Family/VIP)",
+        text: "Label conversations with color-coded tags and filter your inbox by category in one tap.",
+      },
+      {
+        icon: UserRound,
+        title: "Private Contact Nicknames & Notes",
+        text: "Assign private aliases and personal notes to any contact or group across your device.",
+      },
+      {
+        icon: Smile,
+        title: "Live Custom Activity Status",
+        text: "Display custom emoji + activity statuses (Deep work, Listening, Coffee break) on your profile and headers.",
+      },
+      {
+        icon: Sliders,
+        title: "Appearance & Bubble Corner Studio",
+        text: "Personalize bubble shapes (Rounded, Crisp, Minimal), chat text scale, and accent highlight swatches.",
+      },
+      {
+        icon: Palette,
+        title: "Story Typography Fonts & Stickers",
+        text: "Style Story Studio text with Classic, Serif, Mono, and Neon fonts plus interactive mood stickers.",
+      },
+      {
+        icon: ShieldAlert,
+        title: "Lock-Screen Notification Privacy Shield",
+        text: "Mask sender content in foreground banners and configure biometric Auto-Lock grace periods.",
       },
     ],
   },

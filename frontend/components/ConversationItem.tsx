@@ -9,6 +9,7 @@ import { useAuth } from "../contexts/authContext";
 import { scale, verticalScale } from "../utils/styling";
 import { TextStyle } from 'react-native';
 import * as Icons from "phosphor-react-native";
+import { CHAT_FOLDER_META, ChatFolderTag, formatRichPreviewText } from "../utils/featureStorage";
 
 // ── Highlight matched text ──
 const HighlightText = ({
@@ -79,7 +80,9 @@ const ConversationItem = ({
     typingUser,
     draftText,
     onLongPress,
-}: ConversationListItemProps & { searchQuery?: string }) => {
+    nickname,
+    folderTag,
+}: ConversationListItemProps & { searchQuery?: string; nickname?: string; folderTag?: ChatFolderTag }) => {
 
     const { user: currentUser } = useAuth();
 
@@ -91,7 +94,7 @@ const ConversationItem = ({
         : null;
     if (isDirect && otherParticipant) avatar = otherParticipant?.avatar;
 
-    const displayName = isDirect ? otherParticipant?.name ?? "" : item?.name ?? "";
+    const displayName = nickname?.trim() || (isDirect ? otherParticipant?.name ?? "" : item?.name ?? "");
 
     const unreadCount = item.unreadCount || 0;
     const hasUnread = unreadCount > 0;
@@ -114,8 +117,9 @@ const ConversationItem = ({
         if (lastMessage.type === "poll") return lastMessage.content ? `Poll: ${lastMessage.content}` : "Poll";
         if (lastMessage.type === "call") return lastMessage.callMeta?.kind === "video" ? "Video call" : "Voice call";
         if (lastMessage.type === "file") return lastMessage.attachmentMeta?.name || "Document";
+        if (lastMessage.type === "checklist") return lastMessage.checklist?.title ? `✅ ${lastMessage.checklist.title}` : "✅ Checklist";
         if (isImage) return lastMessage.content || "Photo";
-        return lastMessage.content || "Attachment";
+        return formatRichPreviewText(lastMessage.content) || "Attachment";
     };
 
     const getLastMessageDate = () => {
@@ -178,14 +182,29 @@ const ConversationItem = ({
                     {/* Top row: Name + Pinned + Time */}
                     <View style={styles.topRow}>
                         <View style={styles.nameContainer}>
-                            <HighlightText
-                                text={displayName}
-                                query={searchQuery}
-                                size={15.5}
-                                fontWeight={hasUnread ? "700" : "600"}
-                                color={colors.neutral900}
-                                numberOfLines={1}
-                            />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                                <HighlightText
+                                    text={displayName}
+                                    query={searchQuery}
+                                    size={15.5}
+                                    fontWeight={hasUnread ? "700" : "600"}
+                                    color={colors.neutral900}
+                                    numberOfLines={1}
+                                />
+                                {folderTag && CHAT_FOLDER_META[folderTag] && (
+                                    <View style={{
+                                        backgroundColor: CHAT_FOLDER_META[folderTag].bg,
+                                        paddingHorizontal: scale(5),
+                                        paddingVertical: 1,
+                                        borderRadius: radius.full,
+                                        flexShrink: 0,
+                                    }}>
+                                        <Typo size={9.5} fontWeight="800" color={CHAT_FOLDER_META[folderTag].color}>
+                                            {CHAT_FOLDER_META[folderTag].emoji}
+                                        </Typo>
+                                    </View>
+                                )}
+                            </View>
                         </View>
 
                         <View style={styles.timeBadgeRow}>
@@ -330,7 +349,9 @@ export default React.memo(ConversationItem, (prev, next) => {
         prev.isOnline === next.isOnline &&
         prev.typingUser === next.typingUser &&
         prev.draftText === next.draftText &&
-        prev.onLongPress === next.onLongPress
+        prev.onLongPress === next.onLongPress &&
+        prev.nickname === next.nickname &&
+        prev.folderTag === next.folderTag
     );
 });
 

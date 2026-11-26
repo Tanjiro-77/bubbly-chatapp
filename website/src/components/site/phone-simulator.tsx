@@ -52,10 +52,10 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
   >([
     {
       id: "1",
-      text: "Hey! Did you test Bubbly v3.4 yet?",
+      text: "Hey! Did you test Bubbly v4.0.1 yet?",
       sender: "them",
       time: "10:42 AM",
-      translated: "¡Hola! ¿Ya probaste Bubbly v3.4?",
+      translated: "¡Hola! ¿Ya probaste Bubbly v4.0.1?",
     },
     {
       id: "2",
@@ -83,7 +83,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
 
   // ── Story State ──
   const [selectedPreset, setSelectedPreset] = useState(0);
-  const [storyText, setStoryText] = useState("Just shipped Bubbly v3.0! Honey Amber vibes ✨");
+  const [storyText, setStoryText] = useState("Just shipped Bubbly v4.0.1! 20 new features ✨");
   const [storyProgress, setStoryProgress] = useState(35);
   const [isPaused, setIsPaused] = useState(false);
   const [storyEmoji, setStoryEmoji] = useState<string | null>(null);
@@ -319,7 +319,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-bold leading-tight">Arnav Khari</p>
-                  <p className="text-[10px] text-emerald-500 font-medium">online · v3.4</p>
+                  <p className="text-[10px] text-emerald-500 font-medium">online · 🎧 Listening · v4.0.1</p>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -365,7 +365,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 {/* Pinned Announcement Banner */}
                 <div className="rounded-xl border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] flex items-center justify-between">
                   <span className="font-semibold text-primary truncate">
-                    📌 v3.0.0 released with calls & stories!
+                    📌 v4.0.1 shipped with 20 new flagship features!
                   </span>
                   <span className="text-[9px] text-muted-foreground shrink-0 ml-1">Today</span>
                 </div>
@@ -462,7 +462,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 <div className="pop-in rounded-2xl border border-border bg-surface p-2.5">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
                     <BarChart3 className="h-3 w-3 text-primary" />
-                    <span>Poll: Loving the v3.0 UI?</span>
+                    <span>Poll: Loving the v4.0.1 UI?</span>
                   </div>
                   <div className="mt-2 space-y-1.5 text-[10px]">
                     <button

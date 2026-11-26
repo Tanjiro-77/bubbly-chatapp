@@ -35,6 +35,11 @@ export interface UserProps {
   googleId?: string;
   isOnline?: boolean;
   lastSeen?: string | null;
+  customStatus?: {
+    emoji?: string;
+    text?: string;
+    updatedAt?: string | null;
+  };
 }
 
 export interface UserDataProps {
@@ -196,7 +201,8 @@ export type ConversationProps = {
     | "voice"
     | "video"
     | "call"
-    | "poll";
+    | "poll"
+    | "checklist";
 
     attachement?: string;
     attachmentMeta?: AttachmentMetaProps;
@@ -204,14 +210,18 @@ export type ConversationProps = {
     voiceUrl?: string;
     voiceDuration?: number;
     isDeleted?: boolean;
+    isSilent?: boolean;
 
     callMeta?: CallMetaProps | null;
     poll?: PollProps | null;
+    checklist?: ChecklistProps | null;
   };
 
   unreadCount?: number;
   isMuted?: boolean;
   mutedUntil?: string | null;
+  isPinned?: boolean;
+  isArchived?: boolean;
   admins?: any[];
   createdBy?: string;
   disappearingSeconds?: number;
@@ -316,7 +326,8 @@ export type MessageType =
   | "system"
   | "call"
   | "poll"
-  | "announcement";
+  | "announcement"
+  | "checklist";
 
 // ─────────────────────────────────────────────
 // CALL MESSAGE META
@@ -357,6 +368,18 @@ export type PollProps = {
   isClosed: boolean;
 };
 
+export type ChecklistItemProps = {
+  id: string;
+  text: string;
+  completed: boolean;
+  completedBy?: string;
+};
+
+export type ChecklistProps = {
+  title: string;
+  items: ChecklistItemProps[];
+};
+
 // ─────────────────────────────────────────────
 // MESSAGE
 // ─────────────────────────────────────────────
@@ -393,12 +416,15 @@ export interface MessageProps {
 
   poll?: PollProps | null;
 
+  checklist?: ChecklistProps | null;
+
   reactions: ReactionProps[];
 
   replyTo?: ReplyToProps | null;
 
   isDeleted?: boolean;
   isEdited?: boolean;
+  isSilent?: boolean;
 
   expiresAt?: string | null;
 
@@ -503,6 +529,8 @@ export type StoryItemProps = {
   text?: string;
   backgroundColor?: string;
   mediaUrl?: string;
+  fontStyle?: string;
+  sticker?: string;
 
   viewers: StoryViewerProps[];
   reactions: StoryReactionProps[];

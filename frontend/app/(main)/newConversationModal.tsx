@@ -77,12 +77,16 @@ const NewConversationModal = () => {
     };
 
     const onPickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            aspect: [1, 1],
-            quality: 0.6,
-        });
-        if (!result.canceled) setGroupAvatar(result.assets[0]);
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                aspect: [1, 1],
+                quality: 0.6,
+            });
+            if (!result.canceled && result.assets?.length) setGroupAvatar(result.assets[0]);
+        } catch {
+            BubblyAlert.alert("Error", "Could not open image library.");
+        }
     };
 
     const toggleParticipant = (user: any) => {
@@ -115,7 +119,11 @@ const NewConversationModal = () => {
     };
 
     const createGroup = async () => {
-        if (!groupName.trim() || !currentUser || selectedParticipants.length < 2) return;
+        if (!groupName.trim()) {
+            BubblyAlert.alert("Group Name", "Please enter a group name.");
+            return;
+        }
+        if (!currentUser || selectedParticipants.length < 2) return;
         if (!isSocketConnected()) {
             BubblyAlert.alert("Offline", "Connect to the internet to create a group.");
             return;

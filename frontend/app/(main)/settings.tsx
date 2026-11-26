@@ -29,7 +29,25 @@ import BackButton from "../../components/BackButton";
 import { scale, verticalScale } from "../../utils/styling";
 import { useAuth } from "../../contexts/authContext";
 import { syncNotificationPreference } from "../../services/notificationService";
-import { getBlockedUsers, blockUser, isSocketConnected } from "../../socket/socketEvents";
+import { getBlockedUsers, blockUser, isSocketConnected, updateProfile } from "../../socket/socketEvents";
+import {
+    ACCENT_SWATCHES,
+    BubbleCornerStyle,
+    ChatAppearanceConfig,
+    ChatFontScale,
+    DEFAULT_APPEARANCE,
+    DEFAULT_PRIVACY_SHIELD,
+    getChatAppearance,
+    getFocusMode,
+    getPrivacyShield,
+    notifyFeatureListeners,
+    PrivacyShieldConfig,
+    saveChatAppearance,
+    savePrivacyShield,
+    setFocusMode,
+} from "../../utils/featureStorage";
+import { cancelMessageReminder, getActiveReminders, SavedMessageReminder } from "../../services/reminderService";
+import { RemindersListModal } from "../../components/ConversationFeatureModals";
 import {
     checkAllPermissions,
     requestPermissionByKey,
@@ -227,6 +245,11 @@ export default function SettingsScreen() {
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [appLockEnabled, setAppLockEnabled] = useState(false);
     const [loadingPrefs, setLoadingPrefs] = useState(true);
+    const [appearance, setAppearance] = useState<ChatAppearanceConfig>(DEFAULT_APPEARANCE);
+    const [privacyShield, setPrivacyShield] = useState<PrivacyShieldConfig>(DEFAULT_PRIVACY_SHIELD);
+    const [focusEnabled, setFocusEnabled] = useState(false);
+    const [reminders, setReminders] = useState<SavedMessageReminder[]>([]);
+    const [showReminders, setShowReminders] = useState(false);
 
     // Live OS permissions state
     const [permissions, setPermissions] = useState<AllPermissionsStatus>({
@@ -247,14 +270,22 @@ export default function SettingsScreen() {
     useEffect(() => {
         (async () => {
             try {
-                const [notif, sound, lock] = await Promise.all([
+                const [notif, sound, lock, appCfg, shieldCfg, focusCfg, remList] = await Promise.all([
                     AsyncStorage.getItem(NOTIF_KEY),
                     AsyncStorage.getItem(SOUND_KEY),
                     AsyncStorage.getItem(APP_LOCK_KEY),
+                    getChatAppearance(),
+                    getPrivacyShield(),
+                    getFocusMode(),
+                    getActiveReminders(),
                 ]);
                 if (notif !== null) setNotificationsEnabled(notif === "true");
                 if (sound !== null) setSoundEnabled(sound === "true");
                 if (lock !== null) setAppLockEnabled(lock === "true");
+                setAppearance(appCfg);
+                setPrivacyShield(shieldCfg);
+                setFocusEnabled(focusCfg.enabled);
+                setReminders(remList);
             } catch (_) {
             } finally {
                 setLoadingPrefs(false);
@@ -339,14 +370,19 @@ export default function SettingsScreen() {
         setAppLockEnabled(value);
         try {
             await AsyncStorage.setItem(APP_LOCK_KEY, String(value));
+            notifyFeatureListeners();
+            const pinKey = user?.id ? `@bubbly_vault_pin_${user.id}` : "@bubbly_vault_pin";
+            const existingPin = value ? await AsyncStorage.getItem(pinKey) : null;
             BubblyAlert.alert(
                 value ? "App Lock Enabled" : "App Lock Disabled",
                 value
-                    ? "Bubbly is now protected with biometric / passcode lock."
+                    ? (existingPin
+                        ? "Bubbly will require your 4-digit Vault PIN after your configured grace period."
+                        : "App Lock is active! On your next launch or resume you will set your 4-digit App PIN.")
                     : "App lock protection has been turned off."
             );
         } catch (_) { }
-    }, []);
+    }, [user?.id]);
 
     const handleLogout = useCallback(() => {
         BubblyAlert.alert("Log Out", "Are you sure you want to log out?", [
@@ -576,6 +612,112 @@ export default function SettingsScreen() {
                         label="Data & Storage Usage"
                         subtitle="Manage media downloads and cache"
                         onPress={() => router.push("/(main)/storageManager")}
+                    />
+                    <Row
+                        icon="bedtime"
+                        iconColor="#7c3aed"
+                        iconBg="#ede9fe"
+                        label="Focus / Quiet Mode"
+                        subtitle={focusEnabled ? "Active · Sounds & toasts suppressed" : "Silence alerts temporarily while focusing"}
+                        right={
+                            <Switch
+                                value={focusEnabled}
+                                onValueChange={async (val) => {
+                                    const next = await setFocusMode(val ? 60 : null, val ? "1h Focus" : "");
+                                    setFocusEnabled(next.enabled);
+                                }}
+                                trackColor={{ false: colors.neutral300, true: "#7c3aed" }}
+                                thumbColor={colors.white}
+                            />
+                        }
+                    />
+                    <Row
+                        icon="alarm"
+                        iconColor="#0284c7"
+                        iconBg="#e0f2fe"
+                        label="Message Reminders"
+                        subtitle={`${reminders.length} active reminder alarm${reminders.length === 1 ? "" : "s"}`}
+                        onPress={() => setShowReminders(true)}
+                        isLast
+                    />
+                </SectionCard>
+
+                {/* ── Appearance & Bubble Studio ── */}
+                <SectionLabel label="Appearance & Bubble Studio" />
+                <SectionCard>
+                    <Row
+                        icon="chat-bubble-outline"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "55"}
+                        label="Bubble Corner Style"
+                        subtitle={`Current: ${appearance.bubbleStyle.charAt(0).toUpperCase() + appearance.bubbleStyle.slice(1)}`}
+                        onPress={() => {
+                            BubblyAlert.alert(
+                                "Bubble Corner Style",
+                                "Choose how message bubbles are shaped:",
+                                [
+                                    ...(["rounded", "sharp", "minimal"] as BubbleCornerStyle[]).map((styleKey) => ({
+                                        text: styleKey === "rounded" ? "Rounded Pill" : styleKey === "sharp" ? "Crisp Modern" : "Minimal Flat",
+                                        onPress: async () => {
+                                            const next = { ...appearance, bubbleStyle: styleKey };
+                                            setAppearance(next);
+                                            await saveChatAppearance(next);
+                                            if (isSocketConnected()) updateProfile({ theme: { bubbleStyle: styleKey } });
+                                        },
+                                    })),
+                                    { text: "Cancel", style: "cancel" },
+                                ]
+                            );
+                        }}
+                    />
+                    <Row
+                        icon="format-size"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "55"}
+                        label="Chat Text Size"
+                        subtitle={`Current: ${appearance.fontScale.charAt(0).toUpperCase() + appearance.fontScale.slice(1)}`}
+                        onPress={() => {
+                            BubblyAlert.alert(
+                                "Chat Text Size",
+                                "Pick message text scale:",
+                                [
+                                    ...(["compact", "standard", "large"] as ChatFontScale[]).map((sz) => ({
+                                        text: sz.charAt(0).toUpperCase() + sz.slice(1),
+                                        onPress: async () => {
+                                            const next = { ...appearance, fontScale: sz };
+                                            setAppearance(next);
+                                            await saveChatAppearance(next);
+                                        },
+                                    })),
+                                    { text: "Cancel", style: "cancel" },
+                                ]
+                            );
+                        }}
+                    />
+                    <Row
+                        icon="palette"
+                        iconColor={colors.primaryDark}
+                        iconBg={colors.primaryLight + "55"}
+                        label="Accent Highlight Color"
+                        subtitle={ACCENT_SWATCHES.find((s) => s.color === appearance.accentColor)?.name || "Honey Amber"}
+                        onPress={() => {
+                            BubblyAlert.alert(
+                                "Accent Color",
+                                "Choose your preferred highlight swatch:",
+                                [
+                                    ...ACCENT_SWATCHES.map((sw) => ({
+                                        text: sw.name,
+                                        onPress: async () => {
+                                            const next = { ...appearance, accentColor: sw.color };
+                                            setAppearance(next);
+                                            await saveChatAppearance(next);
+                                            if (isSocketConnected()) updateProfile({ theme: { accent: sw.color } });
+                                        },
+                                    })),
+                                    { text: "Cancel", style: "cancel" },
+                                ]
+                            );
+                        }}
                         isLast
                     />
                 </SectionCard>
@@ -609,6 +751,50 @@ export default function SettingsScreen() {
                                 disabled={loadingPrefs}
                             />
                         }
+                    />
+                    <Row
+                        icon="visibility-off"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Hide Notification Preview"
+                        subtitle="Hide sender text in in-app alerts & reminders"
+                        right={
+                            <Switch
+                                value={privacyShield.hideNotificationPreview}
+                                onValueChange={async (val) => {
+                                    const next = { ...privacyShield, hideNotificationPreview: val };
+                                    setPrivacyShield(next);
+                                    await savePrivacyShield(next);
+                                }}
+                                trackColor={{ false: colors.neutral300, true: "#16a34a" }}
+                                thumbColor={colors.white}
+                            />
+                        }
+                    />
+                    <Row
+                        icon="timer"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Auto-Lock Grace Period"
+                        subtitle={
+                            privacyShield.autoLockDelayMs === 0
+                                ? "Immediate on background"
+                                : privacyShield.autoLockDelayMs === 60000
+                                ? "After 1 minute"
+                                : "After 5 minutes"
+                        }
+                        onPress={() => {
+                            BubblyAlert.alert(
+                                "Auto-Lock Grace Period",
+                                "Choose how quickly App Lock engages in background:",
+                                [
+                                    { text: "Immediately (0s)", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 0 as const }; setPrivacyShield(n); await savePrivacyShield(n); } },
+                                    { text: "1 Minute", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 60000 as const }; setPrivacyShield(n); await savePrivacyShield(n); } },
+                                    { text: "5 Minutes", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 300000 as const }; setPrivacyShield(n); await savePrivacyShield(n); } },
+                                    { text: "Cancel", style: "cancel" },
+                                ]
+                            );
+                        }}
                     />
                     <Row
                         icon="star"
@@ -754,6 +940,16 @@ export default function SettingsScreen() {
                     </Typo>
                 </View>
             </ScrollView>
+
+            <RemindersListModal
+                visible={showReminders}
+                reminders={reminders}
+                onCancelReminder={async (id) => {
+                    await cancelMessageReminder(id);
+                    setReminders(await getActiveReminders());
+                }}
+                onClose={() => setShowReminders(false)}
+            />
         </ScreenWrapper>
     );
 }

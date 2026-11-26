@@ -1,4 +1,4 @@
-import { getSocket } from "./socket"
+import { getSocket, subscribeSocketStatus } from "./socket"
 
 export const testSocket = (payload: any, off: boolean = false) => {
     const socket = getSocket();
@@ -611,6 +611,27 @@ export const onScheduledMessageSent = (payload: any, off: boolean = false) => {
     else { socket.on("scheduledMessageSent", payload); }
 };
 
+export const toggleArchiveConversation = (payload: { conversationId: string; archive: boolean } | ((res: any) => void), off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("toggleArchiveConversation", payload as any); }
+    else if (typeof payload === 'function') { socket.on("toggleArchiveConversation", payload); }
+    else { socket.emit("toggleArchiveConversation", payload); }
+};
+
+export const toggleChecklistItem = (payload: { messageId: string; conversationId: string; itemId: string }) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit("toggleChecklistItem", payload);
+};
+
+export const onChecklistUpdated = (payload: any, off: boolean = false) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (off) { socket.off("checklistUpdated", payload); }
+    else { socket.on("checklistUpdated", payload); }
+};
+
 // ── CONNECTION STATUS (Feature 18) ──
 export const isSocketConnected = (): boolean => {
     const socket = getSocket();
@@ -618,13 +639,15 @@ export const isSocketConnected = (): boolean => {
 };
 
 export const onSocketConnectionChange = (handler: (connected: boolean) => void) => {
+    const unsubRegistry = subscribeSocketStatus(handler);
     const socket = getSocket();
-    if (!socket) return () => {};
+    if (!socket) return unsubRegistry;
     const handleConnect = () => handler(true);
     const handleDisconnect = () => handler(false);
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     return () => {
+        unsubRegistry();
         socket.off("connect", handleConnect);
         socket.off("disconnect", handleDisconnect);
     };

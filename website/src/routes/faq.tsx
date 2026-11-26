@@ -22,7 +22,7 @@ export const Route = createFileRoute("/faq")({
       { property: "og:title", content: "Bubbly FAQ — All Questions Answered" },
       {
         property: "og:description",
-        content: "Common questions about installing and using Bubbly v3.0.",
+        content: "Common questions about installing and using Bubbly v4.0.1.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     q: "Why is Bubbly distributed as an APK rather than through Google Play?",
-    a: "Direct APK distribution allows rapid release iteration and gives users direct access to the latest v3.0 builds without Play Store approval gatekeeping or developer account fees.",
+    a: "Direct APK distribution alongside PhonePe Indus Appstore allows rapid v4.0.1 release iteration and gives users direct access to the newest features without gatekeeping.",
     category: "Installation",
     emoji: "📦",
   },
@@ -63,8 +63,8 @@ const faqs = [
     emoji: "🎨",
   },
   {
-    q: "How does on-the-fly Spanish translation work?",
-    a: "Inside any conversation, tapping the translation toggle button sends the message payload to the backend translation service with cached results, rendering the translated text seamlessly.",
+    q: "How does on-the-fly multi-language translation work?",
+    a: "Inside any conversation, long-pressing any text message lets you translate it across 6 languages (English, Spanish, French, German, Hindi, Japanese) with cached results and an instant Show Original toggle.",
     category: "Features",
     emoji: "🌐",
   },

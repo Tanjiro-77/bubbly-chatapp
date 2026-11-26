@@ -37,7 +37,8 @@ export function formatMessageNotificationBody(message: {
         return message.type === "video" ? "🎥 View-once video" : "📷 View-once photo";
     }
 
-    const trimmedContent = (message.content || "").trim();
+    const rawTrimmed = (message.content || "").trim();
+    const trimmedContent = rawTrimmed.split(/\n?\[BUBBLY_(?:GAME|COUNTDOWN|CHECKLIST)\]/)[0].trim();
 
     switch (message.type) {
         case "image":
@@ -63,6 +64,8 @@ export function formatMessageNotificationBody(message: {
                 : "📍 Location";
         case "poll":
             return trimmedContent ? `📊 Poll: ${trimmedContent}` : "📊 Poll";
+        case "checklist":
+            return trimmedContent ? `✅ Checklist: ${trimmedContent}` : "✅ Checklist";
         case "announcement":
             return trimmedContent ? `📢 ${trimmedContent}` : "📢 Announcement";
         default:
@@ -156,11 +159,12 @@ export async function sendMessagePushNotifications(params: {
         location?: { label?: string };
         voiceDuration?: number;
         isViewOnce?: boolean;
+        isSilent?: boolean;
     };
 }): Promise<void> {
     const { conversation, sender, message } = params;
 
-    if (message.type === "system" || message.type === "call") return;
+    if (message.type === "system" || message.type === "call" || message.isSilent) return;
 
     const now = new Date();
     const senderIdStr = sender.id.toString();
@@ -181,15 +185,26 @@ export async function sendMessagePushNotifications(params: {
 
     if (recipientIds.length === 0) return;
 
-    const recipients = await User.find({
-        _id: { $in: recipientIds },
-        notificationsEnabled: { $ne: false },
-        pushTokens: { $exists: true, $ne: [] },
-    })
-        .select("_id pushTokens")
-        .lean();
+    const [senderDoc, recipients] = await Promise.all([
+        User.findById(senderIdStr).select("blockedUsers").lean(),
+        User.find({
+            _id: { $in: recipientIds },
+            notificationsEnabled: { $ne: false },
+            pushTokens: { $exists: true, $ne: [] },
+        })
+            .select("_id pushTokens blockedUsers")
+            .lean(),
+    ]);
 
-    if (recipients.length === 0) return;
+    const senderBlocked = new Set((senderDoc?.blockedUsers || []).map((id: any) => id.toString()));
+    const filteredRecipients = recipients.filter((r: any) => {
+        const rid = r._id.toString();
+        if (senderBlocked.has(rid)) return false;
+        const recipientBlocked = (r.blockedUsers || []).some((id: any) => id.toString() === senderIdStr);
+        return !recipientBlocked;
+    });
+
+    if (filteredRecipients.length === 0) return;
 
     const isGroup = conversation.type === "group";
     const senderName = sender.name || "New Message";
@@ -200,7 +215,7 @@ export async function sendMessagePushNotifications(params: {
     const messageId = (message.id || message._id || "").toString();
 
     const notifications: ExpoPushMessage[] = [];
-    for (const recipient of recipients) {
+    for (const recipient of filteredRecipients) {
         const tokens = Array.isArray(recipient.pushTokens) ? recipient.pushTokens : [];
         for (const token of tokens) {
             if (!isValidExpoPushToken(token)) continue;

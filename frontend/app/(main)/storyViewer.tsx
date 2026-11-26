@@ -301,13 +301,29 @@ const StoryViewer = () => {
                     )}
                     <TouchableOpacity
                         style={styles.headerBtn}
-                        onPress={() => router.back()}
+                        onPress={safeBack}
                         activeOpacity={0.7}
                     >
                         <Icons.X size={20} color={colors.white} weight="bold" />
                     </TouchableOpacity>
                 </View>
             </View>
+
+            {/* ── Story Mood Sticker Pill ── */}
+            {currentStory.type === 'text' && !!currentStory.sticker && (
+                <View style={{
+                    alignSelf: 'center',
+                    marginTop: spacingY._10,
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    paddingHorizontal: 14,
+                    paddingVertical: 5,
+                    borderRadius: radius.full,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.35)',
+                }}>
+                    <Typo size={12} fontWeight="800" color={colors.white}>{currentStory.sticker}</Typo>
+                </View>
+            )}
 
             {/* ── Text Story Content ── */}
             {currentStory.type === 'text' && currentStory.text && (
@@ -316,7 +332,13 @@ const StoryViewer = () => {
                         size={28}
                         fontWeight="800"
                         color={colors.white}
-                        style={styles.storyText}
+                        style={{
+                            ...styles.storyText,
+                            fontFamily: currentStory.fontStyle === 'mono' ? 'monospace' : currentStory.fontStyle === 'serif' ? 'serif' : undefined,
+                            fontStyle: currentStory.fontStyle === 'serif' ? 'italic' : 'normal',
+                            textShadowColor: currentStory.fontStyle === 'neon' ? '#fde047' : 'transparent',
+                            textShadowRadius: currentStory.fontStyle === 'neon' ? 14 : 0,
+                        }}
                     >
                         {currentStory.text}
                     </Typo>
@@ -333,7 +355,7 @@ const StoryViewer = () => {
             ) : null}
 
             {/* ── Tap Navigation Zones ── */}
-            <View style={styles.tapZones}>
+            <View style={styles.tapZones} pointerEvents={showEmojiPicker || showReplyInput || showViewers ? "none" : "box-none"}>
                 <TouchableOpacity
                     style={styles.tapLeft}
                     onPress={goToPrev}
@@ -359,6 +381,17 @@ const StoryViewer = () => {
                     activeOpacity={1}
                 />
             </View>
+
+            {showEmojiPicker && (
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={() => {
+                        setShowEmojiPicker(false);
+                        resumeProgress();
+                    }}
+                    style={[StyleSheet.absoluteFill, { zIndex: 8 }]}
+                />
+            )}
 
             {/* ── Bottom Interaction Dock ── */}
             <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) + spacingY._12 }]}>

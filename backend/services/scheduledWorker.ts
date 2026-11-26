@@ -1,6 +1,6 @@
 import ScheduledMessage from "../modals/ScheduledMessage";
 import { createAndBroadcastMessage } from "./messageService";
-import { getIO } from "../socket/io";
+import { getIO, userRoom } from "../socket/io";
 
 let started = false;
 let isRunning = false;
@@ -60,7 +60,7 @@ export function startScheduledMessageWorker() {
                     lockedItem.sentMessageId = payload.id;
                     await lockedItem.save();
                     try {
-                        getIO().to(lockedItem.conversationId.toString()).emit("scheduledMessageSent", {
+                        getIO().to(userRoom(lockedItem.senderId.toString())).emit("scheduledMessageSent", {
                             id: lockedItem._id.toString(),
                             conversationId: lockedItem.conversationId.toString(),
                             sentMessageId: payload.id,

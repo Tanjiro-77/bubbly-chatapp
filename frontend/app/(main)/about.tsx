@@ -254,6 +254,7 @@ export default function AboutScreen() {
                             size={14}
                             fontWeight="700"
                             color={primaryTextColor}
+                            textProps={{ numberOfLines: 1 }}
                         >
                             Bubbly
                         </Typo>
@@ -274,6 +275,7 @@ export default function AboutScreen() {
                                 size={11}
                                 fontWeight="600"
                                 color={subtleTextColor}
+                                textProps={{ numberOfLines: 1 }}
                             >
                                 v{APP_VERSION}
                             </Typo>
@@ -289,12 +291,43 @@ export default function AboutScreen() {
                         color={isDark ? colors.neutral300 : colors.neutral600}
                         style={styles.aboutText}
                     >
-                        Bubbly is a real-time communication app built for seamless
-                        connection. Send messages, share Stories, and jump into voice or
-                        video calls — all in one place. Built with modern mobile
-                        technology, Bubbly keeps your conversations fast, clear, and
-                        personal.
+                        Bubbly v4.0.1 is a real-time communication app built for seamless
+                        connection. Send messages, share Stories, run live checklists & mini-games,
+                        organize smart chat folders, set message alarms, and jump into Agora HD calls.
                     </Typo>
+                </SectionCard>
+
+                {/* ── What's New in v4.0.1 (20 Flagship Features) ── */}
+                <SectionLabel label="What's New in v4.0.1 (20 Features)" isDark={isDark} />
+                <SectionCard isDark={isDark}>
+                    <View style={{ padding: spacingX._15, gap: verticalScale(6) }}>
+                        {[
+                            "1. Quick Formatting Toolbar & > Blockquotes",
+                            "2. Slash Command Quick Replies (/templates)",
+                            "3. Multi-Message Bulk Selection Dock",
+                            "4. Silent Send Mode (Quiet Delivery)",
+                            "5. Message Reminder Alarms (expo-notifications)",
+                            "6. Inline Phone, Email & @Mention Chips",
+                            "7. Interactive Shared Checklist Cards",
+                            "8. Chat Icebreaker Mini-Games (Dice/Coin/8-Ball/RPS)",
+                            "9. Multi-Pinned Message Carousel & Jump",
+                            "10. Live Event Countdown Stickers",
+                            "11. Chat Archive & Collapsible Drawer",
+                            "12. Smart Chat Folders (Work/Friends/Family/VIP)",
+                            "13. Private Contact Nicknames & Personal Notes",
+                            "14. In-Chat Analytics & Insights Dashboard",
+                            "15. Live Custom Activity Status Badge",
+                            "16. Focus / Quiet Mode Countdown Timer",
+                            "17. Appearance & Bubble Corner Studio",
+                            "18. Lock-Screen Private Notification Shield",
+                            "19. Story Typography Fonts & Mood Stickers",
+                            "20. Quick Jump Switcher & Offline Outbox Dock",
+                        ].map((feat) => (
+                            <Typo key={feat} size={12.5} fontWeight="600" color={isDark ? colors.neutral200 : colors.neutral700}>
+                                {feat}
+                            </Typo>
+                        ))}
+                    </View>
                 </SectionCard>
 
                 {/* ── Built With ── */}

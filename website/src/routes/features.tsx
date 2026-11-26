@@ -18,7 +18,7 @@ export const Route = createFileRoute("/features")({
       {
         name: "description",
         content:
-          "Explore all features built into Bubbly: background push & call alerts, Agora HD calling, Biometric Vault, Story Studio with 7 presets, Spanish translation, and group polls.",
+          "Explore all features built into Bubbly v4.0.1: 20 new flagship features including Shared Checklists, Reminders, Focus Mode, Chat Insights, Archives, Mini-Games, Agora HD calling, Biometric Vault, and Story Studio.",
       },
       { property: "og:title", content: `Features Catalog — Bubbly ${APP_VERSION}` },
       {
@@ -151,8 +151,8 @@ export function FeaturesPage() {
               <div className="rounded-2xl bg-surface p-3 border border-border/60 text-xs">
                 <p className="font-semibold text-foreground">
                   {translated
-                    ? "¡Hola! ¿Probaste la última versión de Bubbly v3.4 con videollamadas?"
-                    : "Hello! Have you tested the latest Bubbly v3.4 release with video calls?"}
+                    ? "¡Hola! ¿Probaste las 20 nuevas funciones de Bubbly v4.0.1?"
+                    : "Hello! Have you tested the 20 new features in Bubbly v4.0.1?"}
                 </p>
                 <p className="mt-1 text-[10px] text-muted-foreground">Tap switch above to test</p>
               </div>

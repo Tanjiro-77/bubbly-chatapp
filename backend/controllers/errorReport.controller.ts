@@ -49,6 +49,13 @@ export async function submitErrorReport(req: AuthRequest, res: Response): Promis
             return;
         }
 
+        const allowedTypes = ["crash", "bug_report", "unhandled_promise", "api_error", "feedback"] as const;
+        const allowedCategories = ["crash", "ui_glitch", "network", "audio_call", "auth", "other"] as const;
+        const safeType = allowedTypes.includes(type) ? type : "bug_report";
+        const safeCategory = allowedCategories.includes(category) ? category : "other";
+        const safeTitle = title.trim().slice(0, 300);
+        const safeDescription = description.trim().slice(0, 5000);
+
         let screenshotUrl: string | undefined = undefined;
 
         // If a screenshot was attached as base64 data URI, upload it to Cloudinary
@@ -64,10 +71,10 @@ export async function submitErrorReport(req: AuthRequest, res: Response): Promis
 
         const report = await AppErrorReport.create({
             userId: req.userId || undefined,
-            type,
-            title,
-            description,
-            category,
+            type: safeType,
+            title: safeTitle,
+            description: safeDescription,
+            category: safeCategory,
             screenshotUrl,
             deviceInfo,
             stackTrace,

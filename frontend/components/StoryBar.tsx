@@ -41,7 +41,7 @@ const StoryBar = () => {
     }, []);
 
     const storiesHandler = (res: ResponseProps) => {
-        if (res.success) {
+        if (res.success && Array.isArray(res.data)) {
             setStoryGroups(res.data);
         }
     };

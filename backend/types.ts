@@ -13,7 +13,8 @@ export type MessageType =
     | "system"
     | "call"
     | "announcement"
-    | "poll";
+    | "poll"
+    | "checklist";
 
 export interface UserPrivacyProps {
     lastSeen: LastSeenVisibility;
@@ -47,6 +48,11 @@ export interface UserProps extends Document {
         wallpaper: string;
         bubbleStyle: "rounded" | "sharp" | "minimal";
     };
+    customStatus?: {
+        emoji?: string;
+        text?: string;
+        updatedAt?: Date | null;
+    };
 }
 
 export interface UnreadCountProps {
@@ -77,6 +83,7 @@ export interface ConversationProps extends Document {
     wallpaper?: string;
     pinnedMessages?: Types.ObjectId[];
     pinnedBy?: Types.ObjectId[];
+    archivedBy?: Types.ObjectId[];
     deletedFor?: Types.ObjectId[];
     mutedBy?: { userId: Types.ObjectId; until: Date | null }[];
     createdAt: Date;

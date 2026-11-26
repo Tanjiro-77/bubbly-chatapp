@@ -171,7 +171,7 @@ const CallScreen = () => {
             const micPerm = await AudioModule.requestRecordingPermissionsAsync();
             if (!micPerm?.granted) {
                 hasCleanedUp.current = true;
-                if (isOutgoing) {
+                if (isOutgoingCall) {
                     callCancel(currentCallId);
                 } else {
                     callReject(currentCallId);
@@ -252,6 +252,7 @@ const CallScreen = () => {
                     console.log("Agora token is about to expire");
                     try {
                         const newTokenRes = await getAgoraToken(currentCallId, channelName);
+                        if (hasCleanedUp.current || !engineRef.current) return;
                         if (newTokenRes.success && newTokenRes.data?.token) {
                             await engine.renewToken(newTokenRes.data.token);
                             console.log("Agora token renewed");

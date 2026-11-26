@@ -37,8 +37,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 deletedFor: { $ne: userId },
             })
                 .sort({ updatedAt: -1 })
-                .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll isViewOnce viewOnceOpenedBy" })
-                .populate({ path: "participants", select: "name avatar email isOnline lastSeen" })
+                .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent" })
+                .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus" })
                 .populate({ path: "admins", select: "name avatar" })
                 .populate({
                     path: "pinnedMessages",
@@ -59,6 +59,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 const isPinned = (conv.pinnedBy || []).some(
                     (id: any) => id.toString() === userId.toString()
                 );
+                const isArchived = (conv.archivedBy || []).some(
+                    (id: any) => id.toString() === userId.toString()
+                );
                 const lm = sanitizeLastMessage(conv.lastMessage);
                 if (lm?.poll?.isAnonymous) {
                     lm.poll = maskAnonymousPoll(lm.poll, userId);
@@ -70,6 +73,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     isMuted,
                     mutedUntil: muteEntry?.until || null,
                     isPinned,
+                    isArchived,
                 };
             });
 
@@ -222,6 +226,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 location: data.location || null,
                 type: data.type,
                 storyId: data.storyId || null,
+                isSilent: !!data.isSilent,
+                checklist: data.checklist || null,
                 isViewOnce: !!(data.isViewOnce ?? data.attachmentMeta?.isViewOnce),
             });
 
@@ -706,7 +712,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("getUserStatus", { success: false, msg: "Invalid userId" });
                 return;
             }
-            const user = await User.findById(targetId).select("isOnline lastSeen privacy blockedUsers").lean();
+            const user = await User.findById(targetId).select("isOnline lastSeen privacy blockedUsers customStatus").lean();
             if (!user) {
                 socket.emit("getUserStatus", { success: false, msg: "User not found" });
                 return;
@@ -714,7 +720,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             if (await areBlocked(viewerId, targetId)) {
                 socket.emit("getUserStatus", {
                     success: true,
-                    data: { userId: targetId, isOnline: false, lastSeen: null, hidden: true },
+                    data: { userId: targetId, isOnline: false, lastSeen: null, hidden: true, customStatus: null },
                 });
                 return;
             }
@@ -730,6 +736,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     isOnline: status.isOnline,
                     lastSeen: status.lastSeen,
                     hidden: status.hidden,
+                    customStatus: status.hidden ? null : ((user as any).customStatus || null),
                 },
             });
         } catch (error) {
@@ -1483,6 +1490,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         voiceDuration: original.voiceDuration,
                         location: original.location as any,
                         type: original.type,
+                        checklist: (original as any).checklist || undefined,
                         isForwarded: true,
                     });
                     sentCount++;
@@ -1636,6 +1644,86 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             socket.emit("unreadCountUpdate", { conversationId: data.conversationId, unreadCount: entry?.count || 1 });
         } catch (error) {
             console.log("markAsUnread error:", error);
+        }
+    });
+
+    // ── Archive / Unarchive Conversation for current user ──
+    socket.on("toggleArchiveConversation", async (data: { conversationId: string; archive: boolean }) => {
+        try {
+            const userId = socket.data.userId;
+            if (!data?.conversationId || !isValidObjectId(data.conversationId)) return;
+            const op = data.archive
+                ? { $addToSet: { archivedBy: userId } }
+                : { $pull: { archivedBy: userId } };
+            const conv = await Conversation.findOneAndUpdate(
+                { _id: data.conversationId, participants: userId },
+                op,
+                { new: true }
+            );
+            if (!conv) return;
+            socket.emit("toggleArchiveConversation", {
+                success: true,
+                data: { conversationId: data.conversationId, isArchived: !!data.archive },
+            });
+        } catch (error) {
+            console.log("toggleArchiveConversation error:", error);
+        }
+    });
+
+    // ── Toggle Checklist Item ──
+    socket.on("toggleChecklistItem", async (data: {
+        messageId: string;
+        conversationId: string;
+        itemId: string;
+    }) => {
+        try {
+            const userId = socket.data.userId;
+            if (!data?.messageId || !isValidObjectId(data.messageId) || !data?.conversationId || !isValidObjectId(data.conversationId) || !data?.itemId) {
+                return;
+            }
+            const conv = await Conversation.findOne({ _id: data.conversationId, participants: userId }).select("_id").lean();
+            if (!conv) return;
+
+            const existingMsg = await Message.findOne({
+                _id: data.messageId,
+                conversationId: data.conversationId,
+                type: "checklist",
+                isDeleted: { $ne: true },
+                "checklist.items.id": data.itemId,
+            }).select("checklist.items").lean();
+            const existingItem = (existingMsg as any)?.checklist?.items?.find((it: any) => it.id === data.itemId);
+            if (!existingItem) return;
+
+            const nextCompleted = !existingItem.completed;
+            const updatedMsg = await Message.findOneAndUpdate(
+                {
+                    _id: data.messageId,
+                    conversationId: data.conversationId,
+                    type: "checklist",
+                    isDeleted: { $ne: true },
+                    "checklist.items.id": data.itemId,
+                },
+                {
+                    $set: {
+                        "checklist.items.$.completed": nextCompleted,
+                        "checklist.items.$.completedBy": nextCompleted ? (socket.data.name || userId) : "",
+                    },
+                },
+                { new: true }
+            ).select("checklist").lean();
+
+            if (!updatedMsg || !(updatedMsg as any).checklist) return;
+
+            io.to(data.conversationId).emit("checklistUpdated", {
+                success: true,
+                data: {
+                    messageId: data.messageId,
+                    conversationId: data.conversationId,
+                    checklist: (updatedMsg as any).checklist,
+                },
+            });
+        } catch (error) {
+            console.log("toggleChecklistItem error:", error);
         }
     });
 

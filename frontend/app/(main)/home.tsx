@@ -17,6 +17,7 @@ import {
     onStopTyping,
     toggleMuteConversation,
     togglePinConversation,
+    toggleArchiveConversation,
     markAsUnread,
     deleteConversation,
     markAsRead,
@@ -26,6 +27,24 @@ import {
     isSocketConnected,
     onSocketConnectionChange,
 } from "../../socket/socketEvents";
+import { QuickJumpModal, RemindersListModal } from "../../components/ConversationFeatureModals";
+import { cancelMessageReminder, getActiveReminders, SavedMessageReminder } from "../../services/reminderService";
+import {
+    CHAT_FOLDER_META,
+    ChatFolderTag,
+    CustomStatusState,
+    FocusModeState,
+    formatRemainingFocus,
+    getChatTagsMap,
+    getFocusMode,
+    getLocalArchivedIds,
+    getMyCustomStatus,
+    getNicknamesMap,
+    setChatTag,
+    setFocusMode,
+    setLocalArchivedId,
+    subscribeFeatureUpdates,
+} from "../../utils/featureStorage";
 import { verticalScale, scale } from "../../utils/styling";
 import * as Icons from 'phosphor-react-native';
 import { useRouter, useFocusEffect } from "expo-router";
@@ -35,7 +54,7 @@ import { ConversationProps, ResponseProps } from "../../types";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Avatar from '../../components/Avatar';
 
-type FilterCategory = "all" | "unread" | "pinned";
+type FilterCategory = "all" | "unread" | "pinned" | "archived" | ChatFolderTag;
 
 const getGreeting = (): string => {
     const hour = new Date().getHours();
@@ -62,6 +81,16 @@ const Home = () => {
 
     const [actionConv, setActionConv] = useState<ConversationProps | null>(null);
     const [actionModalVisible, setActionModalVisible] = useState(false);
+
+    // ── v4.0.1 Flagship States (Folders, Nicknames, Archive, Focus, Reminders, Quick Jump) ──
+    const [chatTagsMap, setChatTagsMap] = useState<Record<string, ChatFolderTag>>({});
+    const [nicknamesMap, setNicknamesMap] = useState<Record<string, string>>({});
+    const [localArchivedIds, setLocalArchivedIds] = useState<string[]>([]);
+    const [focusMode, setFocusModeState] = useState<FocusModeState>({ enabled: false, until: null, label: "" });
+    const [myStatus, setMyStatus] = useState<CustomStatusState>({ emoji: "", text: "", expiresAt: null });
+    const [reminders, setReminders] = useState<SavedMessageReminder[]>([]);
+    const [showQuickJump, setShowQuickJump] = useState(false);
+    const [showRemindersModal, setShowRemindersModal] = useState(false);
 
     const lockedStorageKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : '@bubbly_locked_chats';
 
@@ -91,8 +120,36 @@ const Home = () => {
             } else {
                 setDraftMap({});
             }
+            const [tags, nicks, arch, focus, status, rems] = await Promise.all([
+                getChatTagsMap(),
+                getNicknamesMap(),
+                getLocalArchivedIds(currentUser?.id),
+                getFocusMode(),
+                getMyCustomStatus(),
+                getActiveReminders(),
+            ]);
+            setChatTagsMap(tags);
+            setNicknamesMap(nicks);
+            setLocalArchivedIds(arch);
+            setFocusModeState(focus);
+            setMyStatus(status);
+            setReminders(rems);
         } catch (_) {}
-    }, [lockedStorageKey]);
+    }, [lockedStorageKey, currentUser?.id]);
+
+    useEffect(() => {
+        return subscribeFeatureUpdates(() => {
+            loadDraftsAndLocked();
+        });
+    }, [loadDraftsAndLocked]);
+
+    useEffect(() => {
+        if (!focusMode.enabled || !focusMode.until) return;
+        const interval = setInterval(() => {
+            getFocusMode().then(setFocusModeState);
+        }, 30000);
+        return () => clearInterval(interval);
+    }, [focusMode.enabled, focusMode.until]);
 
     useFocusEffect(
         useCallback(() => {
@@ -195,7 +252,7 @@ const Home = () => {
     };
 
     const processConversations = (res: ResponseProps) => {
-        if (res.success) setConversations(res.data);
+        if (res.success && Array.isArray(res.data)) setConversations(res.data);
     };
 
     const newConversationHandler = (res: ResponseProps) => {
@@ -243,26 +300,40 @@ const Home = () => {
         return new Date(bDate).getTime() - new Date(aDate).getTime();
     };
 
+    const isConvArchived = useCallback((c: ConversationProps) => {
+        return !!(c as any).isArchived || localArchivedIds.includes(c._id);
+    }, [localArchivedIds]);
+
     const directConversations = conversations
-        .filter((item) => item.type === "direct" && !lockedChatIds.includes(item._id))
+        .filter((item) => item.type === "direct" && !lockedChatIds.includes(item._id) && !isConvArchived(item))
         .sort(sortByDate);
 
     const groupConversations = conversations
-        .filter((item) => item.type === "group" && !lockedChatIds.includes(item._id))
+        .filter((item) => item.type === "group" && !lockedChatIds.includes(item._id) && !isConvArchived(item))
+        .sort(sortByDate);
+
+    const archivedConversations = conversations
+        .filter((item) => !lockedChatIds.includes(item._id) && isConvArchived(item))
         .sort(sortByDate);
 
     const activeList = selectedTab === 0 ? directConversations : groupConversations;
 
-    // ── V3 Filter Chips (All, Unread, Pinned) ──
+    // ── V3 + v4.0.1 Filter Chips (All, Unread, Pinned, Folders, Archived) ──
     const categorizedList = useMemo(() => {
+        if (filterCategory === "archived") {
+            return archivedConversations;
+        }
         if (filterCategory === "unread") {
             return activeList.filter(c => (c.unreadCount || 0) > 0);
         }
         if (filterCategory === "pinned") {
             return activeList.filter(c => !!(c as any).isPinned);
         }
+        if (filterCategory === "work" || filterCategory === "friends" || filterCategory === "family" || filterCategory === "vip") {
+            return activeList.filter(c => chatTagsMap[c._id] === filterCategory);
+        }
         return activeList;
-    }, [activeList, filterCategory]);
+    }, [activeList, archivedConversations, filterCategory, chatTagsMap]);
 
     // ── Search Filtering ──
     const filteredList = useMemo(() => {
@@ -270,13 +341,14 @@ const Home = () => {
         const q = searchQuery.toLowerCase().trim();
         return categorizedList.filter((item: ConversationProps) => {
             const nameMatch = item.name?.toLowerCase().includes(q);
+            const convNickMatch = (nicknamesMap[item._id] || "").toLowerCase().includes(q);
             const messageMatch = item.lastMessage?.content?.toLowerCase().includes(q);
             const participantMatch = item.participants?.some(
-                (p: any) => p.name?.toLowerCase().includes(q)
+                (p: any) => p.name?.toLowerCase().includes(q) || (nicknamesMap[p._id] || "").toLowerCase().includes(q)
             );
-            return nameMatch || messageMatch || participantMatch;
+            return nameMatch || convNickMatch || messageMatch || participantMatch;
         });
-    }, [searchQuery, categorizedList]);
+    }, [searchQuery, categorizedList, nicknamesMap]);
 
     const totalUnreadDirect = directConversations.reduce(
         (sum, c) => sum + (c.unreadCount || 0), 0
@@ -291,9 +363,10 @@ const Home = () => {
     const pinnedVIPs = useMemo(() => {
         return conversations.filter(c =>
             !lockedChatIds.includes(c._id) &&
+            !isConvArchived(c) &&
             !!(c as any).isPinned
         );
-    }, [conversations, lockedChatIds]);
+    }, [conversations, lockedChatIds, isConvArchived]);
 
     const handleSearchClose = () => {
         setSearchQuery("");
@@ -363,6 +436,66 @@ const Home = () => {
         } catch (_) {}
     };
 
+    const handleToggleArchive = async () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        const willArchive = !isConvArchived(actionConv);
+        handleCloseActionModal();
+        toggleArchiveConversation({ conversationId: convId, archive: willArchive });
+        const nextArch = await setLocalArchivedId(currentUser?.id, convId, willArchive);
+        setLocalArchivedIds(nextArch);
+        setConversations(prev => prev.map(c => c._id === convId ? { ...c, isArchived: willArchive } : c));
+    };
+
+    const handleAssignTag = () => {
+        if (!actionConv) return;
+        const convId = actionConv._id;
+        handleCloseActionModal();
+        setTimeout(() => {
+            BubblyAlert.alert(
+                "🏷️ Chat Folder Tag",
+                "Assign a smart folder label to organize this chat:",
+                [
+                    { text: "💼 Work", onPress: async () => setChatTagsMap(await setChatTag(convId, "work")) },
+                    { text: "🤝 Friends", onPress: async () => setChatTagsMap(await setChatTag(convId, "friends")) },
+                    { text: "🏡 Family", onPress: async () => setChatTagsMap(await setChatTag(convId, "family")) },
+                    { text: "⭐ VIP", onPress: async () => setChatTagsMap(await setChatTag(convId, "vip")) },
+                    { text: "Remove Tag", style: "destructive", onPress: async () => setChatTagsMap(await setChatTag(convId, null)) },
+                    { text: "Cancel", style: "cancel" },
+                ]
+            );
+        }, 90);
+    };
+
+    const handleToggleFocusMenu = () => {
+        if (focusMode.enabled) {
+            BubblyAlert.alert(
+                "🌙 Focus Mode Active",
+                `${focusMode.label} (${formatRemainingFocus(focusMode.until)}). Do you want to turn it off?`,
+                [
+                    { text: "Keep On", style: "cancel" },
+                    {
+                        text: "Turn Off",
+                        style: "destructive",
+                        onPress: async () => setFocusModeState(await setFocusMode(null)),
+                    },
+                ]
+            );
+            return;
+        }
+        BubblyAlert.alert(
+            "🌙 Enable Focus / Quiet Mode",
+            "Suppresses foreground sounds and toast popups while you focus:",
+            [
+                { text: "30 Minutes", onPress: async () => setFocusModeState(await setFocusMode(30, "30m Focus")) },
+                { text: "1 Hour", onPress: async () => setFocusModeState(await setFocusMode(60, "1h Focus")) },
+                { text: "2 Hours", onPress: async () => setFocusModeState(await setFocusMode(120, "2h Focus")) },
+                { text: "Until Turned Off", onPress: async () => setFocusModeState(await setFocusMode(0, "Quiet Mode")) },
+                { text: "Cancel", style: "cancel" },
+            ]
+        );
+    };
+
     const handleDeleteConversation = () => {
         if (!actionConv) return;
         const convId = actionConv._id;
@@ -394,6 +527,8 @@ const Home = () => {
         const isOnline = other ? !!onlineUsers[other._id] : false;
         const typingUser = typingMap[item._id] || null;
         const draftText = draftMap[item._id] || null;
+        const nickname = nicknamesMap[item._id] || (other?._id ? nicknamesMap[other._id] : undefined);
+        const folderTag = chatTagsMap[item._id];
 
         return (
             <ConversationItem
@@ -405,9 +540,11 @@ const Home = () => {
                 typingUser={typingUser}
                 draftText={draftText}
                 onLongPress={handleLongPress}
+                nickname={nickname}
+                folderTag={folderTag}
             />
         );
-    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap, handleLongPress]);
+    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap, handleLongPress, nicknamesMap, chatTagsMap]);
 
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.4}>
@@ -422,7 +559,7 @@ const Home = () => {
                         <View style={styles.headerLeft}>
                             <View style={styles.brandRow}>
                                 <View style={styles.brandBadge}>
-                                    <Typo size={9.5} fontWeight="800" color={colors.neutral900}>
+                                    <Typo size={9.5} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
                                         V4.0.1
                                     </Typo>
                                 </View>
@@ -438,17 +575,94 @@ const Home = () => {
                             >
                                 {currentUser?.name || "Bubbly Chat"}
                             </Typo>
+                            {(myStatus.text || myStatus.emoji) ? (
+                                <TouchableOpacity onPress={() => router.push("/(main)/profileModel")} activeOpacity={0.75}>
+                                    <Typo size={11.5} color={colors.primaryLight} fontWeight="600" textProps={{ numberOfLines: 1 }}>
+                                        {myStatus.emoji} {myStatus.text}
+                                    </Typo>
+                                </TouchableOpacity>
+                            ) : null}
                         </View>
 
-                        <TouchableOpacity
-                            onPress={() => router.push("/(main)/profileModel")}
-                            activeOpacity={0.8}
-                            style={styles.avatarBtn}
-                        >
-                            <Avatar uri={currentUser?.avatar || null} size={44} />
-                            <View style={styles.avatarBadge} />
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: scale(8), flexShrink: 0 }}>
+                            <TouchableOpacity
+                                onPress={() => setShowQuickJump(true)}
+                                activeOpacity={0.8}
+                                style={{
+                                    width: verticalScale(38),
+                                    height: verticalScale(38),
+                                    borderRadius: radius.full,
+                                    backgroundColor: "rgba(255,255,255,0.12)",
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.18)",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                }}
+                            >
+                                <Icons.Lightning size={18} color={colors.primary} weight="fill" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleToggleFocusMenu}
+                                activeOpacity={0.8}
+                                style={{
+                                    width: verticalScale(38),
+                                    height: verticalScale(38),
+                                    borderRadius: radius.full,
+                                    backgroundColor: focusMode.enabled ? colors.primary : "rgba(255,255,255,0.12)",
+                                    borderWidth: 1,
+                                    borderColor: focusMode.enabled ? colors.primary : "rgba(255,255,255,0.18)",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                }}
+                            >
+                                <Icons.Moon size={18} color={focusMode.enabled ? colors.black : colors.white} weight={focusMode.enabled ? "fill" : "bold"} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => router.push("/(main)/profileModel")}
+                                activeOpacity={0.8}
+                                style={styles.avatarBtn}
+                            >
+                                <Avatar uri={currentUser?.avatar || null} size={44} />
+                                <View style={styles.avatarBadge} />
+                            </TouchableOpacity>
+                        </View>
                     </View>
+
+                    {/* Focus / Reminders Live Banner */}
+                    {(focusMode.enabled || reminders.length > 0) && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: scale(6) }}>
+                            {focusMode.enabled && (
+                                <TouchableOpacity
+                                    onPress={handleToggleFocusMenu}
+                                    style={{
+                                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                        borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.45)',
+                                        borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
+                                    }}
+                                >
+                                    <Typo size={11} fontWeight="700" color={colors.primaryLight} textProps={{ numberOfLines: 1 }}>
+                                        🌙 {focusMode.label} · {formatRemainingFocus(focusMode.until)}
+                                    </Typo>
+                                </TouchableOpacity>
+                            )}
+                            {reminders.length > 0 && (
+                                <TouchableOpacity
+                                    onPress={() => setShowRemindersModal(true)}
+                                    style={{
+                                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                                        backgroundColor: 'rgba(255,255,255,0.12)',
+                                        borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+                                        borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
+                                    }}
+                                >
+                                    <Typo size={11} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                        ⏰ {reminders.length} Reminder{reminders.length > 1 ? "s" : ""}
+                                    </Typo>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
 
                     {/* Quick Actions Pill Bar */}
                     <View style={styles.headerQuickRow}>
@@ -458,7 +672,7 @@ const Home = () => {
                             activeOpacity={0.75}
                         >
                             <Icons.QrCode size={verticalScale(15)} color={colors.primary} weight="bold" />
-                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>QR</Typo>
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.78 }}>QR</Typo>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -467,7 +681,7 @@ const Home = () => {
                             activeOpacity={0.75}
                         >
                             <Icons.PhoneCall size={verticalScale(15)} color={colors.primary} weight="bold" />
-                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>Calls</Typo>
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.78 }}>Calls</Typo>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -476,7 +690,7 @@ const Home = () => {
                             activeOpacity={0.75}
                         >
                             <Icons.LockKey size={verticalScale(15)} color={colors.primary} weight="bold" />
-                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>Vault</Typo>
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.78 }}>Vault</Typo>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -485,7 +699,7 @@ const Home = () => {
                             activeOpacity={0.75}
                         >
                             <Icons.GearSix size={verticalScale(15)} color={colors.primary} weight="bold" />
-                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>Settings</Typo>
+                            <Typo size={11.5} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.78 }}>Settings</Typo>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
@@ -522,7 +736,8 @@ const Home = () => {
                                         ? vip.participants?.find((p: any) => p._id !== currentUser?.id)
                                         : null;
                                     const vipAvatar = vip.type === 'direct' ? (other?.avatar || vip.avatar) : vip.avatar;
-                                    const vipName = (vip.type === 'direct' ? other?.name : vip.name) || "VIP";
+                                    const baseVipName = (vip.type === 'direct' ? other?.name : vip.name) || "VIP";
+                                    const vipName = nicknamesMap[vip._id] || (other?._id ? nicknamesMap[other._id] : "") || baseVipName;
                                     const isOnline = other ? !!onlineUsers[other._id] : false;
                                     const unread = vip.unreadCount || 0;
 
@@ -703,6 +918,54 @@ const Home = () => {
                                 Pinned {totalPinnedCurrent > 0 ? `(${totalPinnedCurrent})` : ""}
                             </Typo>
                         </TouchableOpacity>
+
+                        {(["work", "friends", "family", "vip"] as ChatFolderTag[]).map((tagKey) => {
+                            const meta = CHAT_FOLDER_META[tagKey];
+                            const isAct = filterCategory === tagKey;
+                            return (
+                                <TouchableOpacity
+                                    key={tagKey}
+                                    style={[
+                                        styles.filterChip,
+                                        isAct && styles.filterChipActive,
+                                    ]}
+                                    onPress={() => setFilterCategory(tagKey)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Typo
+                                        size={12}
+                                        fontWeight={isAct ? "700" : "500"}
+                                        color={isAct ? colors.neutral900 : colors.neutral500}
+                                    >
+                                        {meta.emoji} {meta.label}
+                                    </Typo>
+                                </TouchableOpacity>
+                            );
+                        })}
+
+                        {archivedConversations.length > 0 && (
+                            <TouchableOpacity
+                                style={[
+                                    styles.filterChip,
+                                    filterCategory === "archived" && styles.filterChipActive,
+                                ]}
+                                onPress={() => setFilterCategory("archived")}
+                                activeOpacity={0.7}
+                            >
+                                <Icons.Archive
+                                    size={verticalScale(12)}
+                                    color={filterCategory === "archived" ? colors.primaryDark : colors.neutral500}
+                                    weight="fill"
+                                />
+                                <Typo
+                                    size={12}
+                                    fontWeight={filterCategory === "archived" ? "700" : "500"}
+                                    color={filterCategory === "archived" ? colors.neutral900 : colors.neutral500}
+                                >
+                                    Archived ({archivedConversations.length})
+                                </Typo>
+                            </TouchableOpacity>
+                        )}
                     </ScrollView>
                     </View>
 
@@ -761,9 +1024,11 @@ const Home = () => {
                             filteredList.length > 0 && (
                                 <Typo size={12} color={colors.neutral400} fontWeight="500">
                                     {filteredList.length}{" "}
-                                    {selectedTab === 0
-                                        ? filteredList.length === 1 ? "conversation" : "conversations"
-                                        : filteredList.length === 1 ? "group" : "groups"}
+                                    {filterCategory === "archived"
+                                        ? (filteredList.length === 1 ? "archived chat" : "archived chats")
+                                        : selectedTab === 0
+                                            ? filteredList.length === 1 ? "conversation" : "conversations"
+                                            : filteredList.length === 1 ? "group" : "groups"}
                                 </Typo>
                             )
                         )}
@@ -1012,6 +1277,40 @@ const Home = () => {
                                                 <Icons.CaretRight size={16} color={colors.neutral350} />
                                             </TouchableOpacity>
 
+                                            {/* Folder Tag */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={handleAssignTag}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: "#f3e8ff" }]}>
+                                                        <Icons.Tag size={18} color="#9333ea" weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        Assign Folder Tag ({chatTagsMap[actionConv._id] ? CHAT_FOLDER_META[chatTagsMap[actionConv._id]].label : "None"})
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
+                                            {/* Archive / Unarchive */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={handleToggleArchive}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: "#f5f5f4" }]}>
+                                                        <Icons.Archive size={18} color={colors.neutral700} weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        {isConvArchived(actionConv) ? "Unarchive Conversation" : "Archive Conversation"}
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
                                             {/* Lock to Secret Vault */}
                                             <TouchableOpacity
                                                 style={styles.sheetOptionRow}
@@ -1053,6 +1352,60 @@ const Home = () => {
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
+
+            <QuickJumpModal
+                visible={showQuickJump}
+                conversations={conversations.filter(c => !lockedChatIds.includes(c._id))}
+                currentUserId={currentUser?.id}
+                nicknames={nicknamesMap}
+                focusActive={focusMode.enabled}
+                onToggleFocus={handleToggleFocusMenu}
+                onSelectConversation={(c) => {
+                    router.push({
+                        pathname: "/(main)/conversation",
+                        params: {
+                            id: c._id,
+                            name: c.name,
+                            avatar: c.avatar,
+                            type: c.type,
+                            participants: JSON.stringify(c.participants),
+                            admins: JSON.stringify(c.admins || []),
+                            createdBy: c.createdBy ? String(c.createdBy) : "",
+                            disappearingSeconds: String(c.disappearingSeconds || 0),
+                        },
+                    });
+                }}
+                onNavigateRoute={(route) => router.push(route as any)}
+                onClose={() => setShowQuickJump(false)}
+            />
+
+            <RemindersListModal
+                visible={showRemindersModal}
+                reminders={reminders}
+                onCancelReminder={async (id) => {
+                    await cancelMessageReminder(id);
+                    setReminders(await getActiveReminders());
+                }}
+                onPressReminder={(rem) => {
+                    setShowRemindersModal(false);
+                    const targetConv = conversations.find((c) => c._id === rem.conversationId);
+                    router.push({
+                        pathname: "/(main)/conversation",
+                        params: {
+                            id: rem.conversationId,
+                            name: targetConv?.name || rem.senderName || "Chat",
+                            avatar: targetConv?.avatar || "",
+                            type: targetConv?.type || "direct",
+                            participants: targetConv ? JSON.stringify(targetConv.participants || []) : "[]",
+                            admins: targetConv ? JSON.stringify(targetConv.admins || []) : "[]",
+                            createdBy: targetConv?.createdBy ? String(targetConv.createdBy) : "",
+                            disappearingSeconds: String(targetConv?.disappearingSeconds || 0),
+                            highlightMessageId: rem.messageId,
+                        },
+                    });
+                }}
+                onClose={() => setShowRemindersModal(false)}
+            />
 
         </ScreenWrapper>
     );

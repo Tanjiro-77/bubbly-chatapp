@@ -15,6 +15,8 @@ const storySchema = new mongoose.Schema({
     text: { type: String, default: "" },
     backgroundColor: { type: String, default: "#1c1917" },
     mediaUrl: { type: String, default: "" },
+    fontStyle: { type: String, default: "classic" },
+    sticker: { type: String, default: "" },
     viewers: [
         {
             userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

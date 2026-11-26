@@ -75,8 +75,8 @@ export function AboutPage() {
     },
     {
       chapter: "04",
-      title: "v3.4 Release: Background Calls & Vault",
-      text: "The v3.4 milestone brings closed-app incoming call alerts, WhatsApp-style background message notifications, biometric App Lock, PIN-protected Vault, View-Once media, and PhonePe Indus Appstore compliance.",
+      title: "v4.0.1 Release: 20 Flagship Features",
+      text: "Bubbly v4.0.1 introduces 20 new flagship features: Interactive Checklists, Countdown Stickers, Mini-Games, Reminder Alarms, Slash Quick Replies, Format Bar, Focus Mode, Chat Insights, Custom Statuses, Archives, Folder Tags, Bubble Studio, and Privacy Shield.",
       emoji: "🚀",
       tag: "Production Release",
     },
@@ -206,7 +206,7 @@ export function AboutPage() {
               <Sparkles className="h-3.5 w-3.5 text-primary" /> Progression
             </span>
             <h2 className="font-display text-3xl font-extrabold sm:text-5xl">
-              From First Socket to v3.4 Release.
+              From First Socket to v4.0.1 Release.
             </h2>
           </div>
 

@@ -17,7 +17,7 @@ const messageSchema = new mongoose.Schema({
     attachement: String,
     type: {
         type: String,
-        enum: ["text", "image", "video", "voice", "file", "location", "system", "call", "announcement", "poll"],
+        enum: ["text", "image", "video", "voice", "file", "location", "system", "call", "announcement", "poll", "checklist"],
         default: "text",
         index: true,
     },
@@ -96,6 +96,10 @@ const messageSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
+    isSilent: {
+        type: Boolean,
+        default: false,
+    },
     isViewOnce: {
         type: Boolean,
         default: false,
@@ -125,6 +129,17 @@ const messageSchema = new mongoose.Schema({
         isAnonymous: { type: Boolean, default: false },
         endsAt: { type: Date, default: null },
         isClosed: { type: Boolean, default: false },
+    },
+    checklist: {
+        title: { type: String, default: "" },
+        items: [
+            {
+                id: { type: String, required: true },
+                text: { type: String, required: true },
+                completed: { type: Boolean, default: false },
+                completedBy: { type: String, default: "" },
+            },
+        ],
     },
 }, {
     timestamps: true,

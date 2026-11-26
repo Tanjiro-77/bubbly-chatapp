@@ -91,16 +91,16 @@ const SplashScreen = () => {
       {/* Bottom Launch & Security Footer */}
       <Animated.View
         entering={FadeInUp.duration(600).delay(450)}
-        style={[styles.footer, { bottom: Math.max(insets.bottom, spacingY._20) + spacingY._15 }]}
+        style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._15 }]}
       >
         <ActivityIndicator size="small" color={colors.primary} style={styles.loader} />
 
         <View style={styles.securityRow}>
           <Icons.ShieldCheck size={13} color={colors.neutral500} weight="fill" />
-          <Text style={styles.footerText}>End-to-End Encrypted</Text>
+          <Text style={styles.footerText} maxFontSizeMultiplier={1.3} numberOfLines={1}>End-to-End Encrypted</Text>
         </View>
 
-        <Text style={styles.versionText}>v4.0.1</Text>
+        <Text style={styles.versionText} maxFontSizeMultiplier={1.3} numberOfLines={1}>v4.0.1</Text>
       </Animated.View>
     </View>
   );
@@ -123,6 +123,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(245, 158, 11, 0.04)",
   },
   centerContent: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -197,8 +198,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   footer: {
-    position: "absolute",
-    bottom: spacingY._40,
+    paddingTop: spacingY._12,
     alignItems: "center",
     gap: spacingY._6,
   },

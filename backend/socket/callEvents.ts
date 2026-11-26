@@ -43,7 +43,7 @@ export async function acceptCallById(io: SocketIOServer, callId: string, userId:
         if (!existing || existing.calleeId.toString() !== userId) {
             throw new Error("Call not found");
         }
-        if (existing.status === "connecting") {
+        if (existing.status === "connecting" || existing.status === "connected") {
             return existing;
         }
         throw new Error(`Call is already ${existing.status}`);
@@ -137,8 +137,8 @@ export async function handleUserDisconnectCalls(io: SocketIOServer, userId: stri
                 }
 
                 // If the callee's stale background socket disconnects while the call is still ringing
-                // (e.g. pushed to wake up the closed app), keep ringing until timeout or answer.
-                if (callData.calleeId === userId && call.status === "ringing") {
+                // or connecting (e.g. pushed to wake up the closed app), keep it alive until timeout or answer.
+                if (callData.calleeId === userId && (call.status === "ringing" || call.status === "connecting")) {
                     continue;
                 }
 
@@ -151,19 +151,22 @@ export async function handleUserDisconnectCalls(io: SocketIOServer, userId: stri
                     const duration = call.startedAt
                         ? Math.max(0, Math.floor((now.getTime() - call.startedAt.getTime()) / 1000))
                         : 0;
-                    call.status = wasConnected ? "ended" : "failed";
-                    call.endedAt = now;
-                    call.duration = duration;
-                    await call.save();
+                    const finalStatus = wasConnected ? "ended" : "failed";
+                    const finalized = await Call.findOneAndUpdate(
+                        { _id: call._id, status: { $in: ["ringing", "connecting", "connected"] } },
+                        { $set: { status: finalStatus, endedAt: now, duration } },
+                        { new: true }
+                    );
+                    if (!finalized) continue;
 
                     await createAndBroadcastMessage({
-                        conversationId: call.conversationId.toString(),
-                        senderId: call.callerId.toString(),
+                        conversationId: finalized.conversationId.toString(),
+                        senderId: finalized.callerId.toString(),
                         type: "call",
                         callMeta: {
-                            callId: call._id.toString(),
-                            kind: call.kind,
-                            status: wasConnected ? "ended" : "failed",
+                            callId: finalized._id.toString(),
+                            kind: finalized.kind,
+                            status: finalStatus,
                             duration,
                         },
                         skipRateLimit: true,
@@ -365,6 +368,10 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             if (call.callerId.toString() !== userId && call.calleeId.toString() !== userId) return;
             if (!["ringing", "connecting", "connected"].includes(call.status)) return;
             const entry = activeCalls.get(call._id.toString());
+            if (entry?.ringingTimer) {
+                clearTimeout(entry.ringingTimer);
+                entry.ringingTimer = undefined;
+            }
             if (entry?.connectingTimer) {
                 clearTimeout(entry.connectingTimer);
                 entry.connectingTimer = undefined;
@@ -406,14 +413,17 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             }
 
             const now = new Date();
+            const isCaller = call.callerId.toString() === userId;
 
-            const wasConnected =
-                call.status === "connected" ||
-                call.status === "connecting";
+            const finalStatus: "ended" | "cancelled" | "missed" =
+                call.status === "connected" || (call.status === "connecting" && Boolean(call.startedAt))
+                    ? "ended"
+                    : isCaller
+                    ? "cancelled"
+                    : "missed";
 
-            const finalStatus = wasConnected
-                ? "ended"
-                : "missed";
+            const messageStatus: "ended" | "missed" =
+                finalStatus === "ended" ? "ended" : "missed";
 
             const duration = call.startedAt
                 ? Math.max(
@@ -460,14 +470,14 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 callMeta: {
                     callId: finalizedCall._id.toString(),
                     kind: finalizedCall.kind,
-                    status: finalStatus,
+                    status: messageStatus,
                     duration: finalizedCall.duration,
                 },
                 skipRateLimit: true,
                 skipPermissionCheck: true,
             });
 
-            if (finalStatus === "missed") {
+            if (finalStatus === "missed" || finalStatus === "cancelled") {
                 const callerDoc = await User.findById(finalizedCall.callerId)
                     .select("name avatar")
                     .lean();
@@ -482,11 +492,13 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 }).catch((err) => console.error("Missed call push error:", err));
             }
 
+            const endReason = finalStatus === "ended" ? "ended" : finalStatus;
+
             io.to(
                 userRoom(finalizedCall.callerId.toString())
             ).emit("call:ended", {
                 callId: finalizedCall._id,
-                reason: "ended",
+                reason: endReason,
                 duration: finalizedCall.duration,
             });
 
@@ -494,7 +506,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 userRoom(finalizedCall.calleeId.toString())
             ).emit("call:ended", {
                 callId: finalizedCall._id,
-                reason: "ended",
+                reason: endReason,
                 duration: finalizedCall.duration,
             });
 

@@ -75,6 +75,13 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
             });
         }
 
+        if (!["ringing", "connecting", "connected"].includes(call.status)) {
+            return res.status(409).json({
+                success: false,
+                msg: `Call is already ${call.status}`,
+            });
+        }
+
         // IMPORTANT:
         // Always derive the Agora channel from the actual Call document.
         // Do NOT trust a channelName sent by the client.

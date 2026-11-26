@@ -3,6 +3,20 @@ import { io, Socket } from 'socket.io-client';
 import { API_URL } from "../constants";
 
 let socket: Socket | null = null;
+const connectionSubscribers = new Set<(connected: boolean) => void>();
+
+export function subscribeSocketStatus(handler: (connected: boolean) => void): () => void {
+    connectionSubscribers.add(handler);
+    return () => {
+        connectionSubscribers.delete(handler);
+    };
+}
+
+function emitConnectionStatus(connected: boolean) {
+    connectionSubscribers.forEach((fn) => {
+        try { fn(connected); } catch {}
+    });
+}
 
 export async function connectSocket(): Promise<Socket> {
     const token = await AsyncStorage.getItem("token");
@@ -38,6 +52,7 @@ export async function connectSocket(): Promise<Socket> {
             socket?.once("connect", () => {
                 clearTimeout(timeoutId);
                 console.log("Socket connected:", socket?.id);
+                emitConnectionStatus(true);
                 resolve(true);
             });
 
@@ -50,10 +65,12 @@ export async function connectSocket(): Promise<Socket> {
 
         socket.on('disconnect', (reason) => {
             console.log('Socket disconnected:', reason);
+            emitConnectionStatus(false);
         });
 
         socket.on('connect', () => {
             console.log('Socket reconnected:', socket?.id);
+            emitConnectionStatus(true);
         });
     }
 
@@ -68,5 +85,6 @@ export function disconnectSocket(): void {
     if (socket) {
         socket.disconnect();
         socket = null;
+        emitConnectionStatus(false);
     }
 }

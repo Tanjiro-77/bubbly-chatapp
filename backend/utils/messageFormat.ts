@@ -64,6 +64,7 @@ export function formatMessagePayload(message: any, extras?: {
 
         // ✅ REQUIRED FOR POLLS
         poll: message.type === "poll" ? message.poll || null : null,
+        checklist: message.type === "checklist" ? message.checklist || null : null,
 
         attachmentMeta: message.attachmentMeta || null,
         location: message.location || null,
@@ -73,6 +74,7 @@ export function formatMessagePayload(message: any, extras?: {
         storyId: message.storyId || null,
         isPinned: message.isPinned || false,
         isForwarded: message.isForwarded || false,
+        isSilent: message.isSilent || false,
         isViewOnce: message.isViewOnce || false,
         viewOnceOpenedBy: (message.viewOnceOpenedBy || []).map((u: any) => u.toString?.() || u),
     };

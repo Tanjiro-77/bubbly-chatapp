@@ -12,6 +12,19 @@ import { assertRateLimit } from "../utils/rateLimit";
 import { createAndBroadcastMessage } from "../services/messageService";
 import { getIO, userRoom } from "./io";
 
+async function emitStoryFeedUpdated(io: SocketIOServer, userId: string) {
+    const convos = await Conversation.find({ participants: userId }).select("participants").lean();
+    const targets = new Set<string>([userId]);
+    for (const c of convos) {
+        for (const p of c.participants || []) {
+            targets.add(p.toString());
+        }
+    }
+    for (const targetId of targets) {
+        io.to(userRoom(targetId)).emit("storyFeedUpdated", { userId });
+    }
+}
+
 function storyVisibleTo(story: any, viewerId: string, author: any) {
     const storyAuthorId = (story.userId?._id || story.userId)?.toString();
     if (storyAuthorId === viewerId) return true;
@@ -220,10 +233,15 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 })
                 .populate({ path: "conversationId", select: "name type avatar participants" })
                 .lean();
-            let filtered = items;
+            const now = new Date();
+            let filtered = items.filter((item: any) =>
+                item.messageId
+                && !item.messageId.isDeleted
+                && (!item.messageId.expiresAt || new Date(item.messageId.expiresAt) > now)
+            );
             if (data?.query) {
                 const q = data.query.toLowerCase();
-                filtered = items.filter((item: any) =>
+                filtered = filtered.filter((item: any) =>
                     (item.messageId?.content || "").toLowerCase().includes(q)
                     || (item.messageId?.attachmentMeta?.name || "").toLowerCase().includes(q)
                 );
@@ -261,7 +279,9 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
             if (data.id) {
                 if (!isValidObjectId(data.id)) throw new Error("Invalid scheduled message ID");
                 const existing = await ScheduledMessage.findOne({ _id: data.id, senderId: userId, status: "pending" });
-                if (!existing) throw new Error("Scheduled message not found");
+                if (!existing || existing.conversationId.toString() !== data.conversationId) {
+                    throw new Error("Scheduled message not found");
+                }
                 existing.content = trimmedContent;
                 existing.sendAt = sendAt;
                 existing.timezone = data.timezone || existing.timezone;
@@ -325,24 +345,38 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
         text?: string;
         backgroundColor?: string;
         mediaUrl?: string;
+        fontStyle?: string;
+        sticker?: string;
         hiddenFrom?: string[];
     }) => {
         try {
             assertRateLimit(`story:${userId}`, 20, 60_000);
             if (!["text", "image", "video"].includes(data.type)) throw new Error("Invalid story type");
             if (data.type === "text" && !data.text?.trim()) throw new Error("Enter status text");
-            if ((data.type === "image" || data.type === "video") && !data.mediaUrl) throw new Error("Media is required");
+            if ((data.type === "image" || data.type === "video") && (!data.mediaUrl || !/^https?:\/\/.+/i.test(data.mediaUrl.trim()))) {
+                throw new Error("Valid media URL is required");
+            }
+            const safeHiddenFrom = Array.isArray(data.hiddenFrom)
+                ? data.hiddenFrom.filter((id) => typeof id === "string" && isValidObjectId(id))
+                : [];
+            const allowedFonts = ["classic", "serif", "mono", "neon"];
+            const safeFontStyle = typeof data.fontStyle === "string" && allowedFonts.includes(data.fontStyle)
+                ? data.fontStyle
+                : "classic";
+            const safeSticker = typeof data.sticker === "string" ? data.sticker.trim().slice(0, 48) : "";
             const story = await Story.create({
                 userId,
                 type: data.type,
                 text: (data.text || "").slice(0, 500),
                 backgroundColor: data.backgroundColor || "#1c1917",
-                mediaUrl: data.mediaUrl || "",
-                hiddenFrom: data.hiddenFrom || [],
+                mediaUrl: data.mediaUrl ? data.mediaUrl.trim() : "",
+                fontStyle: safeFontStyle,
+                sticker: safeSticker,
+                hiddenFrom: safeHiddenFrom,
                 expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
             });
             socket.emit("createStory", { success: true, data: story });
-            io.emit("storyFeedUpdated", { userId });
+            await emitStoryFeedUpdated(io, userId);
         } catch (error: any) {
             socket.emit("createStory", { success: false, msg: error.message || "Failed to post status" });
         }
@@ -419,10 +453,10 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                     socket.emit("viewStory", { success: false, msg: "Not allowed" });
                     return;
                 }
-                if (!(story.viewers || []).some((v: any) => v.userId.toString() === userId)) {
-                    story.viewers.push({ userId, viewedAt: new Date() });
-                    await story.save();
-                }
+                await Story.updateOne(
+                    { _id: story._id, "viewers.userId": { $ne: userId } },
+                    { $push: { viewers: { userId, viewedAt: new Date() } } }
+                );
             }
             socket.emit("viewStory", {
                 success: true,
@@ -550,7 +584,7 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
             socket.emit("deleteStory", { success: true });
-            io.emit("storyFeedUpdated", { userId });
+            await emitStoryFeedUpdated(io, userId);
         } catch {
             socket.emit("deleteStory", { success: false, msg: "Failed to delete story" });
         }

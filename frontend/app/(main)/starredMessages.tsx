@@ -26,6 +26,7 @@ import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { getStarredMessages, toggleStarMessage, isSocketConnected } from "../../socket/socketEvents";
+import { formatRichPreviewText } from "../../utils/featureStorage";
 import moment from "moment";
 
 interface StarredItem {
@@ -259,7 +260,7 @@ const StarredMessagesScreen = () => {
 
                 {!!msg.content && (
                     <Typo size={13.5} color={colors.neutral700} style={styles.messageText} textProps={{ numberOfLines: 3 }}>
-                        {msg.content}
+                        {formatRichPreviewText(msg.content)}
                     </Typo>
                 )}
 

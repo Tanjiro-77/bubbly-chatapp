@@ -184,6 +184,7 @@ const IncomingCall = () => {
         vibrationRef.current = false;
         Vibration.cancel();
         try {
+            callAccept(callIdStr);
             const res = await acceptCallHttp(callIdStr);
             if (hasEndedRef.current || (res && res.success === false)) {
                 safeBack();
@@ -194,7 +195,6 @@ const IncomingCall = () => {
                 safeBack();
                 return;
             }
-            callAccept(callIdStr);
         }
         if (hasEndedRef.current) {
             safeBack();
