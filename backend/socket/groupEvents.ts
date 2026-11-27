@@ -27,7 +27,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember) {
                 socket.emit("updateGroup", { success: false, msg: "Group not found" });
                 return;
@@ -96,7 +96,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("addGroupMembers", async (data: { conversationId: string; userIds: string[] }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember) {
                 socket.emit("addGroupMembers", { success: false, msg: "Group not found" });
                 return;
@@ -106,7 +106,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("addGroupMembers", { success: false, msg: "You cannot add members" });
                 return;
             }
-            const ids = (data.userIds || []).filter(Boolean);
+            const ids = Array.isArray(data?.userIds) ? data.userIds.filter(Boolean) : [];
             if (ids.length > 50) {
                 socket.emit("addGroupMembers", { success: false, msg: "Cannot add more than 50 members at once" });
                 return;
@@ -152,7 +152,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("removeGroupMember", async (data: { conversationId: string; targetUserId: string }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember) {
                 socket.emit("removeGroupMember", { success: false, msg: "Group not found" });
                 return;
@@ -204,7 +204,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("leaveGroup", async (data: { conversationId: string }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isMember } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember } = await getMembership(data?.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember) {
                 socket.emit("leaveGroup", { success: false, msg: "Group not found" });
                 return;
@@ -239,7 +239,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("setGroupAdmin", { success: false, msg: "Invalid request" });
                 return;
             }
-            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember || !isAdmin) {
                 socket.emit("setGroupAdmin", { success: false, msg: "Only admins can change roles" });
                 return;
@@ -284,7 +284,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("regenerateInvite", async (data: { conversationId: string }) => {
         try {
             const userId = socket.data.userId;
-            const { conversation, isMember, isAdmin } = await getMembership(data.conversationId, userId);
+            const { conversation, isMember, isAdmin } = await getMembership(data?.conversationId, userId);
             if (!conversation || conversation.type !== "group" || !isMember || !isAdmin) {
                 socket.emit("regenerateInvite", { success: false, msg: "Only admins can manage invites" });
                 return;
@@ -344,7 +344,7 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
     socket.on("getGroupMedia", async (data: { conversationId: string }) => {
         try {
             const userId = socket.data.userId;
-            const { isMember } = await getMembership(data.conversationId, userId);
+            const { isMember } = await getMembership(data?.conversationId, userId);
             if (!isMember) {
                 socket.emit("getGroupMedia", { success: false, msg: "Not a member" });
                 return;

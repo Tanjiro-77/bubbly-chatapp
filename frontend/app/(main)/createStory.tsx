@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, TextInput,
     ScrollView, KeyboardAvoidingView, Platform, StatusBar, useWindowDimensions,
@@ -17,6 +17,7 @@ import Typo from '../../components/Typo';
 import Loading from '../../components/Loading';
 import { createStory, isSocketConnected } from '../../socket/socketEvents';
 import { uploadFileToCloudinary } from '../../services/imageService';
+import { hapticTap } from '../../utils/haptics';
 
 interface GradientPreset {
     id: string;
@@ -83,6 +84,16 @@ const CreateStory = () => {
     const [textAlign, setTextAlign] = useState<'center' | 'left' | 'right'>('center');
     const [fontStyle, setFontStyle] = useState<'classic' | 'serif' | 'mono' | 'neon'>('classic');
     const [selectedSticker, setSelectedSticker] = useState<string>('');
+    const pendingCleanupRef = useRef<(() => void) | null>(null);
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+            pendingCleanupRef.current?.();
+            pendingCleanupRef.current = null;
+        };
+    }, []);
 
     const STORY_STICKERS = ["", "📍 On The Go", "🔥 Daily Vibe", "🎧 Now Playing", "💯 Mood", "☕ Chill"];
     const STORY_FONTS: { id: 'classic' | 'serif' | 'mono' | 'neon'; label: string }[] = [
@@ -93,39 +104,47 @@ const CreateStory = () => {
     ];
 
     const pickImage = async () => {
+        hapticTap('medium');
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
                 quality: 0.85,
             });
             if (!result.canceled && result.assets?.length) {
+                hapticTap('success');
                 setImageUri(result.assets[0].uri);
                 setStoryType('image');
             }
         } catch {
+            hapticTap('error');
             BubblyAlert.alert('Story Studio', 'Could not open image library.');
         }
     };
 
     const toggleAlignment = () => {
+        hapticTap('medium');
         setTextAlign(prev => (prev === 'center' ? 'left' : prev === 'left' ? 'right' : 'center'));
     };
 
     const handleCreate = async () => {
         if (storyType === 'text' && !text.trim()) {
+            hapticTap('error');
             BubblyAlert.alert('Story Studio', 'Please enter some text for your story');
             return;
         }
         if (storyType === 'image' && !imageUri) {
+            hapticTap('error');
             BubblyAlert.alert('Story Studio', 'Please choose a photo to share');
             return;
         }
 
         if (!isSocketConnected()) {
+            hapticTap('error');
             BubblyAlert.alert('Offline', 'You need an internet connection to post a story.');
             return;
         }
 
+        hapticTap('heavy');
         setLoading(true);
         try {
             let mediaUrl = '';
@@ -144,16 +163,26 @@ const CreateStory = () => {
             }
 
             await new Promise<void>((resolve, reject) => {
+                let settled = false;
                 const ackHandler = (res: any) => {
-                    clearTimeout(timeout);
-                    createStory(ackHandler, true);
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
                     if (res?.success) resolve();
                     else reject(new Error(res?.msg || 'Failed to publish story'));
                 };
                 const timeout = setTimeout(() => {
-                    createStory(ackHandler, true);
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
                     reject(new Error('Request timed out'));
                 }, 8000);
+                const cleanup = () => {
+                    clearTimeout(timeout);
+                    createStory(ackHandler, true);
+                    pendingCleanupRef.current = null;
+                };
+                pendingCleanupRef.current = cleanup;
                 createStory(ackHandler);
                 createStory({
                     type: storyType,
@@ -165,11 +194,19 @@ const CreateStory = () => {
                 });
             });
 
-            router.back();
+            if (isMountedRef.current) {
+                hapticTap('celebration');
+                router.back();
+            }
         } catch (error) {
-            BubblyAlert.alert('Error', 'Could not publish story. Please try again.');
+            if (isMountedRef.current) {
+                hapticTap('error');
+                BubblyAlert.alert('Error', 'Could not publish story. Please try again.');
+            }
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
     };
 
@@ -182,7 +219,7 @@ const CreateStory = () => {
             {/* ── Header ── */}
             <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + spacingY._8 }]}>
                 <TouchableOpacity
-                    onPress={() => router.back()}
+                    onPress={() => { hapticTap('light'); router.back(); }}
                     style={styles.closeBtn}
                     activeOpacity={0.7}
                 >
@@ -199,10 +236,13 @@ const CreateStory = () => {
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.shareBtn, (!text.trim() && !imageUri) && styles.shareBtnDisabled]}
+                    style={[
+                        styles.shareBtn,
+                        !(storyType === 'text' ? text.trim() : imageUri) && styles.shareBtnDisabled,
+                    ]}
                     onPress={handleCreate}
                     activeOpacity={0.8}
-                    disabled={loading || (!text.trim() && !imageUri)}
+                    disabled={loading || !(storyType === 'text' ? text.trim() : imageUri)}
                 >
                     {loading ? (
                         <Loading size="small" color={colors.black} />
@@ -226,7 +266,7 @@ const CreateStory = () => {
                 <View style={styles.typeToggle}>
                     <TouchableOpacity
                         style={[styles.typeBtn, storyType === 'text' && styles.typeBtnActive]}
-                        onPress={() => setStoryType('text')}
+                        onPress={() => { hapticTap('medium'); setStoryType('text'); }}
                         activeOpacity={0.7}
                     >
                         <Icons.TextT
@@ -402,7 +442,7 @@ const CreateStory = () => {
                                 return (
                                     <TouchableOpacity
                                         key={preset.id}
-                                        onPress={() => setSelectedGradient(preset)}
+                                        onPress={() => { hapticTap('medium'); setSelectedGradient(preset); }}
                                         activeOpacity={0.8}
                                         style={[
                                             styles.gradientPill,
@@ -437,7 +477,7 @@ const CreateStory = () => {
                                 return (
                                     <TouchableOpacity
                                         key={f.id}
-                                        onPress={() => setFontStyle(f.id)}
+                                        onPress={() => { hapticTap('medium'); setFontStyle(f.id); }}
                                         style={[styles.gradientPill, { flex: 1, justifyContent: 'center' }, act && styles.gradientPillActive]}
                                     >
                                         <Typo
@@ -474,7 +514,7 @@ const CreateStory = () => {
                             return (
                                 <TouchableOpacity
                                     key={idx}
-                                    onPress={() => setSelectedSticker(st)}
+                                    onPress={() => { hapticTap('medium'); setSelectedSticker(st); }}
                                     style={[styles.gradientPill, act && styles.gradientPillActive]}
                                 >
                                     <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.neutral900 : colors.neutral600}>

@@ -27,13 +27,13 @@ import { sounds } from "@/lib/sound";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Bubbly v4.0.2 — Connect Beyond Messages | Real-Time Chat & Calls" },
+      { title: "Bubbly v4.1.5 — Connect Beyond Messages | Real-Time Chat & Calls" },
       {
         name: "description",
         content:
           "Bubbly is a full-stack, real-time messaging application with instant chat, 20 new flagship features (Checklists, Reminders, Focus Mode, Chat Insights, Archives, Games), Agora voice & video calls, Story Studio, and Biometric Vault.",
       },
-      { property: "og:title", content: "Bubbly v4.0.2 — Connect Beyond Messages" },
+      { property: "og:title", content: "Bubbly v4.1.5 — Connect Beyond Messages" },
       {
         property: "og:description",
         content:
@@ -131,7 +131,7 @@ function IndexPage() {
             {/* Quick feature tick badges */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 20 New v4.0.2 Features
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 20 New v4.1.5 Features
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora HD Calling
@@ -208,15 +208,19 @@ function IndexPage() {
                 </div>
               </div>
               <p className="mt-4 text-muted-foreground text-sm leading-relaxed max-w-lg">
-                Messages transmit in sub-50ms with single, double, and blue read receipts — plus
-                WhatsApp-style high-priority push notifications even when your screen is locked.
+                Messages transmit in sub-50ms with delivery receipts, live swipeable floating
+                banners, custom notification chimes, strong tactile haptics, and high-priority push
+                alerts even when your screen is locked.
               </p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
                   Delivery & Read Acks
                 </span>
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
-                  Push Deep-Links
+                  Live Toast Banners
+                </span>
+                <span className="rounded-full bg-surface px-3 py-1 border border-border">
+                  Strong Haptic Engine
                 </span>
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">
                   Scheduled Messages
@@ -236,11 +240,12 @@ function IndexPage() {
                 </span>
               </div>
               <h3 className="mt-5 font-display text-2xl font-extrabold text-foreground">
-                Closed-App Voice & Video
+                Closed-App Voice & Video + Ringtones
               </h3>
               <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
-                Receive incoming Agora HD voice & video calls with Accept/Decline actions even when
-                Bubbly is closed.
+                Receive Agora HD voice & video calls with lock-screen Accept/Decline actions even
+                when closed, custom outgoing ringback audio, and 4 selectable incoming call
+                ringtones.
               </p>
             </div>
 
@@ -268,7 +273,7 @@ function IndexPage() {
                 </span>
                 <div>
                   <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-emerald-400">
-                    v4.0.2 Superpowers
+                    v4.1.5 Superpowers
                   </span>
                   <h3 className="font-display text-2xl font-extrabold text-foreground">
                     6-Language Translation, Checklists & Chat Insights
@@ -310,9 +315,9 @@ function IndexPage() {
                     Biometric Lock, PIN Vault & PhonePe Indus Compliant
                   </h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Protect private notes in an encrypted PIN Vault, lock chats behind biometrics,
-                    send View-Once media or Disappearing Messages, and inspect every security
-                    control openly.
+                    Require both phone number & verified email for 100% contact discovery, protect
+                    private notes in a PIN Vault, lock chats behind biometrics, and send View-Once
+                    or Disappearing messages safely.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2.5 shrink-0">

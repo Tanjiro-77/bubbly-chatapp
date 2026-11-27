@@ -12,7 +12,11 @@ import {
   Mic,
   FileText,
   MoreVertical,
+  MapPin,
+  BarChart2,
+  CheckSquare,
 } from "lucide-react";
+import { formatRichContentSummary } from "../../services/chatService";
 
 interface ConversationItemProps {
   conversation: ConversationProps;
@@ -117,6 +121,9 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
     if (!lastMsg) {
       return <span className="italic text-stone-400">Tap to start chatting 👋</span>;
     }
+    if (lastMsg.isDeleted) {
+      return <span className="italic text-stone-400">This message was deleted</span>;
+    }
 
     if (lastMsg.type === "image") {
       return (
@@ -146,6 +153,27 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
         </span>
       );
     }
+    if (lastMsg.type === "location") {
+      return (
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <MapPin className="w-3.5 h-3.5 text-[#16a34a]" /> {lastMsg.content || "Location"}
+        </span>
+      );
+    }
+    if (lastMsg.type === "poll") {
+      return (
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <BarChart2 className="w-3.5 h-3.5 text-[#d97706]" /> {lastMsg.content ? `Poll: ${lastMsg.content}` : "Poll"}
+        </span>
+      );
+    }
+    if (lastMsg.type === "checklist") {
+      return (
+        <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
+          <CheckSquare className="w-3.5 h-3.5 text-[#d97706]" /> {lastMsg.checklist?.title || "Checklist"}
+        </span>
+      );
+    }
     if (lastMsg.type === "call") {
       return (
         <span className="flex items-center gap-1 font-medium text-stone-700 dark:text-stone-300">
@@ -156,7 +184,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
 
     return (
       <HighlightText
-        text={lastMsg.content || "Message"}
+        text={formatRichContentSummary(lastMsg.content) || "Message"}
         query={searchQuery}
         className={hasUnread ? "font-semibold text-stone-900 dark:text-white" : "text-stone-500 dark:text-stone-400"}
       />

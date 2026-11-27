@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn, FadeInRight } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Icons from 'phosphor-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, radius, spacingX, spacingY } from '../constants/theme';
@@ -15,18 +15,42 @@ import { useAuth } from '../contexts/authContext';
 import {
     getStories, onStoryFeedUpdated, onSocketConnectionChange,
 } from '../socket/socketEvents';
+import { getCachedStories, getMemoryStories, setCachedStories } from '../utils/chatCache';
 import { StoryGroupProps, ResponseProps } from '../types';
 
 const StoryBar = () => {
     const router = useRouter();
     const { user: currentUser } = useAuth();
-    const [storyGroups, setStoryGroups] = useState<StoryGroupProps[]>([]);
+    const [storyGroups, setStoryGroups] = useState<StoryGroupProps[]>(
+        () => getMemoryStories(currentUser?.id) ?? []
+    );
 
     const fetchStories = useCallback(() => {
         getStories(null);
     }, []);
 
     useEffect(() => {
+        if (currentUser?.id) {
+            getCachedStories(currentUser.id).then((cached) => {
+                if (cached.length > 0) {
+                    setStoryGroups((prev) => (prev.length === 0 ? cached : prev));
+                }
+            }).catch(() => {});
+        }
+    }, [currentUser?.id]);
+
+    useEffect(() => {
+        const storiesHandler = (res: ResponseProps) => {
+            if (res.success && Array.isArray(res.data)) {
+                setStoryGroups(res.data);
+                setCachedStories(currentUser?.id, res.data);
+            }
+        };
+
+        const feedUpdatedHandler = () => {
+            fetchStories();
+        };
+
         getStories(storiesHandler);
         onStoryFeedUpdated(feedUpdatedHandler);
         const unsubConn = onSocketConnectionChange((connected) => {
@@ -39,17 +63,7 @@ const StoryBar = () => {
             onStoryFeedUpdated(feedUpdatedHandler, true);
             unsubConn();
         };
-    }, []);
-
-    const storiesHandler = (res: ResponseProps) => {
-        if (res.success && Array.isArray(res.data)) {
-            setStoryGroups(res.data);
-        }
-    };
-
-    const feedUpdatedHandler = () => {
-        fetchStories();
-    };
+    }, [currentUser?.id, fetchStories]);
 
     const openStory = (groupIndex: number) => {
         hapticTap("medium");
@@ -62,12 +76,17 @@ const StoryBar = () => {
         });
     };
 
-    const myStoryGroup = storyGroups.find(g => g.user.id === currentUser?.id);
-    const myStoryIndex = storyGroups.findIndex(g => g.user.id === currentUser?.id);
-    const otherGroups = storyGroups.filter(g => g.user.id !== currentUser?.id);
+    const { myStoryGroup, myStoryIndex, otherGroups } = useMemo(() => {
+        const myIdx = storyGroups.findIndex(g => g.user.id === currentUser?.id);
+        return {
+            myStoryGroup: myIdx !== -1 ? storyGroups[myIdx] : undefined,
+            myStoryIndex: myIdx,
+            otherGroups: storyGroups.filter(g => g.user.id !== currentUser?.id),
+        };
+    }, [storyGroups, currentUser?.id]);
 
     return (
-        <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
+        <Animated.View entering={FadeIn.duration(220)} style={styles.container}>
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -80,6 +99,7 @@ const StoryBar = () => {
                         if (myStoryGroup) {
                             openStory(myStoryIndex);
                         } else {
+                            hapticTap("medium");
                             router.push('/(main)/createStory');
                         }
                     }}
@@ -175,7 +195,7 @@ const StoryBar = () => {
     );
 };
 
-export default StoryBar;
+export default React.memo(StoryBar);
 
 const styles = StyleSheet.create({
     container: {

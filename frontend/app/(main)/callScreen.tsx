@@ -22,16 +22,21 @@ import { colors, radius, spacingX, spacingY } from '../../constants/theme';
 import { verticalScale, scale } from '../../utils/styling';
 import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
-import { getAgoraToken, rejectCallHttp } from '../../services/callService';
+import { endCallHttp, getAgoraToken, rejectCallHttp } from '../../services/callService';
+import { clearDeliveredCallNotifications } from '../../services/notificationService';
+import { startOutgoingRingback, stopOutgoingRingback } from '../../services/soundService';
 import { hapticTap } from '../../utils/haptics';
+import { connectSocket } from '../../socket/socket';
 import {
     callCancel,
     callEnd,
     callReject,
     callConnected,
+    isSocketConnected,
     onCallAccepted,
     onCallEnded,
     onCallConnected,
+    onSocketConnectionChange,
 } from '../../socket/socketEvents';
 
 type CallState = 'connecting' | 'ringing' | 'connected' | 'ended';
@@ -137,6 +142,7 @@ const CallScreen = () => {
 
     const engineRef = useRef<IRtcEngine | null>(null);
     const hasCleanedUp = useRef(false);
+    const isRemoteJoinedRef = useRef(false);
 
     const [callState, setCallState] = useState<CallState>(
         isOutgoingCall ? 'ringing' : 'connecting'
@@ -153,10 +159,33 @@ const CallScreen = () => {
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
+        if (isOutgoingCall && callState === 'ringing') {
+            startOutgoingRingback().catch(() => {});
+        } else {
+            stopOutgoingRingback();
+        }
+        return () => {
+            stopOutgoingRingback();
+        };
+    }, [callState, isOutgoingCall]);
+
+    useEffect(() => {
+        if (!isSocketConnected()) {
+            connectSocket().catch(() => {});
+        }
+        if (callIdStr) {
+            clearDeliveredCallNotifications(callIdStr).catch(() => {});
+        }
         initAgora();
         onCallAccepted(handleRemoteAccepted);
         onCallEnded(handleRemoteCallEnded);
         onCallConnected(handleRemoteConnected);
+
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && !hasCleanedUp.current && isRemoteJoinedRef.current && callIdStr) {
+                callConnected(callIdStr);
+            }
+        });
 
         const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
             handleCallEnd();
@@ -165,11 +194,13 @@ const CallScreen = () => {
 
         return () => {
             backSub.remove();
+            unsubConn();
             onCallAccepted(handleRemoteAccepted, true);
             onCallEnded(handleRemoteCallEnded, true);
             onCallConnected(handleRemoteConnected, true);
             if (!hasCleanedUp.current && callIdStr) {
                 callEnd(callIdStr);
+                endCallHttp(callIdStr).catch(() => {});
             }
             cleanup();
         };
@@ -260,6 +291,7 @@ const CallScreen = () => {
                 },
                 onUserJoined: (_connection, rUid) => {
                     console.log("Agora remote user joined:", rUid);
+                    isRemoteJoinedRef.current = true;
                     hapticTap("success");
                     setRemoteUid(rUid);
                     setCallState("connected");
@@ -334,7 +366,7 @@ const CallScreen = () => {
 
     const handleRemoteAccepted = useCallback((data: { callId: string }) => {
         if (String(data?.callId) !== callIdStr) return;
-        hapticTap("medium");
+        hapticTap("heavy");
         setCallState((prev) => (prev === "ringing" ? "connecting" : prev));
     }, [callIdStr]);
 
@@ -353,7 +385,7 @@ const CallScreen = () => {
 
     const handleRemoteConnected = useCallback((data: { callId: string }) => {
         if (String(data?.callId) !== callIdStr) return;
-        hapticTap("success");
+        hapticTap("celebration");
         setCallState('connected');
         startDurationTimer();
     }, [callIdStr]);
@@ -375,6 +407,7 @@ const CallScreen = () => {
     const cleanup = () => {
         if (hasCleanedUp.current) return;
         hasCleanedUp.current = true;
+        stopOutgoingRingback();
         stopDurationTimer();
         if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
         if (engineRef.current) {
@@ -386,20 +419,23 @@ const CallScreen = () => {
 
     const handleCallEnd = () => {
         if (hasCleanedUp.current) return;
-        hapticTap("heavy");
+        hapticTap("boom");
         callEnd(callIdStr);
+        if (callIdStr) {
+            endCallHttp(callIdStr).catch(() => {});
+        }
         cleanup();
         safeBack();
     };
 
     const toggleMute = () => {
-        hapticTap("medium");
+        hapticTap("heavy");
         engineRef.current?.muteLocalAudioStream(!isMuted);
         setIsMuted(prev => !prev);
     };
 
     const toggleVideo = () => {
-        hapticTap("medium");
+        hapticTap("heavy");
         const next = !isVideoOff;
         engineRef.current?.muteLocalVideoStream(next);
         if (next) setLocalVideoReady(false);
@@ -407,14 +443,14 @@ const CallScreen = () => {
     };
 
     const toggleSpeaker = () => {
-        hapticTap("light");
+        hapticTap("medium");
         const next = !isSpeakerOn;
         engineRef.current?.setEnableSpeakerphone(next);
         setIsSpeakerOn(next);
     };
 
     const switchCamera = () => {
-        hapticTap("light");
+        hapticTap("medium");
         engineRef.current?.switchCamera();
         setIsFrontCamera(prev => !prev);
     };

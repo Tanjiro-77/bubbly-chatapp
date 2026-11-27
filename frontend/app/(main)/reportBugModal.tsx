@@ -22,6 +22,7 @@ import Typo from "../../components/Typo";
 import { useAuth } from "../../contexts/authContext";
 import { submitUserBugReport, getDeviceDiagnostics } from "../../services/errorReporter";
 import { scale, verticalScale } from "../../utils/styling";
+import { hapticTap } from "../../utils/haptics";
 
 type CategoryType = "crash" | "ui_glitch" | "network" | "audio_call" | "other";
 
@@ -47,9 +48,11 @@ export default function ReportBugModal() {
     const diagnostics = getDeviceDiagnostics();
 
     const handlePickScreenshot = async () => {
+        hapticTap("medium");
         try {
             const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
             if (!permissionResult.granted) {
+                hapticTap("warning");
                 BubblyAlert.alert(
                     "Permission Required",
                     "Please allow photo library access to attach a screenshot of the issue."
@@ -64,29 +67,35 @@ export default function ReportBugModal() {
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
+                hapticTap("success");
                 setScreenshotUri(result.assets[0].uri);
             }
         } catch (err) {
+            hapticTap("error");
             console.error("Failed to pick screenshot:", err);
             BubblyAlert.alert("Error", "Could not open image picker.");
         }
     };
 
     const handleRemoveScreenshot = () => {
+        hapticTap("warning");
         setScreenshotUri(null);
     };
 
     const handleSubmit = async () => {
         if (!title.trim()) {
+            hapticTap("error");
             BubblyAlert.alert("Missing Title", "Please enter a brief title or summary of the issue.");
             return;
         }
 
         if (!description.trim()) {
+            hapticTap("error");
             BubblyAlert.alert("Missing Details", "Please provide a short description of what happened.");
             return;
         }
 
+        hapticTap("heavy");
         setIsSubmitting(true);
 
         try {
@@ -102,15 +111,18 @@ export default function ReportBugModal() {
             });
 
             if (result.success) {
+                hapticTap("celebration");
                 BubblyAlert.alert(
                     "Report Sent! 🚀",
                     "Thank you for reporting this issue. Our team has received the diagnostic details and will investigate.",
                     [{ text: "OK", onPress: () => router.back() }]
                 );
             } else {
+                hapticTap("error");
                 BubblyAlert.alert("Submission Notice", result.msg || "Could not submit report. Please try again.");
             }
         } catch (err: any) {
+            hapticTap("error");
             BubblyAlert.alert("Error", err.message || "Failed to submit report.");
         } finally {
             setIsSubmitting(false);
@@ -129,7 +141,10 @@ export default function ReportBugModal() {
                     Report an Issue
                 </Typo>
                 <TouchableOpacity
-                    onPress={() => router.back()}
+                    onPress={() => {
+                        hapticTap("light");
+                        router.back();
+                    }}
                     style={styles.closeBtn}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
@@ -164,7 +179,10 @@ export default function ReportBugModal() {
                                     styles.categoryChip,
                                     isSelected && styles.categoryChipSelected,
                                 ]}
-                                onPress={() => setCategory(cat.value)}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    setCategory(cat.value);
+                                }}
                                 activeOpacity={0.7}
                             >
                                 <MaterialIcons

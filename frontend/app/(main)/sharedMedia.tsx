@@ -28,6 +28,7 @@ import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { getMessages, isSocketConnected } from "../../socket/socketEvents";
 import { MessageProps, ResponseProps } from "../../types";
+import { hapticTap } from "../../utils/haptics";
 import moment from "moment";
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
@@ -127,6 +128,7 @@ const SharedMediaScreen = () => {
     }, [messages]);
 
     const handleOpenLink = async (url: string) => {
+        hapticTap("medium");
         try {
             const can = await Linking.canOpenURL(url);
             if (can) await Linking.openURL(url);
@@ -138,6 +140,7 @@ const SharedMediaScreen = () => {
 
     const handleOpenDoc = async (url?: string | null) => {
         if (!url) return;
+        hapticTap("medium");
         try {
             const can = await Linking.canOpenURL(url);
             if (can) await Linking.openURL(url);
@@ -156,6 +159,7 @@ const SharedMediaScreen = () => {
                 style={[styles.gridItem, { width: gridItemSize, height: gridItemSize }]}
                 activeOpacity={0.8}
                 onPress={() => {
+                    hapticTap("medium");
                     if (isVideo) {
                         Linking.openURL(uri).catch(() => BubblyAlert.alert("Error", "Could not open video."));
                     } else {
@@ -253,7 +257,7 @@ const SharedMediaScreen = () => {
             <View style={styles.tabsRow}>
                 <TouchableOpacity
                     style={[styles.tabBtn, activeTab === "media" && styles.tabBtnActive]}
-                    onPress={() => setActiveTab("media")}
+                    onPress={() => { hapticTap("medium"); setActiveTab("media"); }}
                     activeOpacity={0.8}
                 >
                     <Typo
@@ -266,7 +270,7 @@ const SharedMediaScreen = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.tabBtn, activeTab === "docs" && styles.tabBtnActive]}
-                    onPress={() => setActiveTab("docs")}
+                    onPress={() => { hapticTap("medium"); setActiveTab("docs"); }}
                     activeOpacity={0.8}
                 >
                     <Typo
@@ -279,7 +283,7 @@ const SharedMediaScreen = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.tabBtn, activeTab === "links" && styles.tabBtnActive]}
-                    onPress={() => setActiveTab("links")}
+                    onPress={() => { hapticTap("medium"); setActiveTab("links"); }}
                     activeOpacity={0.8}
                 >
                     <Typo

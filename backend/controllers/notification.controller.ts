@@ -2,7 +2,7 @@ import { Response } from "express";
 import { isValidObjectId } from "mongoose";
 import { AuthRequest } from "../middleware/auth";
 import User from "../modals/User";
-import { isValidExpoPushToken } from "../services/pushNotificationService";
+import { isValidCallRingtone, isValidExpoPushToken } from "../services/pushNotificationService";
 
 /**
  * Register or update the current user's Expo push token.
@@ -96,5 +96,34 @@ export const updateNotificationPreference = async (req: AuthRequest, res: Respon
     } catch (error) {
         console.error("updateNotificationPreference error:", error instanceof Error ? error.message : error);
         res.status(500).json({ success: false, msg: "Failed to update notification preference" });
+    }
+};
+
+/**
+ * Syncs the user's preferred incoming call ringtone so closed-app push notifications use
+ * the matching Android notification channel and custom sound asset.
+ * PUT /api/user/call-ringtone
+ */
+export const updateCallRingtone = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.userId;
+        const { callRingtone } = req.body ?? {};
+
+        if (!userId) {
+            res.status(401).json({ success: false, msg: "Unauthorized" });
+            return;
+        }
+
+        if (!isValidCallRingtone(callRingtone)) {
+            res.status(400).json({ success: false, msg: "Invalid call ringtone selection" });
+            return;
+        }
+
+        await User.findByIdAndUpdate(userId, { callRingtone });
+
+        res.json({ success: true, callRingtone });
+    } catch (error) {
+        console.error("updateCallRingtone error:", error instanceof Error ? error.message : error);
+        res.status(500).json({ success: false, msg: "Failed to update call ringtone" });
     }
 };

@@ -64,7 +64,7 @@ export const ChecklistCardBubble = ({
                         style={[richStyles.checkRow, item.completed && richStyles.checkRowDone]}
                         onPress={() => {
                             const willFinishAll = !item.completed && doneCount + 1 === items.length;
-                            hapticTap(willFinishAll ? "success" : "light");
+                            hapticTap(willFinishAll ? "celebration" : "medium");
                             onToggleItem?.(item.id);
                         }}
                         activeOpacity={0.7}
@@ -220,7 +220,7 @@ export const GameCardBubble = ({
                 <TouchableOpacity
                     style={richStyles.playAgainBtn}
                     onPress={() => {
-                        hapticTap("medium");
+                        hapticTap("rigid");
                         onPlayAgain(game.kind);
                     }}
                     activeOpacity={0.75}
@@ -263,7 +263,7 @@ export const ComposerFormatBar = ({
             <TouchableOpacity
                 key={btn.id}
                 onPress={() => {
-                    hapticTap("light");
+                    hapticTap("medium");
                     onApplyFormat(btn.id);
                 }}
                 activeOpacity={0.7}
@@ -285,7 +285,7 @@ export const ComposerFormatBar = ({
 
         <TouchableOpacity
             onPress={() => {
-                hapticTap("medium");
+                hapticTap("heavy");
                 onToggleSilent();
             }}
             activeOpacity={0.7}
@@ -303,7 +303,7 @@ export const ComposerFormatBar = ({
 
         <TouchableOpacity
             onPress={() => {
-                hapticTap("light");
+                hapticTap("medium");
                 onOpenQuickReplies();
             }}
             activeOpacity={0.7}
@@ -338,7 +338,10 @@ export const QuickReplyBar = ({
                     <TouchableOpacity
                         key={tpl.id}
                         style={richStyles.quickReplyChip}
-                        onPress={() => onSelect(tpl)}
+                        onPress={() => {
+                            hapticTap("medium");
+                            onSelect(tpl);
+                        }}
                         activeOpacity={0.75}
                     >
                         <Typo size={11.5} fontWeight="800" color={colors.primaryDark}>
@@ -354,7 +357,14 @@ export const QuickReplyBar = ({
                         </Typo>
                     </TouchableOpacity>
                 ))}
-                <TouchableOpacity style={richStyles.quickReplyManage} onPress={onManage} activeOpacity={0.75}>
+                <TouchableOpacity
+                    style={richStyles.quickReplyManage}
+                    onPress={() => {
+                        hapticTap("medium");
+                        onManage();
+                    }}
+                    activeOpacity={0.75}
+                >
                     <Icons.Sliders size={13} color={colors.neutral700} weight="bold" />
                     <Typo size={11} fontWeight="700" color={colors.neutral700}>Edit</Typo>
                 </TouchableOpacity>

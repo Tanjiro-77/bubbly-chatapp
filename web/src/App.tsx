@@ -148,7 +148,12 @@ export const App: React.FC = () => {
 
   // Modals & Drawers
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [activeStoryGroup, setActiveStoryGroup] = useState<StoryGroupProps | null>(null);
+  const [activeStoryUserId, setActiveStoryUserId] = useState<string | null>(null);
+  const activeStoryGroup = useMemo(
+    () => (activeStoryUserId ? stories.find((s) => s.user?.id === activeStoryUserId) || null : null),
+    [stories, activeStoryUserId]
+  );
+  const pendingScrollMessageIdRef = useRef<string | null>(null);
   const [showCreateStory, setShowCreateStory] = useState(false);
   const [showVault, setShowVault] = useState(false);
   const [showCallLogs, setShowCallLogs] = useState(false);
@@ -402,7 +407,30 @@ export const App: React.FC = () => {
       const payload = res?.data ?? res;
       const messageId = payload?.messageId || payload?.id || payload?._id;
       if (!messageId) return;
-      setMessages((prev) => prev.filter((m) => (m.id || m._id) !== messageId));
+      setMessages((prev) =>
+        prev.map((m) =>
+          (m.id || m._id) === messageId
+            ? {
+                ...m,
+                isDeleted: true,
+                content: "",
+                attachement: null,
+                voiceUrl: null,
+                attachmentMeta: null,
+                poll: null,
+                checklist: null,
+                reactions: [],
+              }
+            : m
+        )
+      );
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.lastMessage && (c.lastMessage._id === messageId || (c.lastMessage as any).id === messageId)
+            ? { ...c, lastMessage: { ...c.lastMessage, isDeleted: true, content: "" } }
+            : c
+        )
+      );
     };
 
     const handleMessageReacted = (res: ResponseProps) => {
@@ -418,10 +446,11 @@ export const App: React.FC = () => {
 
     const handleMessageStarred = (res: ResponseProps) => {
       if (res?.success && res?.data?.messageId) {
-        const { messageId, isStarred } = res.data;
+        const { messageId, isSaved, isStarred } = res.data;
+        const starredVal = Boolean(isSaved ?? isStarred);
         setMessages((prev) =>
           prev.map((m) =>
-            (m.id || m._id) === messageId ? { ...m, isSaved: Boolean(isStarred) } : m
+            (m.id || m._id) === messageId ? { ...m, isSaved: starredVal } : m
           )
         );
       }
@@ -626,6 +655,16 @@ export const App: React.FC = () => {
     });
   }, [activeConversation?._id, currentUserId]);
 
+  useEffect(() => {
+    const targetId = pendingScrollMessageIdRef.current;
+    if (!targetId) return;
+    const el = document.getElementById(`msg-${targetId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      pendingScrollMessageIdRef.current = null;
+    }
+  }, [messages, activeConversation?._id]);
+
   // Sending message handler
   const handleSendMessage = (payload: {
     content: string;
@@ -741,7 +780,23 @@ export const App: React.FC = () => {
         conversationId: activeConversation._id,
         messageId,
       });
-      setMessages((prev) => prev.filter((m) => (m.id || m._id) !== messageId));
+      setMessages((prev) =>
+        prev.map((m) =>
+          (m.id || m._id) === messageId
+            ? {
+                ...m,
+                isDeleted: true,
+                content: "",
+                attachement: null,
+                voiceUrl: null,
+                attachmentMeta: null,
+                poll: null,
+                checklist: null,
+                reactions: [],
+              }
+            : m
+        )
+      );
     }
   };
 
@@ -751,6 +806,7 @@ export const App: React.FC = () => {
     editMessage({
       conversationId: activeConversation._id,
       messageId,
+      content: newContent,
       newContent,
     });
     setMessages((prev) =>
@@ -760,13 +816,21 @@ export const App: React.FC = () => {
     );
   };
 
-  // Poll voting
+  // Poll voting & closing
   const handleVotePoll = (messageId: string, optionId: string) => {
     if (!activeConversation) return;
     votePoll({
       conversationId: activeConversation._id,
       messageId,
       optionId,
+    });
+  };
+
+  const handleClosePoll = (messageId: string) => {
+    if (!activeConversation) return;
+    closePoll({
+      conversationId: activeConversation._id,
+      messageId,
     });
   };
 
@@ -864,7 +928,7 @@ export const App: React.FC = () => {
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowSettings(true)}
           onOpenCreateStory={() => setShowCreateStory(true)}
-          onViewStoryGroup={(group) => setActiveStoryGroup(group)}
+          onViewStoryGroup={(group) => setActiveStoryUserId(group.user?.id || null)}
           onTogglePin={handleTogglePinChat}
           onToggleMute={handleToggleMuteChat}
           onDeleteConversation={handleDeleteConversation}
@@ -945,6 +1009,7 @@ export const App: React.FC = () => {
               onEdit={(msg) => setEditingMessage(msg)}
               onDelete={handleDelete}
               onVotePoll={handleVotePoll}
+              onClosePoll={handleClosePoll}
               onOpenImage={(url) => setLightboxUrl(url)}
               onOpenViewOnce={handleOpenViewOnce}
             />
@@ -952,6 +1017,18 @@ export const App: React.FC = () => {
             {/* Message Input Bar */}
             <MessageInput
               conversationId={activeConversation._id}
+              initialDraft={draftMap[activeConversation._id] || ""}
+              onDraftChange={(cid, val) =>
+                setDraftMap((prev) => {
+                  if (!val) {
+                    if (!prev[cid]) return prev;
+                    const next = { ...prev };
+                    delete next[cid];
+                    return next;
+                  }
+                  return { ...prev, [cid]: val };
+                })
+              }
               onSendMessage={handleSendMessage}
               onEditMessage={handleEdit}
               onTyping={() =>
@@ -1029,16 +1106,19 @@ export const App: React.FC = () => {
         <StoryViewerModal
           storyGroup={activeStoryGroup}
           currentUserId={currentUserId}
-          onClose={() => setActiveStoryGroup(null)}
+          onClose={() => setActiveStoryUserId(null)}
           onView={(storyId) => viewStory({ storyId })}
-          onReact={(storyId, emoji) => reactToStory({ storyId, emoji })}
+          onReact={(storyId, emoji) => {
+            reactToStory({ storyId, emoji });
+            fetchStories();
+          }}
           onReply={(_userId, text, storyId) => {
             replyToStory({ storyId, content: text });
             addToast("success", "Reply sent!");
           }}
           onDelete={(storyId) => {
             deleteStory({ storyId });
-            setActiveStoryGroup(null);
+            setActiveStoryUserId(null);
             addToast("info", "Story deleted");
           }}
         />
@@ -1103,11 +1183,15 @@ export const App: React.FC = () => {
           onJumpToMessage={(convId, msgId) => {
             const conv = conversations.find((c) => c._id === convId);
             if (conv) {
+              pendingScrollMessageIdRef.current = msgId;
               setActiveConversation(conv);
               setTimeout(() => {
                 const el = document.getElementById(`msg-${msgId}`);
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-              }, 400);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  pendingScrollMessageIdRef.current = null;
+                }
+              }, 350);
             }
           }}
         />
@@ -1130,6 +1214,7 @@ export const App: React.FC = () => {
             conversation={activeConversation}
             currentUserId={currentUserId}
             onClose={() => setShowDetailsDrawer(false)}
+            onToggleMute={() => handleToggleMuteChat(activeConversation._id, !!activeConversation.isMuted)}
             onOpenSharedMedia={() => {
               setShowDetailsDrawer(false);
               setShowSharedMedia(true);
@@ -1151,6 +1236,7 @@ export const App: React.FC = () => {
               ]
             }
             onClose={() => setShowDetailsDrawer(false)}
+            onToggleMute={() => handleToggleMuteChat(activeConversation._id, !!activeConversation.isMuted)}
             onOpenSharedMedia={() => {
               setShowDetailsDrawer(false);
               setShowSharedMedia(true);

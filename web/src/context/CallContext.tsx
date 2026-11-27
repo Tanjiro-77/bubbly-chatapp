@@ -11,13 +11,13 @@ import {
   onCallIncoming,
   onCallRinging,
   onCallAccepted,
+  onCallRejected,
   onCallConnected,
   onCallEnded,
   onCallFailed,
   onCallSignal,
 } from "../socket/socketEvents";
 import { soundManager } from "../hooks/useSoundEffects";
-import { getAgoraToken } from "../services/callService";
 import { bubblyAlert } from "../components/common/BubblyDialog";
 
 interface CallContextType {
@@ -56,6 +56,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activeCallRef = useRef<ActiveCallProps | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const cancelledPendingRingingRef = useRef(false);
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -68,12 +69,19 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Socket Call Listeners
     const handleIncoming = (data: IncomingCallProps) => {
+      if (activeCallRef.current) return;
       setIncomingCall(data);
       if (ringtoneStopRef.current) ringtoneStopRef.current();
       ringtoneStopRef.current = soundManager.startRingtone();
     };
 
     const handleRinging = (data: { callId?: string; channelName?: string }) => {
+      if (cancelledPendingRingingRef.current) {
+        cancelledPendingRingingRef.current = false;
+        if (data?.callId) emitCallCancel(data.callId);
+        return;
+      }
+      if (!activeCallRef.current) return;
       setIsRinging(true);
       if (data?.callId) {
         setActiveCall((prev) =>
@@ -89,8 +97,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const handleAccepted = async (data: { callId: string; channelName?: string }) => {
-      setIsRinging(false);
       const current = activeCallRef.current;
+      if (!current) return;
+      setIsRinging(false);
       setActiveCall((prev) =>
         prev
           ? {
@@ -118,16 +127,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const handleConnected = (data: { callId: string }) => {
+      if (!activeCallRef.current) return;
       setIsRinging(false);
       startDurationTimer();
     };
 
-    const handleEnded = (data: any) => {
+    const handleEnded = () => {
       cleanupCallState();
     };
 
     const handleFailed = (data: any) => {
-      bubblyAlert("Call Failed", data.msg || "Call failed", { variant: "danger" });
+      bubblyAlert("Call Failed", data?.msg || "Call failed", { variant: "danger" });
       cleanupCallState();
     };
 
@@ -175,6 +185,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     onCallIncoming(handleIncoming);
     onCallRinging(handleRinging);
     onCallAccepted(handleAccepted);
+    onCallRejected(handleEnded);
     onCallConnected(handleConnected);
     onCallEnded(handleEnded);
     onCallFailed(handleFailed);
@@ -184,6 +195,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onCallIncoming(handleIncoming, true);
       onCallRinging(handleRinging, true);
       onCallAccepted(handleAccepted, true);
+      onCallRejected(handleEnded, true);
       onCallConnected(handleConnected, true);
       onCallEnded(handleEnded, true);
       onCallFailed(handleFailed, true);
@@ -287,6 +299,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     remoteUser: { id: string; name: string; avatar: string | null },
     kind: CallKind
   ) => {
+    cancelledPendingRingingRef.current = false;
     setIsRinging(true);
     const nextCall: ActiveCallProps = {
       callId: "",
@@ -340,6 +353,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const cancelCall = () => {
     if (activeCall?.callId) {
       emitCallCancel(activeCall.callId);
+    } else if (activeCallRef.current?.isOutgoing) {
+      cancelledPendingRingingRef.current = true;
     }
     cleanupCallState();
   };

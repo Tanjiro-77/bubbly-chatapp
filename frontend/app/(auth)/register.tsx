@@ -1,7 +1,7 @@
 import {
     StyleSheet, View, KeyboardAvoidingView,
     Platform, ScrollView, Pressable,
-    TouchableOpacity, ActivityIndicator
+    TouchableOpacity, ActivityIndicator, TextInput
 } from 'react-native'
 import { BubblyAlert } from "../../components/BubblyAlert"
 import React, { useRef, useState } from 'react'
@@ -19,6 +19,9 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
 import GoogleIcon from "../../components/GoogleIcon"
 import { useGoogleAuth } from "../../hooks/useGoogleAuth"
 import AuthLegalFooter from "../../components/AuthLegalFooter"
+import { hapticTap } from "../../utils/haptics"
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Register = () => {
 
@@ -26,54 +29,52 @@ const Register = () => {
     const emailRef = useRef("");
     const phoneRef = useRef("");
     const passwordRef = useRef("");
-    const [signupMethod, setSignupMethod] = useState<'phone' | 'email'>('phone');
+    const phoneInputRef = useRef<TextInput | null>(null);
+    const emailInputRef = useRef<TextInput | null>(null);
+    const passwordInputRef = useRef<TextInput | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
-    const { signUp, signUpWithPhone } = useAuth();
+    const { signUp } = useAuth();
     const { triggerGoogleSignIn, isLoading: isGoogleLoading } = useGoogleAuth();
 
     const handleSubmit = async () => {
         const cleanName = nameRef.current.trim();
+        const cleanEmail = emailRef.current.trim().toLowerCase();
+        const cleanPhone = phoneRef.current.trim();
+        const cleanDigits = cleanPhone.replace(/\D/g, "");
         const cleanPassword = passwordRef.current;
 
-        if (!cleanName || !cleanPassword) {
-            BubblyAlert.alert('Sign Up', "Please fill all required fields");
+        if (!cleanName || !cleanEmail || !cleanPhone || !cleanPassword) {
+            hapticTap("error");
+            BubblyAlert.alert('Sign Up', "Name, phone number, email, and password are all required");
+            return;
+        }
+
+        if (cleanDigits.length < 7 || cleanDigits.length > 18) {
+            hapticTap("error");
+            BubblyAlert.alert('Sign Up', "Please enter a valid phone number (7 to 18 digits)");
+            return;
+        }
+
+        if (!EMAIL_REGEX.test(cleanEmail)) {
+            hapticTap("error");
+            BubblyAlert.alert('Sign Up', "Please enter a valid email address");
             return;
         }
 
         if (cleanPassword.length < 6) {
+            hapticTap("error");
             BubblyAlert.alert('Sign Up', "Password must be at least 6 characters");
-            return;
-        }
-
-        if (signupMethod === 'phone') {
-            const cleanPhone = phoneRef.current.trim();
-            if (!cleanPhone) {
-                BubblyAlert.alert('Sign Up', "Please enter your phone number");
-                return;
-            }
-            try {
-                setIsLoading(true);
-                await signUpWithPhone(cleanPhone, cleanPassword, cleanName, "");
-            } catch (error: any) {
-                BubblyAlert.alert("Registration Error", error.message);
-            } finally {
-                setIsLoading(false);
-            }
-            return;
-        }
-
-        const cleanEmail = emailRef.current.trim().toLowerCase();
-        if (!cleanEmail) {
-            BubblyAlert.alert('Sign Up', "Please enter your email address");
             return;
         }
 
         try {
             setIsLoading(true);
-            await signUp(cleanEmail, cleanPassword, cleanName, "");
+            await signUp(cleanEmail, cleanPassword, cleanName, "", cleanPhone);
+            hapticTap("celebration");
         } catch (error: any) {
+            hapticTap("error");
             BubblyAlert.alert("Registration Error", error.message);
         } finally {
             setIsLoading(false);
@@ -89,7 +90,7 @@ const Register = () => {
 
                     {/* Header — minimal top bar */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).springify()}
+                        entering={FadeInDown.duration(240)}
                         style={styles.header}
                     >
                         <BackButton iconSize={24} />
@@ -97,7 +98,7 @@ const Register = () => {
 
                     {/* White card sheet */}
                     <Animated.View
-                        entering={FadeInUp.duration(600).delay(100).springify()}
+                        entering={FadeInUp.duration(280).delay(40)}
                         style={styles.content}
                     >
                         <ScrollView
@@ -112,48 +113,22 @@ const Register = () => {
                                     Create Account
                                 </Typo>
                                 <Typo size={14} color={colors.neutral400} fontWeight="400">
-                                    Join Bubbly and start connecting
+                                    Both phone number and email are required so friends can find you
                                 </Typo>
-                            </View>
-
-                            {/* Signup Method Toggle */}
-                            <View style={styles.methodTabs}>
-                                <TouchableOpacity
-                                    style={[styles.methodTab, signupMethod === 'phone' && styles.methodTabActive]}
-                                    onPress={() => {
-                                        emailRef.current = "";
-                                        setSignupMethod('phone');
-                                    }}
-                                    activeOpacity={0.8}
-                                >
-                                    <Icons.Phone size={15} color={signupMethod === 'phone' ? colors.neutral900 : colors.neutral500} weight="bold" />
-                                    <Typo size={13} fontWeight={signupMethod === 'phone' ? "700" : "600"} color={signupMethod === 'phone' ? colors.neutral900 : colors.neutral500}>
-                                        Phone Number
-                                    </Typo>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.methodTab, signupMethod === 'email' && styles.methodTabActive]}
-                                    onPress={() => {
-                                        phoneRef.current = "";
-                                        setSignupMethod('email');
-                                    }}
-                                    activeOpacity={0.8}
-                                >
-                                    <Icons.At size={15} color={signupMethod === 'email' ? colors.neutral900 : colors.neutral500} weight="bold" />
-                                    <Typo size={13} fontWeight={signupMethod === 'email' ? "700" : "600"} color={signupMethod === 'email' ? colors.neutral900 : colors.neutral500}>
-                                        Email
-                                    </Typo>
-                                </TouchableOpacity>
                             </View>
 
                             {/* Fields */}
                             <View style={styles.fields}>
                                 <View style={styles.fieldGroup}>
                                     <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                        FULL NAME
+                                        FULL NAME *
                                     </Typo>
                                     <Input
                                         placeholder="Your name"
+                                        autoComplete="name"
+                                        textContentType="name"
+                                        returnKeyType="next"
+                                        onSubmitEditing={() => phoneInputRef.current?.focus()}
                                         onChangeText={(value: string) => nameRef.current = value}
                                         icon={
                                             <Icons.User
@@ -165,56 +140,70 @@ const Register = () => {
                                     />
                                 </View>
 
-                                {signupMethod === 'phone' ? (
-                                    <View key="signup-phone-group" style={styles.fieldGroup}>
-                                        <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                            PHONE NUMBER
-                                        </Typo>
-                                        <Input
-                                            key="signup-phone-input"
-                                            placeholder="+91 98765 43210"
-                                            keyboardType="phone-pad"
-                                            autoCapitalize="none"
-                                            onChangeText={(value: string) => phoneRef.current = value}
-                                            icon={
-                                                <Icons.Phone
-                                                    size={verticalScale(20)}
-                                                    color={colors.neutral400}
-                                                    weight="regular"
-                                                />
-                                            }
-                                        />
-                                    </View>
-                                ) : (
-                                    <View key="signup-email-group" style={styles.fieldGroup}>
-                                        <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                            EMAIL
-                                        </Typo>
-                                        <Input
-                                            key="signup-email-input"
-                                            placeholder="you@email.com"
-                                            keyboardType="email-address"
-                                            autoCapitalize="none"
-                                            autoCorrect={false}
-                                            onChangeText={(value: string) => emailRef.current = value}
-                                            icon={
-                                                <Icons.At
-                                                    size={verticalScale(20)}
-                                                    color={colors.neutral400}
-                                                    weight="regular"
-                                                />
-                                            }
-                                        />
-                                    </View>
-                                )}
+                                <View style={styles.fieldGroup}>
+                                    <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                        PHONE NUMBER *
+                                    </Typo>
+                                    <Input
+                                        inputRef={phoneInputRef}
+                                        placeholder="+91 98765 43210"
+                                        keyboardType="phone-pad"
+                                        autoCapitalize="none"
+                                        autoComplete="tel"
+                                        textContentType="telephoneNumber"
+                                        returnKeyType="next"
+                                        onSubmitEditing={() => emailInputRef.current?.focus()}
+                                        onChangeText={(value: string) => phoneRef.current = value}
+                                        icon={
+                                            <Icons.Phone
+                                                size={verticalScale(20)}
+                                                color={colors.neutral400}
+                                                weight="regular"
+                                            />
+                                        }
+                                    />
+                                    <Typo size={11} color={colors.neutral400} style={{ marginLeft: 4 }}>
+                                        Required so contacts using Bubbly can discover you
+                                    </Typo>
+                                </View>
 
                                 <View style={styles.fieldGroup}>
                                     <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
-                                        PASSWORD
+                                        EMAIL *
                                     </Typo>
                                     <Input
+                                        inputRef={emailInputRef}
+                                        placeholder="you@email.com"
+                                        keyboardType="email-address"
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        autoComplete="email"
+                                        textContentType="emailAddress"
+                                        returnKeyType="next"
+                                        onSubmitEditing={() => passwordInputRef.current?.focus()}
+                                        onChangeText={(value: string) => emailRef.current = value}
+                                        icon={
+                                            <Icons.At
+                                                size={verticalScale(20)}
+                                                color={colors.neutral400}
+                                                weight="regular"
+                                            />
+                                        }
+                                    />
+                                </View>
+
+                                <View style={styles.fieldGroup}>
+                                    <Typo size={12} fontWeight="600" color={colors.neutral500} style={styles.label}>
+                                        PASSWORD *
+                                    </Typo>
+                                    <Input
+                                        inputRef={passwordInputRef}
                                         placeholder="Min. 6 characters"
                                         secureTextEntry={!showPassword}
+                                        autoComplete="new-password"
+                                        textContentType="newPassword"
+                                        returnKeyType="done"
+                                        onSubmitEditing={handleSubmit}
                                         onChangeText={(value: string) => passwordRef.current = value}
                                         icon={
                                             <Icons.Lock
@@ -225,7 +214,10 @@ const Register = () => {
                                         }
                                         rightIcon={
                                             <TouchableOpacity
-                                                onPress={() => setShowPassword(prev => !prev)}
+                                                onPress={() => {
+                                                    hapticTap("medium");
+                                                    setShowPassword(prev => !prev);
+                                                }}
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 activeOpacity={0.7}
                                             >
@@ -262,7 +254,10 @@ const Register = () => {
                                 {/* Google Sign-In Button */}
                                 <TouchableOpacity
                                     style={styles.googleBtn}
-                                    onPress={triggerGoogleSignIn}
+                                    onPress={() => {
+                                        hapticTap("heavy");
+                                        triggerGoogleSignIn();
+                                    }}
                                     activeOpacity={0.8}
                                     disabled={isGoogleLoading || isLoading}
                                 >
@@ -284,7 +279,10 @@ const Register = () => {
                                         Already have an account?
                                     </Typo>
                                     <Pressable
-                                        onPress={() => router.push("/(auth)/login")}
+                                        onPress={() => {
+                                            hapticTap("medium");
+                                            router.push("/(auth)/login");
+                                        }}
                                         style={({ pressed }) => pressed && { opacity: 0.6 }}
                                     >
                                         <Typo size={14} fontWeight="700" color={colors.neutral900}>

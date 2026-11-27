@@ -66,7 +66,13 @@ export function showBubblyAlert(
         options,
     });
     const hasDestructive = resolvedButtons.some((b) => b.style === "destructive");
-    hapticTap(options?.tone === "danger" || hasDestructive ? "warning" : "medium");
+    hapticTap(
+        options?.tone === "danger" || hasDestructive
+            ? "error"
+            : options?.tone === "success"
+            ? "success"
+            : "heavy"
+    );
     notify();
 }
 
@@ -205,7 +211,7 @@ export const BubblyAlertHost: React.FC = () => {
 
     const dismissWithCallback = (cb?: () => void) => {
         if (!current) return;
-        hapticTap("light");
+        hapticTap("medium");
         queue.shift();
         notify();
         if (cb) {

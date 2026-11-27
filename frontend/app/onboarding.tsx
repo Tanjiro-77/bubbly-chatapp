@@ -35,6 +35,7 @@ import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import Typo from "../components/Typo";
 import { markOnboardingCompleted } from "../hooks/useOnboarding";
+import { hapticTap } from "../utils/haptics";
 import {
     checkAllPermissions,
     requestPermissionByKey,
@@ -632,6 +633,7 @@ const NextButton: React.FC<{
     const buttonScale = useSharedValue(1);
 
     const handlePress = () => {
+        hapticTap(isLast ? "celebration" : "heavy");
         buttonScale.value = withSequence(
             withSpring(0.95, { damping: 10 }),
             withSpring(1, { damping: 10 })
@@ -785,6 +787,7 @@ export default function OnboardingScreen() {
     const [activeIndex, setActiveIndex] = useState(0);
     const flatListRef = useRef<FlatList<Slide>>(null);
     const scrollX = useSharedValue(0);
+    const lastSlideRef = useRef(0);
 
     const isLast = activeIndex === SLIDES.length - 1;
 
@@ -817,6 +820,7 @@ export default function OnboardingScreen() {
 
     const handleRequestPermission = useCallback(
         async (key: PermissionKey) => {
+            hapticTap("medium");
             const current = permissions[key];
             if (!current.canAskAgain && !current.granted) {
                 BubblyAlert.alert(
@@ -835,11 +839,13 @@ export default function OnboardingScreen() {
 
             const updated = await requestPermissionByKey(key);
             setPermissions((prev) => ({ ...prev, [key]: updated }));
+            hapticTap(updated.granted ? "success" : "warning");
         },
         [permissions]
     );
 
     const handleEnableAllPermissions = useCallback(async () => {
+        hapticTap("heavy");
         const keys: PermissionKey[] = [
             "camera",
             "microphone",
@@ -853,6 +859,7 @@ export default function OnboardingScreen() {
                 setPermissions((prev) => ({ ...prev, [k]: res }));
             }
         }
+        hapticTap("celebration");
     }, [permissions]);
 
     const scrollHandler = useAnimatedScrollHandler({
@@ -863,6 +870,10 @@ export default function OnboardingScreen() {
 
     const handleMomentumEnd = useCallback((e: any) => {
         const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+        if (index !== lastSlideRef.current) {
+            lastSlideRef.current = index;
+            hapticTap("medium");
+        }
         setActiveIndex(index);
     }, []);
 
@@ -881,6 +892,7 @@ export default function OnboardingScreen() {
             return;
         }
         const nextIndex = activeIndex + 1;
+        lastSlideRef.current = nextIndex;
         setActiveIndex(nextIndex);
         flatListRef.current?.scrollToIndex({
             index: nextIndex,
@@ -889,6 +901,7 @@ export default function OnboardingScreen() {
     }, [isLast, activeIndex, handleFinish]);
 
     const handleSkip = useCallback(async () => {
+        hapticTap("medium");
         await markOnboardingCompleted();
         if (isReplay) {
             router.back();

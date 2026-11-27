@@ -16,6 +16,8 @@ import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
 import { callAccept, callReject, onCallEnded } from '../../socket/socketEvents';
 import { acceptCallHttp, getCallStatus, rejectCallHttp } from '../../services/callService';
+import { clearDeliveredCallNotifications } from '../../services/notificationService';
+import { startIncomingRingtone, stopIncomingRingtone } from '../../services/soundService';
 import { hapticTap } from '../../utils/haptics';
 
 // ── Multi-Layer Pulsing Rings ──
@@ -138,26 +140,40 @@ const IncomingCall = () => {
             }
         };
         vibrate();
+        startIncomingRingtone().catch(() => {});
 
         onCallEnded(handleCallEndedByOther);
 
-        // Verify call is still ringing (guards against stale notification cold-starts)
+        // Verify call is still ringing cleanly (guards against stale cold-starts or missed socket call:ended)
+        let pollId: ReturnType<typeof setInterval> | null = null;
+        const verifyStillRinging = () => {
+            if (!callIdStr || hasEndedRef.current || isAcceptingRef.current) return;
+            getCallStatus(callIdStr)
+                .then((res) => {
+                    const status = res?.data?.status;
+                    if (status && !['ringing', 'connecting'].includes(status) && !hasEndedRef.current && !isAcceptingRef.current) {
+                        hasEndedRef.current = true;
+                        vibrationRef.current = false;
+                        Vibration.cancel();
+                        stopIncomingRingtone();
+                        clearDeliveredCallNotifications(callIdStr).catch(() => {});
+                        safeBack();
+                    }
+                })
+                .catch(() => {});
+        };
+
         if (callIdStr) {
-            getCallStatus(callIdStr).then((res) => {
-                const status = res?.data?.status;
-                if (status && !['ringing', 'connecting'].includes(status)) {
-                    hasEndedRef.current = true;
-                    vibrationRef.current = false;
-                    Vibration.cancel();
-                    safeBack();
-                }
-            }).catch(() => {});
+            verifyStillRinging();
+            pollId = setInterval(verifyStillRinging, 2000);
         }
 
         return () => {
             vibrationRef.current = false;
             if (timerId) clearTimeout(timerId);
+            if (pollId) clearInterval(pollId);
             Vibration.cancel();
+            stopIncomingRingtone();
             onCallEnded(handleCallEndedByOther, true);
         };
     }, []);
@@ -167,6 +183,8 @@ const IncomingCall = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
+        stopIncomingRingtone();
+        clearDeliveredCallNotifications(callIdStr).catch(() => {});
         hapticTap("warning");
         safeBack();
     };
@@ -185,7 +203,9 @@ const IncomingCall = () => {
         isAcceptingRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        hapticTap("heavy");
+        stopIncomingRingtone();
+        clearDeliveredCallNotifications(callIdStr).catch(() => {});
+        hapticTap("boom");
         try {
             callAccept(callIdStr);
             const res = await acceptCallHttp(callIdStr);
@@ -220,7 +240,9 @@ const IncomingCall = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        hapticTap("heavy");
+        stopIncomingRingtone();
+        clearDeliveredCallNotifications(callIdStr).catch(() => {});
+        hapticTap("boom");
         callReject(callIdStr);
         rejectCallHttp(callIdStr).catch(() => {});
         safeBack();
@@ -230,7 +252,9 @@ const IncomingCall = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
         Vibration.cancel();
-        hapticTap("heavy");
+        stopIncomingRingtone();
+        clearDeliveredCallNotifications(callIdStr).catch(() => {});
+        hapticTap("rigid");
         callReject(callIdStr);
         rejectCallHttp(callIdStr).catch(() => {});
         if (conversationIdStr) {

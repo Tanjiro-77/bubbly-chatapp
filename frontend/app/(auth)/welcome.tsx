@@ -9,6 +9,7 @@ import Button from "../../components/Button";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import AuthLegalFooter from "../../components/AuthLegalFooter";
+import { hapticTap } from "../../utils/haptics";
 
 const Welcome = () => {
   const router = useRouter();
@@ -24,9 +25,9 @@ const Welcome = () => {
         bounces={false}
       >
 
-        {/* ── Top Brand with V3.4.0 Badge ── */}
+        {/* ── Top Brand Badge ── */}
         <Animated.View
-          entering={FadeInDown.duration(600).delay(100).springify()}
+          entering={FadeInDown.duration(280)}
           style={styles.brandRow}
         >
           <View style={styles.brandLeft}>
@@ -44,14 +45,14 @@ const Welcome = () => {
 
           <View style={styles.versionBadge}>
             <Typo size={10} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
-              V4.0.2 RELEASE
+              V4.1.5 RELEASE
             </Typo>
           </View>
         </Animated.View>
 
         {/* ── Hero Image ── */}
         <Animated.Image
-          entering={FadeIn.duration(900).delay(200).springify()}
+          entering={FadeIn.duration(340).delay(40)}
           source={require('../../assets/images/welcome.png')}
           style={[styles.welcomeImage, { width: Math.min(width * 0.8, scale(320)), height: heroHeight }]}
           resizeMode="contain"
@@ -59,7 +60,7 @@ const Welcome = () => {
 
         {/* ── Bottom Section ── */}
         <Animated.View
-          entering={FadeInUp.duration(700).delay(350).springify()}
+          entering={FadeInUp.duration(320).delay(80)}
           style={styles.bottomSection}
         >
           {/* Feature Highlights Strip */}
@@ -127,7 +128,10 @@ const Welcome = () => {
             </Button>
 
             <TouchableOpacity
-              onPress={() => router.push('/(auth)/login')}
+              onPress={() => {
+                hapticTap("medium");
+                router.push('/(auth)/login');
+              }}
               style={styles.loginBtn}
               activeOpacity={0.65}
             >

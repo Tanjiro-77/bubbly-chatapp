@@ -209,22 +209,65 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         };
     }
 
-    const otherParticipantIds = conversation.participants
+    let updatedConv = conversation;
+    if (type !== "system") {
+        updatedConv = await bumpConversationForMessage(conversation, senderId, message._id);
+    } else {
+        await Conversation.updateOne(
+            { _id: conversationId },
+            { $set: { lastMessage: message._id, deletedFor: [], updatedAt: new Date() } }
+        );
+    }
+
+    const payload = formatMessagePayload(message, { sender, replyTo: replyToData });
+
+    const io = getIO();
+    io.to(conversationId).emit("newMessage", {
+        success: true,
+        conversationType: conversation.type,
+        conversationName: conversation.name || null,
+        data: payload,
+    });
+
+    emitUnreadCountUpdates(io, conversationId, updatedConv);
+
+    sendMessagePushNotifications({
+        conversation: updatedConv as any,
+        sender,
+        message: payload as any,
+    }).catch((err) => {
+        console.error("Message push notification error:", err instanceof Error ? err.message : err);
+    });
+
+    return payload;
+}
+
+/**
+ * Atomically increment unreadCounts for other participants, update lastMessage/updatedAt,
+ * and backfill any missing unreadCounts entries.
+ */
+export async function bumpConversationForMessage(
+    conversation: any,
+    senderId: string,
+    messageId: any
+) {
+    const conversationId = conversation._id.toString();
+    const otherParticipantIds = (conversation.participants || [])
         .map((p: any) => p.toString())
         .filter((pid: string) => pid !== senderId.toString());
 
+    const now = new Date();
     let updatedConv = conversation;
-    if (type !== "system" && otherParticipantIds.length > 0) {
-        // Atomic unread increment for existing entries + update lastMessage/deletedFor
+
+    if (otherParticipantIds.length > 0) {
         await Conversation.updateOne(
             { _id: conversationId },
             {
                 $inc: { "unreadCounts.$[elem].count": 1 },
-                $set: { lastMessage: message._id, deletedFor: [] },
+                $set: { lastMessage: messageId, deletedFor: [], updatedAt: now },
             },
             { arrayFilters: [{ "elem.userId": { $in: otherParticipantIds } }] }
         );
-        // Ensure any participant missing an unreadCounts entry gets count: 1
         const refreshed = await Conversation.findById(conversationId);
         if (refreshed) {
             const missingIds = otherParticipantIds.filter(
@@ -239,28 +282,25 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     } else {
         await Conversation.updateOne(
             { _id: conversationId },
-            { $set: { lastMessage: message._id, deletedFor: [] } }
+            { $set: { lastMessage: messageId, deletedFor: [], updatedAt: now } }
         );
     }
 
-    const payload = formatMessagePayload(message, { sender, replyTo: replyToData });
+    return updatedConv;
+}
 
-    const io = getIO();
-    io.to(conversationId).emit("newMessage", {
-        success: true,
-        conversationType: conversation.type,
-        conversationName: conversation.name || null,
-        data: payload,
-    });
-
-    const participantIds = conversation.participants.map((p: any) => p.toString());
+/**
+ * Emit fresh unreadCountUpdate events to all connected participants of a conversation.
+ */
+export function emitUnreadCountUpdates(io: ReturnType<typeof getIO>, conversationId: string, conversation: any) {
+    const participantIds = (conversation.participants || []).map((p: any) => p.toString());
     const allSockets = Array.from(io.sockets.sockets.values()).filter(
         (s) => participantIds.includes(s.data.userId?.toString())
     );
 
     allSockets.forEach((participantSocket) => {
         const participantId = participantSocket.data.userId?.toString();
-        const unreadEntry = updatedConv.unreadCounts.find(
+        const unreadEntry = (conversation.unreadCounts || []).find(
             (u: any) => u.userId.toString() === participantId
         );
         participantSocket.emit("unreadCountUpdate", {
@@ -268,16 +308,6 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
             unreadCount: unreadEntry?.count || 0,
         });
     });
-
-    sendMessagePushNotifications({
-        conversation: updatedConv as any,
-        sender,
-        message: payload as any,
-    }).catch((err) => {
-        console.error("Message push notification error:", err instanceof Error ? err.message : err);
-    });
-
-    return payload;
 }
 
 export async function createSystemMessage(

@@ -65,25 +65,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [token]);
 
+  const completeSession = async (resToken: string) => {
+    localStorage.setItem("bubbly_token", resToken);
+    const decoded = jwtDecode<DecodedTokenProps>(resToken);
+    const socketPromise = connectSocket().catch((err) => console.warn("Socket connection deferred:", err));
+    setToken(resToken);
+    setUser(decoded.user);
+    await socketPromise;
+  };
+
   const login = async (email: string, password: string) => {
     const res = await apiLogin(email, password);
     if (res.token) {
-      localStorage.setItem("bubbly_token", res.token);
-      setToken(res.token);
-      const decoded = jwtDecode<DecodedTokenProps>(res.token);
-      setUser(decoded.user);
-      await connectSocket().catch((err) => console.warn("Socket connection deferred:", err));
+      await completeSession(res.token);
     }
   };
 
   const register = async (email: string, password: string, name: string, avatar?: string | null) => {
     const res = await apiRegister(email, password, name, avatar);
     if (res.token) {
-      localStorage.setItem("bubbly_token", res.token);
-      setToken(res.token);
-      const decoded = jwtDecode<DecodedTokenProps>(res.token);
-      setUser(decoded.user);
-      await connectSocket().catch((err) => console.warn("Socket connection deferred:", err));
+      await completeSession(res.token);
     }
   };
 
@@ -102,7 +103,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     const updated = { ...user, ...data };
     setUser(updated);
-    emitUpdateProfile({ name: updated.name, avatar: updated.avatar });
+    emitUpdateProfile({
+      name: updated.name,
+      avatar: updated.avatar ?? undefined,
+    });
   };
 
   return (

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { registerUserEvents } from "./useEvents";
 import { registerChatEvents } from "./chatEvents";
@@ -28,6 +29,16 @@ export function intializeSocket(server: any): SocketIOServer {
     });
     setIO(io);
 
+    // Clear stale online flags & abandoned calls left behind by an unclean shutdown
+    if (mongoose.connection.readyState === 1) {
+        const now = new Date();
+        User.updateMany({ isOnline: true }, { isOnline: false, lastSeen: now }).catch(() => {});
+        Call.updateMany(
+            { status: { $in: ["ringing", "connecting", "connected"] } },
+            { status: "failed", endedAt: now }
+        ).catch(() => {});
+    }
+
     io.use((socket: Socket, next) => {
         const token = socket.handshake.auth.token;
         if (!token) {
@@ -39,7 +50,7 @@ export function intializeSocket(server: any): SocketIOServer {
             return next(new Error("Authentication error: server misconfigured"));
         }
 
-        jwt.verify(token, secret, { algorithms: ["HS256"] }, (err: any, decoded: any) => {
+        jwt.verify(token, secret, { algorithms: ["HS256"], ignoreExpiration: true }, (err: any, decoded: any) => {
             if (err || !decoded?.user?.id) {
                 return next(new Error("Authentication error: invalid token"));
             }
@@ -55,15 +66,6 @@ export function intializeSocket(server: any): SocketIOServer {
 
         socket.join(userRoom(userId));
 
-        try {
-            await User.findByIdAndUpdate(userId, {
-                isOnline: true,
-                lastSeen: null,
-            });
-        } catch (error) {
-            console.log("Error updating online status:", error);
-        }
-
         registerUserEvents(io, socket);
         registerChatEvents(io, socket);
         registerGroupEvents(io, socket);
@@ -71,15 +73,19 @@ export function intializeSocket(server: any): SocketIOServer {
         registerAppEvents(io, socket);
 
         try {
-            const conversations = await Conversation.find({
-                participants: userId
-            }).select("_id type");
+            const [, conversations, me] = await Promise.all([
+                User.findByIdAndUpdate(userId, {
+                    isOnline: true,
+                    lastSeen: null,
+                }),
+                Conversation.find({ participants: userId }).select("_id type").lean(),
+                User.findById(userId).select("privacy isOnline lastSeen").lean(),
+            ]);
 
             conversations.forEach(conversation => {
                 socket.join(conversation._id.toString());
             });
 
-            const me = await User.findById(userId).select("privacy isOnline lastSeen").lean();
             if (me) {
                 const visibility = me.privacy?.lastSeen || "everyone";
                 conversations.forEach(conversation => {
@@ -96,7 +102,7 @@ export function intializeSocket(server: any): SocketIOServer {
             }
 
         } catch (error: any) {
-            console.log("Error joining conversations:", error);
+            console.log("Error initializing user session:", error);
         }
 
         // Re-deliver any still-ringing incoming call that arrived while this user was reconnecting
@@ -158,7 +164,7 @@ export function intializeSocket(server: any): SocketIOServer {
 
                 const conversations = await Conversation.find({
                     participants: userId
-                }).select("_id type");
+                }).select("_id type").lean();
 
                 conversations.forEach(conversation => {
                     if (visibility === "contacts" && conversation.type !== "direct") return;

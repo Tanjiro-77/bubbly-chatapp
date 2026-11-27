@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
 import { normalizePhone, getLast10Digits } from "../controllers/contact.controller";
+import { registerUser } from "../controllers/auth.controller";
 import { generateToken } from "../utils/token";
 
 describe("Phone Contacts & Google Auth Service", () => {
@@ -95,5 +96,39 @@ describe("Phone Contacts & Google Auth Service", () => {
 
         assert.equal(decoded.user.phoneNumber, "+15559876543");
         assert.equal(decoded.user.name, "Updated User");
+    });
+
+    test("registerUser requires both email and phoneNumber", async () => {
+        const makeRes = () => {
+            const state = { status: 200, body: null as any };
+            return {
+                state,
+                res: {
+                    status(code: number) {
+                        state.status = code;
+                        return this;
+                    },
+                    json(payload: any) {
+                        state.body = payload;
+                    },
+                } as any,
+            };
+        };
+
+        const missingPhone = makeRes();
+        await registerUser(
+            { body: { name: "Test User", email: "user@example.com", password: "password123" } } as any,
+            missingPhone.res
+        );
+        assert.equal(missingPhone.state.status, 400);
+        assert.equal(missingPhone.state.body.success, false);
+
+        const missingEmail = makeRes();
+        await registerUser(
+            { body: { name: "Test User", phoneNumber: "+15551234567", password: "password123" } } as any,
+            missingEmail.res
+        );
+        assert.equal(missingEmail.state.status, 400);
+        assert.equal(missingEmail.state.body.success, false);
     });
 });

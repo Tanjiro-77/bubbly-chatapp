@@ -2,16 +2,23 @@
  * frontend/components/RealtimeNotifier.tsx
  *
  * App-wide real-time message & incoming-call coordinator:
- * - Reconnects Socket.IO, refreshes push token, and checks pending incoming calls on AppState active.
- * - Shows a Honey Amber floating banner across EVERY screen when new messages arrive for another chat.
- * - Fires local OS notifications if a socket message or incoming call arrives while backgrounded.
+ * - Reconnects Socket.IO, refreshes push token, and checks pending incoming calls on AppState active & reconnect.
+ * - Shows an interactive Honey Amber floating banner across EVERY screen when new messages arrive for another chat.
+ * - Fires local OS notifications with proper Android channels ('calls' / 'messages') & call actions when backgrounded.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, AppStateStatus, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+    AppState,
+    AppStateStatus,
+    PanResponder,
+    Platform,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
 import * as Icons from "phosphor-react-native";
 import Animated, { FadeInUp, FadeOutUp } from "react-native-reanimated";
 import { useRouter, useSegments } from "expo-router";
@@ -19,10 +26,19 @@ import { useAuth } from "../contexts/authContext";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import { connectSocket } from "../socket/socket";
-import { newMessage, onCallIncoming } from "../socket/socketEvents";
+import {
+    newMessage,
+    onCallEnded,
+    onCallIncoming,
+    onSocketConnectionChange,
+} from "../socket/socketEvents";
 import {
     claimIncomingCallScreen,
+    clearDeliveredCallNotifications,
     getActiveConversationId,
+    isCallHandledFromNotification,
+    markMessageNotificationSeen,
+    presentLocalNotification,
     registerForPushNotificationsAsync,
 } from "../services/notificationService";
 import { getPendingIncomingCall } from "../services/callService";
@@ -32,19 +48,52 @@ import {
     getPrivacyShield,
 } from "../utils/featureStorage";
 import { hapticTap } from "../utils/haptics";
+import {
+    getIncomingRingtoneId,
+    getIncomingRingtoneOption,
+    NOTIFICATION_SOUND_FILE,
+    playNotificationSound,
+} from "../services/soundService";
 import { IncomingCallProps, ResponseProps } from "../types";
 import Avatar from "./Avatar";
 import Typo from "./Typo";
+
+type ToastKind = "text" | "image" | "video" | "voice" | "file" | "poll" | "checklist" | "location" | "call";
 
 interface FloatingBannerState {
     id: string;
     convId: string;
     title: string;
     preview: string;
+    kind: ToastKind;
     avatar?: string;
     senderId?: string;
     conversationType: string;
     conversationName?: string;
+    burstCount: number;
+}
+
+function resolveToastBadge(kind: ToastKind) {
+    switch (kind) {
+        case "image":
+            return { icon: <Icons.Camera size={12} color={colors.primaryDark} weight="fill" />, label: "Photo" };
+        case "video":
+            return { icon: <Icons.VideoCamera size={12} color={colors.primaryDark} weight="fill" />, label: "Video" };
+        case "voice":
+            return { icon: <Icons.Microphone size={12} color={colors.primaryDark} weight="fill" />, label: "Voice" };
+        case "file":
+            return { icon: <Icons.Paperclip size={12} color={colors.primaryDark} weight="bold" />, label: "File" };
+        case "poll":
+            return { icon: <Icons.ChartBar size={12} color={colors.primaryDark} weight="fill" />, label: "Poll" };
+        case "checklist":
+            return { icon: <Icons.CheckSquare size={12} color={colors.primaryDark} weight="fill" />, label: "Tasks" };
+        case "location":
+            return { icon: <Icons.MapPin size={12} color={colors.primaryDark} weight="fill" />, label: "Pin" };
+        case "call":
+            return { icon: <Icons.PhoneIncoming size={12} color="#ef4444" weight="fill" />, label: "Call" };
+        default:
+            return { icon: <Icons.ChatCircleDots size={12} color={colors.primaryDark} weight="fill" />, label: "Live" };
+    }
 }
 
 export const RealtimeNotifier = () => {
@@ -59,6 +108,18 @@ export const RealtimeNotifier = () => {
     const segmentsRef = useRef(segments);
     segmentsRef.current = segments;
 
+    const swipeDismissResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponder: (_, gs) => gs.dy < -10 || Math.abs(gs.dx) > 22,
+            onPanResponderRelease: (_, gs) => {
+                if (gs.dy < -18 || Math.abs(gs.dx) > 65) {
+                    hapticTap("light");
+                    setBanner(null);
+                }
+            },
+        })
+    ).current;
+
     const launchIncomingCall = useCallback(
         (payload: {
             callId: string;
@@ -68,27 +129,29 @@ export const RealtimeNotifier = () => {
             kind: string;
             conversationId: string;
         }) => {
-            if (!payload?.callId || !claimIncomingCallScreen(payload.callId)) return;
+            if (!payload?.callId) return;
+            if (isCallHandledFromNotification(payload.callId)) return;
+            if (!claimIncomingCallScreen(payload.callId)) return;
 
-            hapticTap("heavy");
+            hapticTap("boom");
 
             if (Platform.OS !== "web" && appStateRef.current !== "active") {
-                Notifications.scheduleNotificationAsync({
-                    content: {
-                        title: payload.kind === "video" ? "Incoming Video Call" : "Incoming Voice Call",
-                        body: `${payload.callerName} is calling you on Bubbly`,
-                        sound: "default",
-                        data: {
-                            type: "call",
-                            callId: payload.callId,
-                            callerId: payload.callerId || "",
-                            callerName: payload.callerName,
-                            callerAvatar: payload.callerAvatar || "",
-                            kind: payload.kind || "voice",
-                            conversationId: payload.conversationId,
-                        },
+                const ringtone = getIncomingRingtoneOption(getIncomingRingtoneId());
+                presentLocalNotification({
+                    title: payload.kind === "video" ? "Incoming Video Call" : "Incoming Voice Call",
+                    body: `${payload.callerName} is calling you on Bubbly`,
+                    channelId: ringtone.channelId,
+                    categoryIdentifier: "incoming_call",
+                    sound: ringtone.soundFile,
+                    data: {
+                        type: "call",
+                        callId: payload.callId,
+                        callerId: payload.callerId || "",
+                        callerName: payload.callerName,
+                        callerAvatar: payload.callerAvatar || "",
+                        kind: payload.kind || "voice",
+                        conversationId: payload.conversationId,
                     },
-                    trigger: null,
                 }).catch(() => {});
             }
 
@@ -112,7 +175,7 @@ export const RealtimeNotifier = () => {
         try {
             const res = await getPendingIncomingCall();
             const pending = res?.data;
-            if (res?.success && pending?.callId) {
+            if (res?.success && pending?.callId && !isCallHandledFromNotification(String(pending.callId))) {
                 launchIncomingCall({
                     callId: String(pending.callId),
                     callerId: pending.caller?.id || "",
@@ -125,11 +188,17 @@ export const RealtimeNotifier = () => {
         } catch {}
     }, [user, launchIncomingCall]);
 
-    // Ensure AppState resume immediately reconnects socket, refreshes push token, and checks pending calls
+    // Ensure AppState resume & socket reconnect immediately check pending calls and refresh push token
     useEffect(() => {
         if (!user) return;
 
         checkPendingCallFallback();
+
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected) {
+                checkPendingCallFallback();
+            }
+        });
 
         const sub = AppState.addEventListener("change", (nextState) => {
             const prev = appStateRef.current;
@@ -141,7 +210,10 @@ export const RealtimeNotifier = () => {
             }
         });
 
-        return () => sub.remove();
+        return () => {
+            unsubConn();
+            sub.remove();
+        };
     }, [user, token, checkPendingCallFallback]);
 
     // Global real-time message & incoming call listeners (bound persistently via socketEvents)
@@ -162,12 +234,21 @@ export const RealtimeNotifier = () => {
             });
         };
 
+        const handleGlobalCallEnded = (data: { callId?: string }) => {
+            clearDeliveredCallNotifications(data?.callId).catch(() => {});
+        };
+
         const handleGlobalMessage = async (res: ResponseProps) => {
             if (!res?.success || !res.data?.id) return;
             const msg = res.data;
 
-            // Never alert for messages sent by the current user or silent deliveries
-            if (msg.sender?.id?.toString() === user.id?.toString() || msg.isSilent) return;
+            // Never alert for messages sent by the current user, system notices, or silent deliveries
+            if (msg.sender?.id?.toString() === user.id?.toString() || msg.isSilent || msg.type === "system") return;
+
+            if (msg.type === "call" && msg.callMeta?.callId) {
+                clearDeliveredCallNotifications(String(msg.callMeta.callId)).catch(() => {});
+                if (msg.callMeta.status !== "missed") return;
+            }
 
             // Never interrupt if user is actively inside that exact conversation
             const activeConvId = getActiveConversationId();
@@ -186,15 +267,39 @@ export const RealtimeNotifier = () => {
                 const senderName = privacy.hideNotificationPreview
                     ? "Bubbly"
                     : msg.sender?.name || "New Message";
+
+                let toastKind: ToastKind = "text";
+                if (msg.type === "call") toastKind = "call";
+                else if (msg.voiceUrl || msg.type === "voice") toastKind = "voice";
+                else if (msg.type === "video") toastKind = "video";
+                else if (msg.type === "file") toastKind = "file";
+                else if (msg.type === "poll") toastKind = "poll";
+                else if (msg.type === "checklist") toastKind = "checklist";
+                else if (msg.type === "location") toastKind = "location";
+                else if (msg.attachement || msg.type === "image") toastKind = "image";
+
                 const rawPreview =
-                    formatRichPreviewText(msg.content) ||
-                    (msg.voiceUrl
-                        ? "🎤 Voice message"
-                        : msg.type === "file"
-                        ? "📎 Document"
-                        : msg.attachement
-                        ? "📷 Photo"
-                        : "New message");
+                    msg.type === "call"
+                        ? msg.callMeta?.kind === "video"
+                            ? "📞 Missed video call"
+                            : "📞 Missed voice call"
+                        : formatRichPreviewText(msg.content) ||
+                          (toastKind === "voice"
+                              ? "🎤 Voice message"
+                              : toastKind === "file"
+                              ? "📎 Document"
+                              : toastKind === "video"
+                              ? "🎥 Video"
+                              : toastKind === "image"
+                              ? "📷 Photo"
+                              : toastKind === "poll"
+                              ? "📊 Poll"
+                              : toastKind === "checklist"
+                              ? "✅ Shared Checklist"
+                              : toastKind === "location"
+                              ? "📍 Location"
+                              : "New message");
+
                 const preview = privacy.hideNotificationPreview
                     ? "🔒 New encrypted message"
                     : rawPreview;
@@ -205,49 +310,52 @@ export const RealtimeNotifier = () => {
                         : senderName;
 
                 if (appStateRef.current === "active") {
-                    hapticTap("medium");
+                    hapticTap("heavy");
+                    playNotificationSound().catch(() => {});
                     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-                    setBanner({
+                    setBanner((prev) => ({
                         id: String(msg.id),
                         convId: String(msg.conversationId),
                         title,
                         preview,
+                        kind: toastKind,
                         avatar: privacy.hideNotificationPreview ? undefined : msg.sender?.avatar,
                         senderId: msg.sender?.id,
                         conversationType: (res as any).conversationType || "direct",
                         conversationName: (res as any).conversationName || senderName,
-                    });
+                        burstCount: prev && prev.convId === String(msg.conversationId) ? prev.burstCount + 1 : 1,
+                    }));
                     dismissTimerRef.current = setTimeout(() => {
                         setBanner(null);
-                    }, 4200);
-                } else if (Platform.OS !== "web") {
-                    await Notifications.scheduleNotificationAsync({
-                        content: {
-                            title,
-                            body: preview.slice(0, 180),
-                            sound: soundPref === "false" ? undefined : "default",
-                            data: {
-                                type: "message",
-                                conversationId: String(msg.conversationId),
-                                messageId: String(msg.id),
-                                senderId: msg.sender?.id || "",
-                                senderName,
-                                senderAvatar: msg.sender?.avatar || "",
-                                conversationType: (res as any).conversationType || "direct",
-                                conversationName: (res as any).conversationName || senderName,
-                            },
+                    }, 4600);
+                } else if (Platform.OS !== "web" && markMessageNotificationSeen(String(msg.id))) {
+                    await presentLocalNotification({
+                        title,
+                        body: preview.slice(0, 180),
+                        channelId: "messages",
+                        sound: soundPref === "false" ? undefined : NOTIFICATION_SOUND_FILE,
+                        data: {
+                            type: "message",
+                            conversationId: String(msg.conversationId),
+                            messageId: String(msg.id),
+                            senderId: msg.sender?.id || "",
+                            senderName,
+                            senderAvatar: msg.sender?.avatar || "",
+                            conversationType: (res as any).conversationType || "direct",
+                            conversationName: (res as any).conversationName || senderName,
                         },
-                        trigger: null,
-                    }).catch(() => {});
+                    });
                 }
             } catch {}
         };
 
         onCallIncoming(handleGlobalIncomingCall);
+        onCallEnded(handleGlobalCallEnded);
         newMessage(handleGlobalMessage);
 
         return () => {
             onCallIncoming(handleGlobalIncomingCall, true);
+            onCallEnded(handleGlobalCallEnded, true);
             newMessage(handleGlobalMessage, true);
             if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
         };
@@ -258,7 +366,7 @@ export const RealtimeNotifier = () => {
     const handleOpenBanner = () => {
         const current = banner;
         setBanner(null);
-        hapticTap("light");
+        hapticTap("medium");
         if (!current) return;
 
         const participantsPayload = current.senderId
@@ -286,24 +394,38 @@ export const RealtimeNotifier = () => {
         else router.push(target);
     };
 
+    const badge = resolveToastBadge(banner.kind);
+
     return (
         <Animated.View
-            entering={FadeInUp.duration(240).springify()}
+            entering={FadeInUp.duration(260).springify()}
             exiting={FadeOutUp.duration(180)}
             style={[styles.wrap, { top: Math.max(insets.top, 12) + verticalScale(6) }]}
             pointerEvents="box-none"
+            {...swipeDismissResponder.panHandlers}
         >
             <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={handleOpenBanner}
                 style={styles.card}
             >
-                <Avatar size={38} uri={banner.avatar || null} isGroup={banner.conversationType === "group"} />
+                <View style={styles.avatarHolder}>
+                    <Avatar size={40} uri={banner.avatar || null} isGroup={banner.conversationType === "group"} />
+                    <View style={styles.liveDot} />
+                </View>
                 <View style={styles.textWrap}>
-                    <Typo size={13.5} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
-                        {banner.title}
-                    </Typo>
-                    <Typo size={12} color="rgba(255,255,255,0.78)" textProps={{ numberOfLines: 1 }}>
+                    <View style={styles.titleRow}>
+                        <Typo size={13.5} fontWeight="800" color={colors.white} style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1 }}>
+                            {banner.title}
+                        </Typo>
+                        <View style={styles.typeChip}>
+                            {badge.icon}
+                            <Typo size={10} fontWeight="800" color={colors.primaryLight}>
+                                {banner.burstCount > 1 ? `${banner.burstCount} new` : badge.label}
+                            </Typo>
+                        </View>
+                    </View>
+                    <Typo size={12} color="rgba(255,255,255,0.8)" textProps={{ numberOfLines: 1 }}>
                         {banner.preview}
                     </Typo>
                 </View>
@@ -311,7 +433,10 @@ export const RealtimeNotifier = () => {
                     <Typo size={11} fontWeight="800" color={colors.black}>Open</Typo>
                 </View>
                 <TouchableOpacity
-                    onPress={() => setBanner(null)}
+                    onPress={() => {
+                        hapticTap("light");
+                        setBanner(null);
+                    }}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     style={styles.closeBtn}
                 >
@@ -338,22 +463,55 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacingX._12,
         paddingVertical: spacingY._10,
         borderWidth: 1.5,
-        borderColor: "rgba(245, 158, 11, 0.5)",
+        borderColor: "rgba(250, 204, 21, 0.52)",
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.38,
         shadowRadius: 16,
         elevation: 12,
+    },
+    avatarHolder: {
+        position: "relative",
+        flexShrink: 0,
+    },
+    liveDot: {
+        position: "absolute",
+        bottom: 0,
+        right: 0,
+        width: 11,
+        height: 11,
+        borderRadius: 6,
+        backgroundColor: "#22c55e",
+        borderWidth: 2,
+        borderColor: "#1c1917",
     },
     textWrap: {
         flex: 1,
         minWidth: 0,
-        gap: 2,
+        gap: 3,
+    },
+    titleRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(6),
+        minWidth: 0,
+    },
+    typeChip: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 3,
+        backgroundColor: "rgba(250, 204, 21, 0.14)",
+        borderWidth: 1,
+        borderColor: "rgba(250, 204, 21, 0.28)",
+        paddingHorizontal: scale(6),
+        paddingVertical: 1,
+        borderRadius: radius.full,
+        flexShrink: 0,
     },
     replyPill: {
         backgroundColor: colors.primary,
         paddingHorizontal: scale(10),
-        paddingVertical: verticalScale(4),
+        paddingVertical: verticalScale(5),
         borderRadius: radius.full,
         flexShrink: 0,
     },

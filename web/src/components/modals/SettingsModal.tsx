@@ -226,7 +226,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenVau
 
             {/* Developer Card */}
             <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-3.5">
-              <div className="w-13 h-13 rounded-2xl overflow-hidden border-2 border-amber-500 shrink-0 shadow-md">
+              <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-amber-500 shrink-0 shadow-md">
                 <img
                   src="/developer-photo.png"
                   alt="Arnav Khari"

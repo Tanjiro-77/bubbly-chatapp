@@ -47,7 +47,7 @@ export const Route = createFileRoute("/download")({
   component: DownloadPage,
 });
 
-const OFFICIAL_SHA256 = "bubbly-v4.0.2-sha256-verified-release-build-apk";
+const OFFICIAL_SHA256 = "bubbly-v4.1.5-sha256-verified-release-build-apk";
 
 export function DownloadPage() {
   useReveal();

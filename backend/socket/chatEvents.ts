@@ -3,7 +3,7 @@ import { isValidObjectId } from "mongoose";
 import Conversation from "../modals/Conversation";
 import Message from "../modals/Message";
 import User from "../modals/User";
-import { createAndBroadcastMessage } from "../services/messageService";
+import { bumpConversationForMessage, createAndBroadcastMessage, emitUnreadCountUpdates } from "../services/messageService";
 import { formatMessagePayload, maskAnonymousPoll } from "../utils/messageFormat";
 import { sendMessagePushNotifications } from "../services/pushNotificationService";
 import { areBlocked, canSendInGroup, filterBlockedDirect, sanitizeLastSeen } from "../utils/permissions";
@@ -11,7 +11,21 @@ import SavedMessage from "../modals/SavedMessage";
 import { userRoom } from "./io";
 
 function sanitizeLastMessage(lastMessage: any) {
-    if (!lastMessage || !lastMessage.isViewOnce) return lastMessage;
+    if (!lastMessage) return lastMessage;
+    if (lastMessage.isDeleted) {
+        return {
+            ...lastMessage,
+            content: "",
+            attachement: null,
+            voiceUrl: null,
+            attachmentMeta: null,
+            location: null,
+            poll: null,
+            checklist: null,
+            callMeta: null,
+        };
+    }
+    if (!lastMessage.isViewOnce) return lastMessage;
     return {
         ...lastMessage,
         attachement: null,
@@ -20,6 +34,38 @@ function sanitizeLastMessage(lastMessage: any) {
             ? { ...lastMessage.attachmentMeta, url: undefined }
             : null,
     };
+}
+
+function sanitizeConversationParticipants(
+    participants: any[],
+    viewerId: string,
+    isDirect: boolean,
+    viewerBlockedSet?: Set<string>
+) {
+    return (participants || []).map((p: any) => {
+        if (!p || typeof p !== "object" || !p._id) return p;
+        const pid = p._id.toString();
+        const isSelf = pid === viewerId.toString();
+        const targetBlockedViewer = Array.isArray(p.blockedUsers)
+            && p.blockedUsers.some((id: any) => id.toString() === viewerId.toString());
+        const isBlockedPair = !isSelf && (Boolean(viewerBlockedSet?.has(pid)) || targetBlockedViewer);
+        const { privacy: _privacy, blockedUsers: _blocked, ...rest } = p;
+        if (isBlockedPair) {
+            return {
+                ...rest,
+                isOnline: false,
+                lastSeen: null,
+                customStatus: null,
+            };
+        }
+        const status = sanitizeLastSeen(viewerId.toString(), p, isDirect);
+        return {
+            ...rest,
+            isOnline: status.isOnline,
+            lastSeen: status.lastSeen,
+            customStatus: status.hidden ? null : (p.customStatus ?? null),
+        };
+    });
 }
 
 export function registerChatEvents(io: SocketIOServer, socket: Socket) {
@@ -32,20 +78,27 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            const conversations = await Conversation.find({
-                participants: userId,
-                deletedFor: { $ne: userId },
-            })
-                .sort({ updatedAt: -1 })
-                .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent" })
-                .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus" })
-                .populate({ path: "admins", select: "name avatar" })
-                .populate({
-                    path: "pinnedMessages",
-                    select: "content senderId type createdAt isDeleted",
-                    populate: { path: "senderId", select: "name avatar" }
+            const [me, conversations] = await Promise.all([
+                User.findById(userId).select("blockedUsers").lean(),
+                Conversation.find({
+                    participants: userId,
+                    deletedFor: { $ne: userId },
                 })
-                .lean();
+                    .sort({ updatedAt: -1 })
+                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent" })
+                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus privacy blockedUsers" })
+                    .populate({ path: "admins", select: "name avatar" })
+                    .populate({
+                        path: "pinnedMessages",
+                        select: "content senderId type createdAt isDeleted",
+                        populate: { path: "senderId", select: "name avatar" }
+                    })
+                    .lean(),
+            ]);
+
+            const viewerBlockedSet = new Set<string>(
+                (me?.blockedUsers || []).map((id: any) => id.toString())
+            );
 
             const now = new Date();
             const conversationsWithUnread = conversations.map((conv: any) => {
@@ -66,8 +119,19 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 if (lm?.poll?.isAnonymous) {
                     lm.poll = maskAnonymousPoll(lm.poll, userId);
                 }
+                const sanitizedParticipants = sanitizeConversationParticipants(
+                    conv.participants,
+                    userId,
+                    conv.type === "direct",
+                    viewerBlockedSet
+                );
+                const validPinnedMessages = (conv.pinnedMessages || []).filter(
+                    (pm: any) => pm && !pm.isDeleted
+                );
                 return {
                     ...conv,
+                    participants: sanitizedParticipants,
+                    pinnedMessages: validPinnedMessages,
                     lastMessage: lm,
                     unreadCount: unreadEntry?.count || 0,
                     isMuted,
@@ -121,9 +185,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     { $pull: { deletedFor: userId } },
                     { new: true }
                 )
-                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen" })
+                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus privacy blockedUsers" })
                     .populate({ path: "admins", select: "name avatar" })
-                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll isViewOnce viewOnceOpenedBy" })
+                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy" })
                     .lean();
 
                 if (existingConversation) {
@@ -139,6 +203,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         success: true,
                         data: {
                             ...existingConversation,
+                            participants: sanitizeConversationParticipants(existingConversation.participants, userId, true),
                             lastMessage: existingLm,
                             isNew: false,
                             unreadCount: unreadEntry?.count || 0,
@@ -205,6 +270,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
         try {
             const senderId = socket.data.userId;
             if (!senderId) throw new Error("Unauthorized");
+            if (!data || typeof data !== "object") {
+                throw new Error("Invalid message payload");
+            }
             if (data.sender?.id && data.sender.id !== senderId) {
                 throw new Error("Sender mismatch");
             }
@@ -353,10 +421,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     .lean(),
             ]);
 
-            const saved = await SavedMessage.find({
-                userId,
-                messageId: { $in: messages.map((m) => m._id) },
-            }).select("messageId").lean();
+            const saved = messages.length > 0
+                ? await SavedMessage.find({
+                    userId,
+                    messageId: { $in: messages.map((m) => m._id) },
+                }).select("messageId").lean()
+                : [];
             const savedSet = new Set(saved.map((s) => s.messageId.toString()));
 
             const messagesWithSender = messages.map(message => {
@@ -430,14 +500,16 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             });
             if (!conversation) return;
 
-            await Conversation.findByIdAndUpdate(
-                data.conversationId,
-                { $set: { "unreadCounts.$[elem].count": 0 } },
-                { arrayFilters: [{ "elem.userId": userId }], new: true }
-            );
+            const [, senderPrivacy] = await Promise.all([
+                Conversation.findByIdAndUpdate(
+                    data.conversationId,
+                    { $set: { "unreadCounts.$[elem].count": 0 } },
+                    { arrayFilters: [{ "elem.userId": userId }], new: true }
+                ),
+                User.findById(userId).select("privacy").lean(),
+            ]);
             io.to(userRoom(userId)).emit("unreadCountUpdate", { conversationId: data.conversationId, unreadCount: 0 });
 
-            const senderPrivacy = await User.findById(userId).select("privacy").lean();
             if (senderPrivacy?.privacy?.readReceipts !== false) {
                 socket.to(data.conversationId).emit("readReceipt", {
                     conversationId: data.conversationId,
@@ -589,6 +661,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             message.attachmentMeta = undefined;
             message.location = undefined;
             message.poll = undefined;
+            (message as any).checklist = undefined;
+            message.callMeta = undefined;
             message.reactions = [] as any;
             message.isPinned = false;
             await message.save();
@@ -678,7 +752,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("editMessage", { success: false, msg: "Cannot edit a deleted message" });
                 return;
             }
-            if (message.voiceUrl || ["voice", "file", "location", "call", "system", "poll"].includes(message.type)) {
+            if (message.voiceUrl || ["voice", "file", "location", "call", "system", "poll", "checklist"].includes(message.type)) {
                 socket.emit("editMessage", { success: false, msg: "Cannot edit this message type" });
                 return;
             }
@@ -843,42 +917,19 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 },
             });
 
-            // Atomic unread count update (prevents race conditions vs concurrent messages)
-            const pollUnreadInc: Record<string, number> = {};
-            for (const participantId of conversation.participants) {
-                if (participantId.toString() === senderId.toString()) continue;
-                const idx = (conversation.unreadCounts || []).findIndex(
-                    (u: any) => u.userId.toString() === participantId.toString()
-                );
-                if (idx >= 0) pollUnreadInc[`unreadCounts.${idx}.count`] = 1;
-            }
-            await Conversation.findByIdAndUpdate(data.conversationId, {
-                $set: { deletedFor: [], lastMessage: message._id },
-                $inc: pollUnreadInc,
-            });
+            const updatedConv = await bumpConversationForMessage(conversation, senderId, message._id);
 
             io.to(data.conversationId).emit("newMessage", {
                 success: true,
+                conversationType: conversation.type,
+                conversationName: conversation.name || null,
                 data: payload,
             });
 
-            const participantIds = conversation.participants.map((p: any) => p.toString());
-            const allSockets = Array.from(io.sockets.sockets.values()).filter(
-                (s) => participantIds.includes(s.data.userId?.toString())
-            );
-            allSockets.forEach((participantSocket) => {
-                const participantId = participantSocket.data.userId?.toString();
-                const unreadEntry = conversation.unreadCounts.find(
-                    (u: any) => u.userId.toString() === participantId
-                );
-                participantSocket.emit("unreadCountUpdate", {
-                    conversationId: data.conversationId,
-                    unreadCount: unreadEntry?.count || 0,
-                });
-            });
+            emitUnreadCountUpdates(io, data.conversationId, updatedConv);
 
             sendMessagePushNotifications({
-                conversation: conversation as any,
+                conversation: updatedConv as any,
                 sender: payload.sender ?? {
                     id: senderId.toString(),
                     name: socket.data.name || "Someone",
@@ -1477,10 +1528,9 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            let sentCount = 0;
-            for (const targetId of data.targetConversationIds) {
-                try {
-                    await createAndBroadcastMessage({
+            const results = await Promise.allSettled(
+                data.targetConversationIds.map((targetId) =>
+                    createAndBroadcastMessage({
                         conversationId: targetId,
                         senderId,
                         content: original.content,
@@ -1492,12 +1542,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         type: original.type,
                         checklist: (original as any).checklist || undefined,
                         isForwarded: true,
-                    });
-                    sentCount++;
-                } catch (err) {
-                    console.log(`Failed to forward to conversation ${targetId}:`, err);
-                }
-            }
+                    })
+                )
+            );
+            const sentCount = results.filter((r) => r.status === "fulfilled").length;
 
             socket.emit("forwardMessage", { success: true, data: { sentCount } });
         } catch (error: any) {
@@ -1561,6 +1609,10 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
     socket.on("toggleMuteConversation", async (data: { conversationId: string; durationHours?: number; unmute?: boolean }) => {
         try {
             const userId = socket.data.userId;
+            if (!data?.conversationId || !isValidObjectId(data.conversationId)) {
+                socket.emit("toggleMuteConversation", { success: false, msg: "Invalid conversation" });
+                return;
+            }
             const conversation = await Conversation.findOne({
                 _id: data.conversationId,
                 participants: userId,

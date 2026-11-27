@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { formatRichPreviewText, getPrivacyShield, notifyFeatureListeners } from "../utils/featureStorage";
+import { NOTIFICATION_SOUND_FILE } from "./soundService";
 
 const REMINDERS_KEY = "@bubbly_message_reminders_v1";
 
@@ -71,7 +72,8 @@ export async function scheduleMessageReminder(params: {
                     body: privacy.hideNotificationPreview
                         ? "🔒 Tap to open reminder"
                         : cleanPreview.slice(0, 160),
-                    sound: "default",
+                    sound: NOTIFICATION_SOUND_FILE,
+                    interruptionLevel: "timeSensitive",
                     data: {
                         type: "message",
                         conversationId: params.conversationId,
@@ -81,6 +83,7 @@ export async function scheduleMessageReminder(params: {
                 trigger: {
                     type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
                     seconds: safeDelaySec,
+                    ...(Platform.OS === "android" ? { channelId: "messages" } : {}),
                 },
             });
         }

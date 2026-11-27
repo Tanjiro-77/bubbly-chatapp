@@ -19,6 +19,8 @@ import { bubblyAlert } from "../common/BubblyDialog";
 
 interface MessageInputProps {
   conversationId: string;
+  initialDraft?: string;
+  onDraftChange?: (conversationId: string, text: string) => void;
   onSendMessage: (payload: {
     content: string;
     type?: string;
@@ -60,6 +62,8 @@ const EMOJI_CATEGORIES = [
 
 export const MessageInput: React.FC<MessageInputProps> = ({
   conversationId,
+  initialDraft = "",
+  onDraftChange,
   onSendMessage,
   onEditMessage,
   onTyping,
@@ -70,7 +74,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onCancelEdit,
   onOpenPollModal,
 }) => {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialDraft);
   const [showEmojis, setShowEmojis] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isViewOnce, setIsViewOnce] = useState(false);
@@ -95,6 +99,25 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
 
+  // Reset composer state cleanly when switching conversations so drafts/files never leak across chats
+  useEffect(() => {
+    setText(initialDraft || "");
+    setShowEmojis(false);
+    setShowAttachMenu(false);
+    setIsViewOnce(false);
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  }, [conversationId]);
+
   useEffect(() => {
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -111,7 +134,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   }, [editingMessage]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
+    const nextVal = e.target.value;
+    setText(nextVal);
+    onDraftChange?.(conversationId, nextVal);
 
     // Typing debounce
     onTyping();
@@ -193,6 +218,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           });
 
           setText("");
+          onDraftChange?.(conversationId, "");
           clearSelectedFile();
           setIsViewOnce(false);
           if (replyingTo) onCancelReply();
@@ -222,6 +248,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     });
 
     setText("");
+    onDraftChange?.(conversationId, "");
     if (replyingTo) onCancelReply();
     onStopTyping();
   };

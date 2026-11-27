@@ -20,8 +20,8 @@ export const generateToken = (user: UserProps | any) => {
         }
     };
 
+    // Persistent session token with no automatic 30-day expiration
     return jwt.sign(payload, secret, {
         algorithm: "HS256",
-        expiresIn: "30d",
     });
 };

@@ -27,12 +27,27 @@ import Typo from "../../components/Typo";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import BackButton from "../../components/BackButton";
 import { scale, verticalScale } from "../../utils/styling";
-import { hapticTap } from "../../utils/haptics";
+import {
+    getHapticStrength,
+    hapticTap,
+    HapticStrength,
+    initHapticStrength,
+    setHapticStrength,
+} from "../../utils/haptics";
 import { useAuth } from "../../contexts/authContext";
 import {
     registerForPushNotificationsAsync,
     syncNotificationPreference,
 } from "../../services/notificationService";
+import {
+    DEFAULT_RINGTONE_ID,
+    INCOMING_RINGTONES,
+    IncomingRingtoneId,
+    initIncomingRingtone,
+    previewIncomingRingtone,
+    setIncomingRingtoneId,
+    stopPreviewRingtone,
+} from "../../services/soundService";
 import { getBlockedUsers, blockUser, isSocketConnected, updateProfile } from "../../socket/socketEvents";
 import {
     ACCENT_SWATCHES,
@@ -124,7 +139,14 @@ const Row: React.FC<RowProps> = ({
 }) => (
     <TouchableOpacity
         activeOpacity={onPress ? 0.6 : 1}
-        onPress={onPress}
+        onPress={
+            onPress
+                ? () => {
+                      hapticTap(danger ? "warning" : "medium");
+                      onPress();
+                  }
+                : undefined
+        }
         disabled={!onPress}
         style={[styles.row, !isLast && styles.rowBorder]}
     >
@@ -229,7 +251,10 @@ const PermissionRow: React.FC<PermissionRowProps> = ({
             <TouchableOpacity
                 style={styles.enableBtn}
                 activeOpacity={0.7}
-                onPress={() => onRequest(permKey)}
+                onPress={() => {
+                    hapticTap("medium");
+                    onRequest(permKey);
+                }}
             >
                 <Typo size={11} fontWeight="700" color={colors.neutral900}>
                     {canAskAgain ? "Enable" : "Settings"}
@@ -247,6 +272,10 @@ export default function SettingsScreen() {
 
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [soundEnabled, setSoundEnabled] = useState(true);
+    const [callRingtone, setCallRingtone] = useState<IncomingRingtoneId>(DEFAULT_RINGTONE_ID);
+    const [previewingToneId, setPreviewingToneId] = useState<IncomingRingtoneId | null>(null);
+    const previewStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [hapticStrength, setHapticStrengthState] = useState<HapticStrength>(() => getHapticStrength());
     const [appLockEnabled, setAppLockEnabled] = useState(false);
     const [loadingPrefs, setLoadingPrefs] = useState(true);
     const [appearance, setAppearance] = useState<ChatAppearanceConfig>(DEFAULT_APPEARANCE);
@@ -274,7 +303,7 @@ export default function SettingsScreen() {
     useEffect(() => {
         (async () => {
             try {
-                const [notif, sound, lock, appCfg, shieldCfg, focusCfg, remList] = await Promise.all([
+                const [notif, sound, lock, appCfg, shieldCfg, focusCfg, remList, hapStrength, toneId] = await Promise.all([
                     AsyncStorage.getItem(NOTIF_KEY),
                     AsyncStorage.getItem(SOUND_KEY),
                     AsyncStorage.getItem(APP_LOCK_KEY),
@@ -282,10 +311,14 @@ export default function SettingsScreen() {
                     getPrivacyShield(),
                     getFocusMode(),
                     getActiveReminders(),
+                    initHapticStrength(),
+                    initIncomingRingtone(),
                 ]);
                 if (notif !== null) setNotificationsEnabled(notif === "true");
                 if (sound !== null) setSoundEnabled(sound === "true");
                 if (lock !== null) setAppLockEnabled(lock === "true");
+                setHapticStrengthState(hapStrength);
+                setCallRingtone(toneId);
                 setAppearance(appCfg);
                 setPrivacyShield(shieldCfg);
                 setFocusEnabled(focusCfg.enabled);
@@ -310,6 +343,8 @@ export default function SettingsScreen() {
 
         return () => {
             subscription.remove();
+            if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
+            stopPreviewRingtone();
             if (blockedHandlerRef.current) {
                 getBlockedUsers(blockedHandlerRef.current, true);
                 blockedHandlerRef.current = null;
@@ -340,6 +375,7 @@ export default function SettingsScreen() {
 
             const updated = await requestPermissionByKey(key);
             setPermissions((prev) => ({ ...prev, [key]: updated }));
+            hapticTap(updated.granted ? "success" : "warning");
 
             if (!updated.granted && !updated.canAskAgain) {
                 BubblyAlert.alert(
@@ -376,6 +412,7 @@ export default function SettingsScreen() {
     }, []);
 
     const toggleAppLock = useCallback(async (value: boolean) => {
+        hapticTap("heavy");
         setAppLockEnabled(value);
         try {
             await AsyncStorage.setItem(APP_LOCK_KEY, String(value));
@@ -463,7 +500,10 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                     style={styles.profileCard}
                     activeOpacity={0.7}
-                    onPress={() => router.push("/(main)/profileModel")}
+                    onPress={() => {
+                        hapticTap("medium");
+                        router.push("/(main)/profileModel");
+                    }}
                 >
                     <Image
                         source={
@@ -547,7 +587,10 @@ export default function SettingsScreen() {
                 {/* ── Open Device Settings Shortcut ── */}
                 <TouchableOpacity
                     style={styles.deviceSettingsBtn}
-                    onPress={() => openDeviceSettings()}
+                    onPress={() => {
+                        hapticTap("medium");
+                        openDeviceSettings();
+                    }}
                     activeOpacity={0.7}
                 >
                     <MaterialIcons name="settings" size={16} color={colors.neutral600} />
@@ -584,7 +627,7 @@ export default function SettingsScreen() {
                         iconColor={colors.primaryDark}
                         iconBg={colors.primaryLight + "55"}
                         label="Sound & Vibration"
-                        subtitle="Playback for incoming messages"
+                        subtitle="Notification chimes, dial tones & call alerts"
                         right={
                             <Switch
                                 value={soundEnabled}
@@ -598,6 +641,161 @@ export default function SettingsScreen() {
                             />
                         }
                     />
+                    <View style={[styles.row, styles.rowBorder, { flexDirection: "column", alignItems: "stretch", gap: verticalScale(10) }]}>
+                        <View style={styles.rowLeft}>
+                            <View style={[styles.iconBadge, { backgroundColor: "#dcfce7" }]}>
+                                <MaterialIcons name="ring-volume" size={19} color="#16a34a" />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                    Incoming Call Ringtone
+                                </Typo>
+                                <Typo size={11.5} color={colors.neutral400} style={{ marginTop: verticalScale(2) }}>
+                                    Choose 1 of 4 custom ringtones for incoming & closed-app calls
+                                </Typo>
+                            </View>
+                        </View>
+                        <View style={{ gap: verticalScale(7) }}>
+                            {INCOMING_RINGTONES.map((tone) => {
+                                const selected = callRingtone === tone.id;
+                                const isPlaying = previewingToneId === tone.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={tone.id}
+                                        activeOpacity={0.78}
+                                        onPress={async () => {
+                                            hapticTap("heavy");
+                                            setCallRingtone(tone.id);
+                                            await setIncomingRingtoneId(tone.id);
+                                            if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
+                                            setPreviewingToneId(tone.id);
+                                            await previewIncomingRingtone(tone.id);
+                                            previewStateTimerRef.current = setTimeout(() => {
+                                                setPreviewingToneId(null);
+                                            }, 5500);
+                                        }}
+                                        style={{
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                            paddingHorizontal: spacingX._12,
+                                            paddingVertical: verticalScale(9),
+                                            borderRadius: radius._12,
+                                            backgroundColor: selected ? "#fef9c3" : colors.neutral50,
+                                            borderWidth: 1.5,
+                                            borderColor: selected ? colors.primary : colors.neutral200,
+                                            gap: scale(10),
+                                        }}
+                                    >
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: scale(10), flex: 1, minWidth: 0 }}>
+                                            <MaterialIcons
+                                                name={selected ? "radio-button-checked" : "radio-button-unchecked"}
+                                                size={18}
+                                                color={selected ? colors.primaryDark : colors.neutral400}
+                                            />
+                                            <View style={{ flex: 1, minWidth: 0 }}>
+                                                <Typo size={13.5} fontWeight={selected ? "700" : "600"} color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                                    {tone.label}
+                                                </Typo>
+                                                <Typo size={11} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
+                                                    {tone.subtitle}
+                                                </Typo>
+                                            </View>
+                                        </View>
+                                        <TouchableOpacity
+                                            activeOpacity={0.75}
+                                            onPress={async () => {
+                                                hapticTap("medium");
+                                                if (isPlaying) {
+                                                    if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
+                                                    stopPreviewRingtone();
+                                                    setPreviewingToneId(null);
+                                                } else {
+                                                    if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
+                                                    setPreviewingToneId(tone.id);
+                                                    await previewIncomingRingtone(tone.id);
+                                                    previewStateTimerRef.current = setTimeout(() => {
+                                                        setPreviewingToneId(null);
+                                                    }, 5500);
+                                                }
+                                            }}
+                                            style={{
+                                                flexDirection: "row",
+                                                alignItems: "center",
+                                                gap: 4,
+                                                paddingHorizontal: scale(10),
+                                                paddingVertical: verticalScale(5),
+                                                borderRadius: radius.full,
+                                                backgroundColor: isPlaying ? "#fee2e2" : colors.white,
+                                                borderWidth: 1,
+                                                borderColor: isPlaying ? "#fca5a5" : colors.neutral200,
+                                            }}
+                                        >
+                                            <MaterialIcons
+                                                name={isPlaying ? "stop" : "play-arrow"}
+                                                size={14}
+                                                color={isPlaying ? "#dc2626" : colors.neutral700}
+                                            />
+                                            <Typo size={11} fontWeight="700" color={isPlaying ? "#dc2626" : colors.neutral700}>
+                                                {isPlaying ? "Stop" : "Preview"}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    </View>
+                    <View style={[styles.row, styles.rowBorder, { flexDirection: "column", alignItems: "stretch", gap: verticalScale(10) }]}>
+                        <View style={styles.rowLeft}>
+                            <View style={[styles.iconBadge, { backgroundColor: colors.primaryLight + "55" }]}>
+                                <MaterialIcons name="vibration" size={19} color={colors.primaryDark} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Typo size={14.5} fontWeight="500" color={colors.neutral800}>
+                                    Haptic Feedback Intensity
+                                </Typo>
+                                <Typo size={11.5} color={colors.neutral400} style={{ marginTop: verticalScale(2) }}>
+                                    Tap strength for buttons, swipes, reactions & alerts
+                                </Typo>
+                            </View>
+                        </View>
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                            {([
+                                { key: "off" as HapticStrength, label: "Off" },
+                                { key: "standard" as HapticStrength, label: "Normal" },
+                                { key: "strong" as HapticStrength, label: "Strong" },
+                                { key: "ultra" as HapticStrength, label: "Ultra" },
+                            ]).map((opt) => {
+                                const active = hapticStrength === opt.key;
+                                return (
+                                    <TouchableOpacity
+                                        key={opt.key}
+                                        activeOpacity={0.75}
+                                        onPress={async () => {
+                                            setHapticStrengthState(opt.key);
+                                            await setHapticStrength(opt.key);
+                                            if (opt.key !== "off") {
+                                                hapticTap(opt.key === "ultra" ? "rigid" : "heavy");
+                                            }
+                                        }}
+                                        style={{
+                                            flex: 1,
+                                            paddingVertical: verticalScale(7),
+                                            borderRadius: radius.full,
+                                            backgroundColor: active ? colors.primaryLight : colors.neutral100,
+                                            borderWidth: 1,
+                                            borderColor: active ? colors.primary : colors.neutral200,
+                                            alignItems: "center",
+                                        }}
+                                    >
+                                        <Typo size={11.5} fontWeight={active ? "800" : "600"} color={active ? colors.primaryDark : colors.neutral700}>
+                                            {opt.label}
+                                        </Typo>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    </View>
                     <Row
                         icon="phone"
                         iconColor={colors.primaryDark}
@@ -632,6 +830,7 @@ export default function SettingsScreen() {
                             <Switch
                                 value={focusEnabled}
                                 onValueChange={async (val) => {
+                                    hapticTap(val ? "heavy" : "medium");
                                     const next = await setFocusMode(val ? 60 : null, val ? "1h Focus" : "");
                                     setFocusEnabled(next.enabled);
                                 }}
@@ -689,7 +888,7 @@ export default function SettingsScreen() {
                                         maxWidth: "82%",
                                     }, borderStyle]}>
                                         <Typo size={previewFontSize} color={colors.neutral800}>
-                                            Bubbly v4.0.2 looks super crisp! ✨
+                                            Bubbly v4.1.5 looks super crisp! ✨
                                         </Typo>
                                     </View>
                                     <View style={[{
@@ -723,7 +922,7 @@ export default function SettingsScreen() {
                                             key={opt.key}
                                             activeOpacity={0.75}
                                             onPress={async () => {
-                                                hapticTap("light");
+                                                hapticTap("medium");
                                                 const next = { ...appearance, bubbleStyle: opt.key };
                                                 setAppearance(next);
                                                 await saveChatAppearance(next);
@@ -759,7 +958,7 @@ export default function SettingsScreen() {
                                             key={sz}
                                             activeOpacity={0.75}
                                             onPress={async () => {
-                                                hapticTap("light");
+                                                hapticTap("medium");
                                                 const next = { ...appearance, fontScale: sz };
                                                 setAppearance(next);
                                                 await saveChatAppearance(next);
@@ -796,7 +995,7 @@ export default function SettingsScreen() {
                                             key={sw.color}
                                             activeOpacity={0.8}
                                             onPress={async () => {
-                                                hapticTap("light");
+                                                hapticTap("medium");
                                                 const next = { ...appearance, accentColor: sw.color };
                                                 setAppearance(next);
                                                 await saveChatAppearance(next);
@@ -862,6 +1061,7 @@ export default function SettingsScreen() {
                             <Switch
                                 value={privacyShield.hideNotificationPreview}
                                 onValueChange={async (val) => {
+                                    hapticTap("medium");
                                     const next = { ...privacyShield, hideNotificationPreview: val };
                                     setPrivacyShield(next);
                                     await savePrivacyShield(next);
@@ -1033,7 +1233,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={12} color={colors.neutral400} fontWeight="600">
-                        Bubbly v4.0.2 · Flagship Edition
+                        Bubbly v4.1.5 · Flagship Edition
                     </Typo>
                     <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
                         Made with care for seamless connection

@@ -39,6 +39,7 @@ import {
     toggleLocalChecklistOverride,
 } from "../utils/featureStorage"
 import { hapticTap } from "../utils/haptics"
+import { formatTime12h } from "../utils/chatCache"
 import { scheduleMessageReminder } from "../services/reminderService"
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -1956,7 +1957,7 @@ const editStyles = StyleSheet.create({
 // ─────────────────────────────────────────────
 type DeliveryStatus = "sending" | "sent" | "delivered" | "seen";
 
-const DeliveryStatusIcon = ({
+const DeliveryStatusIcon = React.memo(({
     status,
 }: {
     status?: DeliveryStatus;
@@ -1994,7 +1995,7 @@ const DeliveryStatusIcon = ({
             )}
         </Animated.View>
     );
-};
+});
 
 // ─────────────────────────────────────────────
 // TRANSLATION PRESETS (Feature 2)
@@ -2066,7 +2067,7 @@ const MessageItem = ({
     const insets = useSafeAreaInsets();
     const { width: screenWidth } = useWindowDimensions();
     const isMe = currentUser?.id == item?.sender?.id;
-    const formattedTime = moment(item.createdAt).format("h:mm A");
+    const formattedTime = useMemo(() => formatTime12h(item.createdAt), [item.createdAt]);
 
     const [showActions, setShowActions] = useState(false);
     const [showEmojiGrid, setShowEmojiGrid] = useState(false);
@@ -2158,6 +2159,10 @@ const MessageItem = ({
         (!isMe && (item.viewOnceOpenedBy || []).length > 0)
     );
     const isImageMessage = !!item.attachement && !isFileMessage && !isVideoMessage && !isViewOnce;
+    const isGifMessage = isImageMessage && (
+        item.attachmentMeta?.mimeType === "image/gif" ||
+        Boolean(item.attachement && item.attachement.split("?")[0].toLowerCase().endsWith(".gif"))
+    );
     const isPollMessage =
         item.type === "poll" ||
         (
@@ -2180,6 +2185,7 @@ const MessageItem = ({
 
     // ── Swipe-to-reply & Double-tap quick heart react ──
     const swipeX = useRef(new RNAnimated.Value(0)).current;
+    const swipeTriggeredRef = useRef(false);
     const lastTapRef = useRef<number>(0);
     const heartScale = useRef(new RNAnimated.Value(0)).current;
     const heartOpacity = useRef(new RNAnimated.Value(0)).current;
@@ -2238,9 +2244,16 @@ const MessageItem = ({
                 if (gestureState.dx > 0) {
                     const clamped = Math.min(gestureState.dx * 0.55, 70);
                     swipeX.setValue(clamped);
+                    if (gestureState.dx > 45 && !swipeTriggeredRef.current) {
+                        swipeTriggeredRef.current = true;
+                        hapticTap("rigid");
+                    } else if (gestureState.dx <= 45 && swipeTriggeredRef.current) {
+                        swipeTriggeredRef.current = false;
+                    }
                 }
             },
             onPanResponderRelease: (_, gestureState) => {
+                swipeTriggeredRef.current = false;
                 if (gestureState.dx > 45) {
                     onReply(item);
                 }
@@ -2252,6 +2265,7 @@ const MessageItem = ({
                 }).start();
             },
             onPanResponderTerminate: () => {
+                swipeTriggeredRef.current = false;
                 RNAnimated.spring(swipeX, {
                     toValue: 0,
                     useNativeDriver: true,
@@ -2262,11 +2276,12 @@ const MessageItem = ({
 
     const handleLongPress = () => {
         if (isSelectionMode) {
+            hapticTap("medium");
             onToggleSelect?.(item.id);
             return;
         }
         if (isDeleted || isPollMessage) return;
-        hapticTap("heavy");
+        hapticTap("rigid");
         setShowActions(true);
     };
     const handleDismiss = () => setShowActions(false);
@@ -2312,10 +2327,10 @@ const MessageItem = ({
         }, 90);
     };
 
-    const handleReply = () => { hapticTap("medium"); setShowActions(false); onReply(item); };
-    const handleForward = () => { hapticTap("medium"); setShowActions(false); onForward?.(item); };
+    const handleReply = () => { hapticTap("heavy"); setShowActions(false); onReply(item); };
+    const handleForward = () => { hapticTap("heavy"); setShowActions(false); onForward?.(item); };
     const handleToggleStar = () => {
-        hapticTap("medium");
+        hapticTap("rigid");
         setShowActions(false);
         if (onToggleStar) {
             onToggleStar(item.id);
@@ -2324,7 +2339,7 @@ const MessageItem = ({
         }
     };
     const handlePinToggle = () => {
-        hapticTap("medium");
+        hapticTap("rigid");
         setShowActions(false);
         if (item.isPinned) {
             if (onUnpin) onUnpin(item.id);
@@ -2336,7 +2351,7 @@ const MessageItem = ({
     };
     const handleViewOncePress = () => {
         if (isViewOnceOpened && !isViewOnceSessionOpen) return;
-        hapticTap("heavy");
+        hapticTap("boom");
         setIsViewOnceSessionOpen(true);
         setShowImageViewer(true);
         if (!isMe && item.conversationId) {
@@ -2344,15 +2359,15 @@ const MessageItem = ({
         }
     };
     const handleOpenEmojiGrid = () => {
-        hapticTap("light");
+        hapticTap("medium");
         setShowActions(false);
         if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
         pendingTimerRef.current = setTimeout(() => setShowEmojiGrid(true), 150);
     };
-    const handleEmojiSelect = (emoji: string) => { hapticTap("medium"); setShowEmojiGrid(false); onReact(item.id, emoji); };
-    const handleQuickEmoji = (emoji: string) => { hapticTap("medium"); setShowActions(false); onReact(item.id, emoji); };
-    const handleReactionPill = (emoji: string) => { if (isDeleted) return; hapticTap("medium"); onReact(item.id, emoji); };
-    const handleImagePress = () => setShowImageViewer(true);
+    const handleEmojiSelect = (emoji: string) => { hapticTap(emoji === "❤️" ? "heartbeat" : "heavy"); setShowEmojiGrid(false); onReact(item.id, emoji); };
+    const handleQuickEmoji = (emoji: string) => { hapticTap(emoji === "❤️" ? "heartbeat" : "heavy"); setShowActions(false); onReact(item.id, emoji); };
+    const handleReactionPill = (emoji: string) => { if (isDeleted) return; hapticTap(emoji === "❤️" ? "heartbeat" : "heavy"); onReact(item.id, emoji); };
+    const handleImagePress = () => { hapticTap("medium"); setShowImageViewer(true); };
 
     const handleDelete = () => {
         setShowActions(false);
@@ -2599,7 +2614,7 @@ const MessageItem = ({
                                 />
                             )}
 
-                            {/* ── Image ── */}
+                            {/* ── Image / Animated GIF ── */}
                             {isImageMessage && (
                                 <TouchableOpacity
                                     onPress={handleImagePress}
@@ -2611,11 +2626,15 @@ const MessageItem = ({
                                         source={item.attachement!}
                                         contentFit="cover"
                                         style={styles.attachement}
-                                        transition={100}
+                                        transition={80}
+                                        cachePolicy="memory-disk"
+                                        autoplay={true}
                                     />
-                                    {item.attachmentMeta?.isHd && (
-                                        <View style={styles.hdBadge}>
-                                            <Typo size={9} fontWeight="800" color={colors.white}>HD</Typo>
+                                    {(isGifMessage || item.attachmentMeta?.isHd) && (
+                                        <View style={[styles.hdBadge, isGifMessage && { backgroundColor: '#7c3aed' }]}>
+                                            <Typo size={9} fontWeight="800" color={colors.white}>
+                                                {isGifMessage ? "GIF" : "HD"}
+                                            </Typo>
                                         </View>
                                     )}
                                     <View style={styles.zoomHint}>

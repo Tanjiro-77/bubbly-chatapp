@@ -18,6 +18,7 @@ export const SharedMediaModal: React.FC<SharedMediaModalProps> = ({
   onOpenImage,
 }) => {
   const [tab, setTab] = useState<"media" | "docs" | "links">("media");
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
 
   // Filter messages by tab
   const mediaItems = messages.filter(
@@ -94,8 +95,14 @@ export const SharedMediaModal: React.FC<SharedMediaModalProps> = ({
               <div className="grid grid-cols-3 gap-2">
                 {mediaItems.map((item, idx) => (
                   <div
-                    key={idx}
-                    onClick={() => onOpenImage(item.attachement!)}
+                    key={item.id || item._id || idx}
+                    onClick={() => {
+                      if (item.type === "video") {
+                        setPreviewVideoUrl(item.attachement!);
+                      } else {
+                        onOpenImage(item.attachement!);
+                      }
+                    }}
                     className="aspect-square rounded-2xl overflow-hidden bg-black/10 dark:bg-white/10 cursor-pointer hover:scale-105 transition"
                   >
                     {item.type === "video" ? (
@@ -170,6 +177,27 @@ export const SharedMediaModal: React.FC<SharedMediaModalProps> = ({
           )}
         </div>
       </div>
+
+      {previewVideoUrl && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setPreviewVideoUrl(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full bg-black rounded-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setPreviewVideoUrl(null)}
+              className="absolute top-3 right-3 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition"
+              title="Close video"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <video src={previewVideoUrl} controls autoPlay className="w-full max-h-[80vh]" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

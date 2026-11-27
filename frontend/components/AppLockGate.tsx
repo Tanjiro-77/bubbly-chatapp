@@ -139,13 +139,14 @@ export const AppLockGate = () => {
 
     const handleDigitPress = async (digit: string) => {
         if (enteredPin.length >= 4) return;
-        hapticTap("light");
+        hapticTap("medium");
         const nextPin = enteredPin + digit;
         setEnteredPin(nextPin);
         setErrorText("");
 
         if (nextPin.length === 4) {
             if (setupStep === "create") {
+                hapticTap("rigid");
                 setFirstPin(nextPin);
                 setEnteredPin("");
                 setSetupStep("confirm");
@@ -162,7 +163,7 @@ export const AppLockGate = () => {
                     return;
                 }
                 await AsyncStorage.setItem(pinStorageKey, nextPin).catch(() => {});
-                hapticTap("success");
+                hapticTap("celebration");
                 setSavedPin(nextPin);
                 setEnteredPin("");
                 setIsLocked(false);
@@ -170,7 +171,7 @@ export const AppLockGate = () => {
             }
 
             if (nextPin === savedPin) {
-                hapticTap("success");
+                hapticTap("celebration");
                 setEnteredPin("");
                 setErrorText("");
                 setIsLocked(false);
@@ -183,7 +184,7 @@ export const AppLockGate = () => {
     };
 
     const handleBackspace = () => {
-        hapticTap("light");
+        hapticTap("medium");
         setEnteredPin((prev) => prev.slice(0, -1));
         setErrorText("");
     };

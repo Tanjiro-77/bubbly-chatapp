@@ -26,6 +26,15 @@ interface GroupDetailsDrawerProps {
   currentUserId: string;
   onClose: () => void;
   onOpenSharedMedia: () => void;
+  onToggleMute?: () => void;
+}
+
+function getGroupAdminIds(conversation: ConversationProps): string[] {
+  const fromAdmins = (conversation.admins || [])
+    .map((a) => (typeof a === "string" ? a : a?._id))
+    .filter((id): id is string => Boolean(id));
+  const legacy = conversation.groupAdmins || [];
+  return Array.from(new Set([...fromAdmins, ...legacy]));
 }
 
 export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
@@ -33,8 +42,10 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
   currentUserId,
   onClose,
   onOpenSharedMedia,
+  onToggleMute,
 }) => {
-  const isMeAdmin = !!conversation.groupAdmins?.includes(currentUserId);
+  const adminIds = getGroupAdminIds(conversation);
+  const isMeAdmin = adminIds.includes(currentUserId) || conversation.createdBy === currentUserId;
 
   const handleToggleAdmin = (targetUserId: string, promote: boolean) => {
     setGroupAdmin({
@@ -73,6 +84,10 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
   };
 
   const handleToggleMute = () => {
+    if (onToggleMute) {
+      onToggleMute();
+      return;
+    }
     toggleMuteConversation({
       conversationId: conversation._id,
       unmute: !!conversation.isMuted,
@@ -149,7 +164,7 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
 
           <div className="space-y-1">
             {conversation.participants?.map((participant) => {
-              const isUserAdmin = conversation.groupAdmins?.includes(participant._id);
+              const isUserAdmin = adminIds.includes(participant._id);
               const isThisUser = participant._id === currentUserId;
 
               return (

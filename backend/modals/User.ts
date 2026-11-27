@@ -66,6 +66,11 @@ const userSchema = new Schema<UserProps>({
     recentSearches: { type: [String], default: [] },
     pushTokens: { type: [String], default: [] },
     notificationsEnabled: { type: Boolean, default: true },
+    callRingtone: {
+        type: String,
+        enum: ["incoming_call", "incoming_call_2", "incoming_call_3", "incoming_call_4"],
+        default: "incoming_call",
+    },
     theme: {
         mode: { type: String, enum: ["light", "dark", "system"], default: "system" },
         accent: { type: String, default: "#facc15" },

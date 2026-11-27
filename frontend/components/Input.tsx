@@ -1,11 +1,10 @@
-import { StyleSheet, TextInput, View } from 'react-native'
-import React, { useState } from 'react'
-import { InputProps } from "../types"
+import { StyleSheet, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { InputProps } from "../types";
 import { colors, radius, spacingX } from "../constants/theme";
 import { verticalScale } from "../utils/styling";
 
 const Input = (props: InputProps) => {
-
     const [isFocused, setIsFocused] = useState(false);
     const {
         icon,
@@ -37,6 +36,7 @@ const Input = (props: InputProps) => {
                     inputStyle,
                 ]}
                 placeholderTextColor={colors.neutral400}
+                selectionColor={colors.primaryDark}
                 ref={inputRef}
                 editable={editable}
                 onFocus={(e) => {
@@ -52,10 +52,10 @@ const Input = (props: InputProps) => {
 
             {rightIcon && <View style={styles.accessory}>{rightIcon}</View>}
         </View>
-    )
-}
+    );
+};
 
-export default Input
+export default Input;
 
 const styles = StyleSheet.create({
     container: {
@@ -76,6 +76,11 @@ const styles = StyleSheet.create({
     primaryBorder: {
         borderColor: colors.primary,
         backgroundColor: colors.white,
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.14,
+        shadowRadius: 8,
+        elevation: 2,
     },
     accessory: {
         flexShrink: 0,

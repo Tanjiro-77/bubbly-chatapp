@@ -25,6 +25,7 @@ describe("Authentication & Token Service", () => {
         assert.equal(decoded.user.name, user.name);
         assert.equal(decoded.user.email, user.email);
         assert.equal(decoded.user.avatar, user.avatar);
+        assert.equal(decoded.exp, undefined);
     });
 
     test("rejects token with wrong secret or algorithm", () => {

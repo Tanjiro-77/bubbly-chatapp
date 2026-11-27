@@ -17,6 +17,7 @@ interface MessageStreamProps {
   onEdit: (message: MessageProps) => void;
   onDelete: (messageId: string) => void;
   onVotePoll: (messageId: string, optionId: string) => void;
+  onClosePoll?: (messageId: string) => void;
   onOpenImage: (url: string) => void;
   onOpenViewOnce: (messageId: string) => void;
 }
@@ -34,6 +35,7 @@ export const MessageStream: React.FC<MessageStreamProps> = ({
   onEdit,
   onDelete,
   onVotePoll,
+  onClosePoll,
   onOpenImage,
   onOpenViewOnce,
 }) => {
@@ -141,6 +143,7 @@ export const MessageStream: React.FC<MessageStreamProps> = ({
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onVotePoll={onVotePoll}
+                    onClosePoll={onClosePoll}
                     onOpenImage={onOpenImage}
                     onOpenViewOnce={onOpenViewOnce}
                     onJumpToReply={handleJumpToReply}

@@ -25,6 +25,7 @@ import {
     replyToStory, isSocketConnected,
 } from '../../socket/socketEvents';
 import { StoryGroupProps } from '../../types';
+import { hapticTap } from '../../utils/haptics';
 import moment from 'moment';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -62,6 +63,16 @@ const StoryViewer = () => {
     const startTimeRef = useRef<number>(0);
     const elapsedRef = useRef<number>(0);
     const isPausedRef = useRef<boolean>(false);
+    const replyAckCleanupRef = useRef<(() => void) | null>(null);
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+            replyAckCleanupRef.current?.();
+            replyAckCleanupRef.current = null;
+        };
+    }, []);
 
     const currentGroup = allGroups[currentGroupIndex];
     const currentStory = currentGroup?.stories?.[currentStoryIndex];
@@ -168,14 +179,21 @@ const StoryViewer = () => {
             BubblyAlert.alert('Offline', 'Connect to the internet to reply to a story.');
             return;
         }
+        replyAckCleanupRef.current?.();
         const ack = (res: any) => {
+            replyAckCleanupRef.current = null;
             replyToStory(ack, true);
+            if (!isMountedRef.current) return;
             if (res?.success) {
+                hapticTap('success');
                 BubblyAlert.alert('✅ Message Sent', 'Your reply was delivered to ' + currentGroup.user.name);
             } else {
+                hapticTap('error');
                 BubblyAlert.alert('Reply Failed', res?.msg || 'Could not send story reply.');
             }
         };
+        hapticTap('heavy');
+        replyAckCleanupRef.current = () => replyToStory(ack, true);
         replyToStory(ack);
         replyToStory({
             storyId: currentStory._id,
@@ -191,11 +209,13 @@ const StoryViewer = () => {
     // ─────────────────────────────────────────────
     const handleReact = (emoji: string) => {
         if (!isSocketConnected()) {
+            hapticTap('error');
             BubblyAlert.alert('Offline', 'Connect to the internet to react to a story.');
             setShowEmojiPicker(false);
             resumeProgress();
             return;
         }
+        hapticTap(emoji === '❤️' ? 'heartbeat' : 'heavy');
         reactToStory({
             storyId: currentStory._id,
             emoji,
@@ -208,6 +228,7 @@ const StoryViewer = () => {
     // DELETE
     // ─────────────────────────────────────────────
     const handleDelete = () => {
+        hapticTap('warning');
         pauseProgress();
         BubblyAlert.alert(
             'Delete Story',
@@ -218,6 +239,7 @@ const StoryViewer = () => {
                     text: 'Delete',
                     style: 'destructive',
                     onPress: () => {
+                        hapticTap('heavy');
                         deleteStory({ storyId: currentStory._id });
                         safeBack();
                     },
@@ -301,7 +323,7 @@ const StoryViewer = () => {
                     )}
                     <TouchableOpacity
                         style={styles.headerBtn}
-                        onPress={safeBack}
+                        onPress={() => { hapticTap('light'); safeBack(); }}
                         activeOpacity={0.7}
                     >
                         <Icons.X size={20} color={colors.white} weight="bold" />
@@ -358,25 +380,25 @@ const StoryViewer = () => {
             <View style={styles.tapZones} pointerEvents={showEmojiPicker || showReplyInput || showViewers ? "none" : "box-none"}>
                 <TouchableOpacity
                     style={styles.tapLeft}
-                    onPress={goToPrev}
+                    onPress={() => { hapticTap('light'); goToPrev(); }}
                     onLongPress={() => {
+                        hapticTap('medium');
                         pauseProgress();
-                        setIsPaused(true);
                     }}
                     onPressOut={() => {
-                        if (isPaused) resumeProgress();
+                        if (isPausedRef.current) resumeProgress();
                     }}
                     activeOpacity={1}
                 />
                 <TouchableOpacity
                     style={styles.tapRight}
-                    onPress={goToNext}
+                    onPress={() => { hapticTap('light'); goToNext(); }}
                     onLongPress={() => {
+                        hapticTap('medium');
                         pauseProgress();
-                        setIsPaused(true);
                     }}
                     onPressOut={() => {
-                        if (isPaused) resumeProgress();
+                        if (isPausedRef.current) resumeProgress();
                     }}
                     activeOpacity={1}
                 />
@@ -400,6 +422,7 @@ const StoryViewer = () => {
                     <TouchableOpacity
                         style={styles.viewersBtn}
                         onPress={() => {
+                            hapticTap('medium');
                             pauseProgress();
                             setShowViewers(true);
                         }}
@@ -437,6 +460,7 @@ const StoryViewer = () => {
                         <TouchableOpacity
                             style={styles.emojiToggle}
                             onPress={() => {
+                                hapticTap('medium');
                                 setShowEmojiPicker(prev => !prev);
                                 if (!showEmojiPicker) pauseProgress();
                                 else resumeProgress();
@@ -449,6 +473,7 @@ const StoryViewer = () => {
                         <TouchableOpacity
                             style={styles.replyInputPill}
                             onPress={() => {
+                                hapticTap('medium');
                                 pauseProgress();
                                 setShowReplyInput(true);
                             }}
@@ -538,12 +563,16 @@ const StoryViewer = () => {
                             keyExtractor={(item, idx) => idx.toString()}
                             renderItem={({ item }) => (
                                 <View style={styles.viewerItem}>
-                                    <View style={styles.viewerIconWrap}>
-                                        <Icons.Eye size={15} color={colors.primaryDark} />
-                                    </View>
-                                    <View>
-                                        <Typo size={13} fontWeight="600" color={colors.neutral800}>
-                                            Viewed
+                                    {item.avatar ? (
+                                        <Avatar size={32} uri={item.avatar} />
+                                    ) : (
+                                        <View style={styles.viewerIconWrap}>
+                                            <Icons.Eye size={15} color={colors.primaryDark} />
+                                        </View>
+                                    )}
+                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                        <Typo size={13} fontWeight="600" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                            {item.name || "Viewed"}
                                         </Typo>
                                         <Typo size={11} color={colors.neutral400}>
                                             {moment(item.viewedAt).fromNow()}

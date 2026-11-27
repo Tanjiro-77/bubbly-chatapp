@@ -6,6 +6,7 @@ import {
   fetchContacts,
   newConversation,
 } from "../../socket/socketEvents";
+import { isSocketConnected } from "../../socket/socket";
 import {
   X,
   Search,
@@ -52,8 +53,29 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const pendingCreateRef = React.useRef(false);
+  const createTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const onCreatedRef = React.useRef(onCreated);
   const onCloseRef = React.useRef(onClose);
+
+  const clearCreateTimeout = () => {
+    if (createTimeoutRef.current) {
+      clearTimeout(createTimeoutRef.current);
+      createTimeoutRef.current = null;
+    }
+  };
+
+  const armCreateTimeout = () => {
+    clearCreateTimeout();
+    createTimeoutRef.current = setTimeout(() => {
+      if (pendingCreateRef.current) {
+        pendingCreateRef.current = false;
+        setIsLoading(false);
+        bubblyAlert("Connection Timeout", "Could not start conversation. Please check your connection and try again.", {
+          variant: "danger",
+        });
+      }
+    }, 10000);
+  };
 
   useEffect(() => {
     onCreatedRef.current = onCreated;
@@ -78,6 +100,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
     const handleNewConv = (res: any) => {
       if (!pendingCreateRef.current) return;
       pendingCreateRef.current = false;
+      clearCreateTimeout();
       setIsLoading(false);
       if (res.success && res.data) {
         onCreatedRef.current(res.data);
@@ -94,6 +117,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
     fetchContacts();
 
     return () => {
+      clearCreateTimeout();
       getContacts(handleContacts, true);
       newConversation(handleNewConv, true);
     };
@@ -116,8 +140,13 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
     if (isGroupMode) {
       toggleParticipant(targetId);
     } else {
+      if (!isSocketConnected()) {
+        bubblyAlert("Offline", "Connect to the internet to start a chat.", { variant: "amber" });
+        return;
+      }
       pendingCreateRef.current = true;
       setIsLoading(true);
+      armCreateTimeout();
       newConversation({
         type: "direct",
         participants: [currentUserId, targetId],
@@ -134,9 +163,14 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
       });
       return;
     }
+    if (!isSocketConnected()) {
+      bubblyAlert("Offline", "Connect to the internet to create a group.", { variant: "amber" });
+      return;
+    }
 
     pendingCreateRef.current = true;
     setIsLoading(true);
+    armCreateTimeout();
     newConversation({
       type: "group",
       name: groupName.trim(),
@@ -406,7 +440,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
             </span>
             <button
               onClick={handleCreateGroup}
-              disabled={isLoading || !groupName.trim() || selectedParticipants.length === 0}
+              disabled={isLoading || uploadingAvatar || !groupName.trim() || selectedParticipants.length === 0}
               className="py-2.5 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-xs shadow-md shadow-amber-500/30 transition transform active:scale-95 flex items-center gap-2"
             >
               {isLoading ? "Creating..." : "Create Group"}

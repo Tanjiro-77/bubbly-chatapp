@@ -281,3 +281,30 @@ export const rejectCallHttp = async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, msg: error?.message || "Could not reject call" });
     }
 };
+
+export const endCallHttp = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const callId = req.params.callId as string;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, msg: "Unauthorized" });
+        }
+        if (!callId || !isValidObjectId(callId)) {
+            return res.status(400).json({ success: false, msg: "Invalid callId" });
+        }
+
+        const io = getIO();
+        const call = await (await import("../socket/callEvents")).endCallById(io, callId, userId);
+        if (!call) {
+            return res.status(404).json({ success: false, msg: "Call not found" });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: { callId: call._id.toString(), status: call.status, duration: call.duration || 0 },
+        });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, msg: error?.message || "Could not end call" });
+    }
+};

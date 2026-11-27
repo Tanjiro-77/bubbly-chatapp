@@ -106,3 +106,6 @@ export const acceptCallHttp = (callId: string) =>
 
 export const rejectCallHttp = (callId: string) =>
     callActionRequest(`/api/call/${callId}/reject`, "POST");
+
+export const endCallHttp = (callId: string) =>
+    callActionRequest(`/api/call/${callId}/end`, "POST");

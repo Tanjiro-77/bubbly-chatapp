@@ -39,44 +39,50 @@ export function formatMessagePayload(message: any, extras?: {
         avatar: message.senderId.avatar,
     } : undefined);
 
+    const isDeleted = Boolean(message.isDeleted);
+
     return {
         id: message._id || message.id,
-        content: message.content || "",
+        content: isDeleted ? "" : (message.content || ""),
         sender,
-        attachement: (message.type === "image" || message.type === "video" || message.type === "file" || message.type === "text")
-            ? (message.attachement || message.attachmentMeta?.url || null)
-            : null,
+        attachement: isDeleted
+            ? null
+            : ((message.type === "image" || message.type === "video" || message.type === "file" || message.type === "text")
+                ? (message.attachement || message.attachmentMeta?.url || null)
+                : null),
         createdAt: message.createdAt instanceof Date
             ? message.createdAt.toISOString()
             : message.createdAt,
         conversationId: message.conversationId,
         replyTo: extras?.replyTo ?? message.replyTo ?? null,
-        reactions: (message.reactions || []).map((r: any) => ({
-            emoji: r.emoji,
-            userId: r.userId?.toString?.() || r.userId,
-            userName: r.userName,
-        })),
-        voiceUrl: message.voiceUrl || null,
-        voiceDuration: message.voiceDuration || 0,
-        isDeleted: message.isDeleted || false,
+        reactions: isDeleted
+            ? []
+            : (message.reactions || []).map((r: any) => ({
+                emoji: r.emoji,
+                userId: r.userId?.toString?.() || r.userId,
+                userName: r.userName,
+            })),
+        voiceUrl: isDeleted ? null : (message.voiceUrl || null),
+        voiceDuration: isDeleted ? 0 : (message.voiceDuration || 0),
+        isDeleted,
         isEdited: message.isEdited || false,
         type: message.type || "text",
 
         // ✅ REQUIRED FOR POLLS
-        poll: message.type === "poll" ? message.poll || null : null,
-        checklist: message.type === "checklist" ? message.checklist || null : null,
+        poll: !isDeleted && message.type === "poll" ? message.poll || null : null,
+        checklist: !isDeleted && message.type === "checklist" ? message.checklist || null : null,
 
-        attachmentMeta: message.attachmentMeta || null,
-        location: message.location || null,
+        attachmentMeta: isDeleted ? null : (message.attachmentMeta || null),
+        location: isDeleted ? null : (message.location || null),
         systemEvent: message.systemEvent || null,
-        callMeta: message.callMeta || null,
+        callMeta: isDeleted ? null : (message.callMeta || null),
         expiresAt: message.expiresAt || null,
         storyId: message.storyId || null,
-        isPinned: message.isPinned || false,
+        isPinned: isDeleted ? false : (message.isPinned || false),
         isForwarded: message.isForwarded || false,
         isSilent: message.isSilent || false,
-        isViewOnce: message.isViewOnce || false,
-        viewOnceOpenedBy: (message.viewOnceOpenedBy || []).map((u: any) => u.toString?.() || u),
+        isViewOnce: isDeleted ? false : (message.isViewOnce || false),
+        viewOnceOpenedBy: isDeleted ? [] : (message.viewOnceOpenedBy || []).map((u: any) => u.toString?.() || u),
     };
 }
 

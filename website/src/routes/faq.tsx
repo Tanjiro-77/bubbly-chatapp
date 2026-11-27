@@ -22,7 +22,7 @@ export const Route = createFileRoute("/faq")({
       { property: "og:title", content: "Bubbly FAQ — All Questions Answered" },
       {
         property: "og:description",
-        content: "Common questions about installing and using Bubbly v4.0.2.",
+        content: "Common questions about installing and using Bubbly v4.1.5.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     q: "Why is Bubbly distributed as an APK rather than through Google Play?",
-    a: "Direct APK distribution alongside PhonePe Indus Appstore allows rapid v4.0.2 release iteration and gives users direct access to the newest features without gatekeeping.",
+    a: "Direct APK distribution alongside PhonePe Indus Appstore allows rapid v4.1.5 release iteration and gives users direct access to the newest features without gatekeeping.",
     category: "Installation",
     emoji: "📦",
   },
@@ -88,9 +88,15 @@ const faqs = [
   },
   {
     q: "Can I receive calls and messages when Bubbly is closed?",
-    a: "Yes! v4.0.2 supports WhatsApp-style high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline action buttons, even when the app is closed or running in the background.",
+    a: "Yes! v4.1.5 supports time-sensitive high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline lock-screen actions even when Bubbly is closed or the screen is off — complete with custom alert chimes and 4 selectable incoming call ringtones in Settings.",
     category: "Calls & Voice",
     emoji: "🔔",
+  },
+  {
+    q: "Why does Bubbly require both an email address and a phone number?",
+    a: "Bubbly's contact sync discovers friends strictly by phone number rather than email. Requiring both your phone number and verified email during signup (or after Google Sign-In) guarantees every friend can find and message you cleanly while keeping account login and recovery secure.",
+    category: "Privacy & Security",
+    emoji: "📱",
   },
   {
     q: "Where can I read Bubbly's Privacy Policy and Security disclosure?",

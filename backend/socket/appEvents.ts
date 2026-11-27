@@ -12,6 +12,27 @@ import { assertRateLimit } from "../utils/rateLimit";
 import { createAndBroadcastMessage } from "../services/messageService";
 import { getIO, userRoom } from "./io";
 
+async function hydrateStoryViewers(viewers: any[]) {
+    if (!Array.isArray(viewers) || viewers.length === 0) return [];
+    const viewerIds = Array.from(
+        new Set(viewers.map((v: any) => v?.userId?.toString?.()).filter(Boolean))
+    );
+    const viewerUsers = viewerIds.length > 0
+        ? await User.find({ _id: { $in: viewerIds } }).select("name avatar").lean()
+        : [];
+    const map = new Map(viewerUsers.map((u) => [u._id.toString(), u]));
+    return viewers.map((v: any) => {
+        const vid = v.userId?.toString?.() || String(v.userId || "");
+        const profile = map.get(vid);
+        return {
+            ...v,
+            userId: vid,
+            name: profile?.name || "",
+            avatar: profile?.avatar || "",
+        };
+    });
+}
+
 async function emitStoryFeedUpdated(io: SocketIOServer, userId: string) {
     const convos = await Conversation.find({ participants: userId }).select("participants").lean();
     const targets = new Set<string>([userId]);
@@ -53,6 +74,10 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
 
     socket.on("updatePrivacy", async (data) => {
         try {
+            if (!data || typeof data !== "object") {
+                socket.emit("updatePrivacy", { success: false, msg: "Invalid privacy payload" });
+                return;
+            }
             const allowedLastSeen = ["everyone", "contacts", "nobody"];
             const allowedStory = ["everyone", "contacts", "except"];
             const update: any = {};
@@ -65,10 +90,12 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
             if (Array.isArray(data.storyHiddenFrom)) {
                 update["privacy.storyHiddenFrom"] = data.storyHiddenFrom.filter((id: any) => isValidObjectId(id));
             }
-            if (data.theme) {
+            if (data.theme && typeof data.theme === "object") {
                 if (data.theme.mode && allowedModes.includes(data.theme.mode)) update["theme.mode"] = data.theme.mode;
-                if (typeof data.theme.accent === "string") update["theme.accent"] = data.theme.accent.slice(0, 32);
-                if (typeof data.theme.wallpaper === "string") update["theme.wallpaper"] = data.theme.wallpaper;
+                if (typeof data.theme.accent === "string" && /^#[0-9a-f]{3,8}$/i.test(data.theme.accent)) {
+                    update["theme.accent"] = data.theme.accent;
+                }
+                if (typeof data.theme.wallpaper === "string") update["theme.wallpaper"] = data.theme.wallpaper.slice(0, 500);
                 if (data.theme.bubbleStyle && allowedBubbleStyles.includes(data.theme.bubbleStyle)) update["theme.bubbleStyle"] = data.theme.bubbleStyle;
             }
             const user = await User.findByIdAndUpdate(userId, { $set: update }, { new: true, runValidators: true }).select("-password");
@@ -203,11 +230,15 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
 
     socket.on("saveMessage", async (data: { messageId: string; save: boolean }) => {
         try {
+            if (!data?.messageId || !isValidObjectId(data.messageId)) {
+                throw new Error("Message not found");
+            }
+            const shouldSave = Boolean(data.save);
             const message = await Message.findById(data.messageId);
             if (!message) throw new Error("Message not found");
             const { isMember } = await getMembership(message.conversationId.toString(), userId);
             if (!isMember) throw new Error("Not allowed");
-            if (data.save) {
+            if (shouldSave) {
                 await SavedMessage.updateOne(
                     { userId, messageId: message._id },
                     { userId, messageId: message._id, conversationId: message.conversationId },
@@ -216,8 +247,8 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
             } else {
                 await SavedMessage.deleteOne({ userId, messageId: message._id });
             }
-            socket.emit("saveMessage", { success: true, data: { messageId: data.messageId, saved: data.save } });
-            io.to(socket.id).emit("messageSaved", { messageId: data.messageId, saved: data.save });
+            socket.emit("saveMessage", { success: true, data: { messageId: data.messageId, saved: shouldSave } });
+            io.to(socket.id).emit("messageSaved", { messageId: data.messageId, saved: shouldSave });
         } catch (error: any) {
             socket.emit("saveMessage", { success: false, msg: error.message || "Failed to save message" });
         }
@@ -423,9 +454,10 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                     };
                 }
                 const seen = (story.viewers || []).some((v: any) => v.userId.toString() === userId);
-                const sanitizedStory = authorId === userId
-                    ? story
-                    : { ...story, viewers: [] };
+                const enrichedViewers = authorId === userId
+                    ? await hydrateStoryViewers(story.viewers || [])
+                    : [];
+                const sanitizedStory = { ...story, viewers: enrichedViewers };
                 grouped[authorId].stories.push({ ...sanitizedStory, seen });
                 if (!seen && authorId !== userId) grouped[authorId].hasUnseen = true;
             }
@@ -458,10 +490,14 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                     { $push: { viewers: { userId, viewedAt: new Date() } } }
                 );
             }
+            let viewersPayload: any[] = [];
+            if (authorId === userId) {
+                viewersPayload = await hydrateStoryViewers(story.viewers || []);
+            }
             socket.emit("viewStory", {
                 success: true,
                 data: {
-                    viewers: authorId === userId ? story.viewers : [],
+                    viewers: viewersPayload,
                     reactions: story.reactions,
                 },
             });

@@ -2,7 +2,7 @@
  * frontend/utils/featureStorage.ts
  *
  * Persistent local storage, event pub/sub, and rich card codecs
- * for Bubbly v4.0.2 flagship features with offline & backward compatibility.
+ * for Bubbly v4.1.5 flagship features with offline & backward compatibility.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -44,7 +44,7 @@ function notifyListeners() {
     notifyFeatureListeners();
 }
 
-// ── 1. Slash Quick Replies ────────────────────────────────────────────────────
+// ── 1. Slash Quick Replies (Memory-Cached) ────────────────────────────────────
 export interface QuickReplyTemplate {
     id: string;
     trigger: string; // without leading slash, e.g. "omw"
@@ -60,31 +60,66 @@ export const DEFAULT_QUICK_REPLIES: QuickReplyTemplate[] = [
     { id: "qr_meet", trigger: "meet", text: "Let's sync up at 5:00 PM today 📅", isDefault: true },
 ];
 
+let quickRepliesCache: QuickReplyTemplate[] | null = null;
+let nicknamesCache: Record<string, string> | null = null;
+let contactNotesCache: Record<string, string> | null = null;
+let chatTagsCache: Record<string, ChatFolderTag> | null = null;
+let focusModeCache: FocusModeState | null = null;
+let customStatusCache: CustomStatusState | null = null;
+let appearanceCache: ChatAppearanceConfig | null = null;
+let privacyShieldCache: PrivacyShieldConfig | null = null;
+const archivedCache = new Map<string, string[]>();
+
+export function clearFeatureMemoryCache(): void {
+    quickRepliesCache = null;
+    nicknamesCache = null;
+    contactNotesCache = null;
+    chatTagsCache = null;
+    focusModeCache = null;
+    customStatusCache = null;
+    appearanceCache = null;
+    privacyShieldCache = null;
+    archivedCache.clear();
+}
+
 export async function getQuickReplies(): Promise<QuickReplyTemplate[]> {
+    if (quickRepliesCache) return quickRepliesCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.QUICK_REPLIES);
-        if (!raw) return DEFAULT_QUICK_REPLIES;
+        if (!raw) {
+            quickRepliesCache = DEFAULT_QUICK_REPLIES;
+            return quickRepliesCache;
+        }
         const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_QUICK_REPLIES;
-        return parsed;
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+            quickRepliesCache = DEFAULT_QUICK_REPLIES;
+            return quickRepliesCache;
+        }
+        quickRepliesCache = parsed;
+        return quickRepliesCache;
     } catch {
         return DEFAULT_QUICK_REPLIES;
     }
 }
 
 export async function saveQuickReplies(list: QuickReplyTemplate[]): Promise<void> {
+    const trimmed = list.slice(0, 30);
+    quickRepliesCache = trimmed;
     try {
-        await AsyncStorage.setItem(KEYS.QUICK_REPLIES, JSON.stringify(list.slice(0, 30)));
+        await AsyncStorage.setItem(KEYS.QUICK_REPLIES, JSON.stringify(trimmed));
         notifyListeners();
     } catch {}
 }
 
 // ── 2. Private Nicknames & Contact Notes ──────────────────────────────────────
 export async function getNicknamesMap(): Promise<Record<string, string>> {
+    if (nicknamesCache) return nicknamesCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.NICKNAMES);
         const parsed = raw ? JSON.parse(raw) : {};
-        return parsed && typeof parsed === "object" ? parsed : {};
+        const resolved: Record<string, string> = parsed && typeof parsed === "object" ? parsed : {};
+        nicknamesCache = resolved;
+        return resolved;
     } catch {
         return {};
     }
@@ -93,23 +128,27 @@ export async function getNicknamesMap(): Promise<Record<string, string>> {
 export async function setEntityNickname(entityId: string, nickname: string): Promise<void> {
     if (!entityId) return;
     try {
-        const map = await getNicknamesMap();
+        const map = { ...(await getNicknamesMap()) };
         const cleaned = nickname.trim().slice(0, 40);
         if (!cleaned) {
             delete map[entityId];
         } else {
             map[entityId] = cleaned;
         }
+        nicknamesCache = map;
         await AsyncStorage.setItem(KEYS.NICKNAMES, JSON.stringify(map));
         notifyListeners();
     } catch {}
 }
 
 export async function getContactNotesMap(): Promise<Record<string, string>> {
+    if (contactNotesCache) return contactNotesCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.CHAT_NOTES);
         const parsed = raw ? JSON.parse(raw) : {};
-        return parsed && typeof parsed === "object" ? parsed : {};
+        const resolved: Record<string, string> = parsed && typeof parsed === "object" ? parsed : {};
+        contactNotesCache = resolved;
+        return resolved;
     } catch {
         return {};
     }
@@ -118,13 +157,14 @@ export async function getContactNotesMap(): Promise<Record<string, string>> {
 export async function setContactNote(entityId: string, note: string): Promise<void> {
     if (!entityId) return;
     try {
-        const map = await getContactNotesMap();
+        const map = { ...(await getContactNotesMap()) };
         const cleaned = note.trim().slice(0, 300);
         if (!cleaned) {
             delete map[entityId];
         } else {
             map[entityId] = cleaned;
         }
+        contactNotesCache = map;
         await AsyncStorage.setItem(KEYS.CHAT_NOTES, JSON.stringify(map));
         notifyListeners();
     } catch {}
@@ -144,10 +184,13 @@ export const CHAT_FOLDER_META: Record<
 };
 
 export async function getChatTagsMap(): Promise<Record<string, ChatFolderTag>> {
+    if (chatTagsCache) return chatTagsCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.CHAT_TAGS);
         const parsed = raw ? JSON.parse(raw) : {};
-        return parsed && typeof parsed === "object" ? parsed : {};
+        const resolved: Record<string, ChatFolderTag> = parsed && typeof parsed === "object" ? parsed : {};
+        chatTagsCache = resolved;
+        return resolved;
     } catch {
         return {};
     }
@@ -158,12 +201,13 @@ export async function setChatTag(
     tag: ChatFolderTag | null
 ): Promise<Record<string, ChatFolderTag>> {
     try {
-        const map = await getChatTagsMap();
+        const map = { ...(await getChatTagsMap()) };
         if (!tag) {
             delete map[conversationId];
         } else {
             map[conversationId] = tag;
         }
+        chatTagsCache = map;
         await AsyncStorage.setItem(KEYS.CHAT_TAGS, JSON.stringify(map));
         notifyListeners();
         return map;
@@ -182,14 +226,26 @@ export interface FocusModeState {
 const DEFAULT_FOCUS: FocusModeState = { enabled: false, until: null, label: "" };
 
 export async function getFocusMode(): Promise<FocusModeState> {
+    if (focusModeCache) {
+        if (focusModeCache.enabled && focusModeCache.until && Date.now() >= focusModeCache.until) {
+            focusModeCache = DEFAULT_FOCUS;
+            AsyncStorage.setItem(KEYS.FOCUS_MODE, JSON.stringify(DEFAULT_FOCUS)).catch(() => {});
+        }
+        return focusModeCache;
+    }
     try {
         const raw = await AsyncStorage.getItem(KEYS.FOCUS_MODE);
-        if (!raw) return DEFAULT_FOCUS;
+        if (!raw) {
+            focusModeCache = DEFAULT_FOCUS;
+            return DEFAULT_FOCUS;
+        }
         const parsed: FocusModeState = JSON.parse(raw);
         if (parsed.enabled && parsed.until && Date.now() >= parsed.until) {
+            focusModeCache = DEFAULT_FOCUS;
             await AsyncStorage.setItem(KEYS.FOCUS_MODE, JSON.stringify(DEFAULT_FOCUS));
             return DEFAULT_FOCUS;
         }
+        focusModeCache = parsed;
         return parsed;
     } catch {
         return DEFAULT_FOCUS;
@@ -205,6 +261,7 @@ export async function setFocusMode(minutes: number | null, label?: string): Prom
                   until: minutes > 0 ? Date.now() + minutes * 60 * 1000 : null,
                   label: label || (minutes > 0 ? `${minutes}m Focus` : "Quiet Mode"),
               };
+    focusModeCache = next;
     try {
         await AsyncStorage.setItem(KEYS.FOCUS_MODE, JSON.stringify(next));
         notifyListeners();
@@ -241,15 +298,27 @@ export const STATUS_PRESETS: { emoji: string; text: string }[] = [
 ];
 
 export async function getMyCustomStatus(): Promise<CustomStatusState> {
+    if (customStatusCache) {
+        if (customStatusCache.expiresAt && Date.now() > customStatusCache.expiresAt) {
+            customStatusCache = { emoji: "", text: "", expiresAt: null };
+            AsyncStorage.setItem(KEYS.CUSTOM_STATUS, JSON.stringify(customStatusCache)).catch(() => {});
+        }
+        return customStatusCache;
+    }
     try {
         const raw = await AsyncStorage.getItem(KEYS.CUSTOM_STATUS);
-        if (!raw) return { emoji: "", text: "", expiresAt: null };
+        if (!raw) {
+            customStatusCache = { emoji: "", text: "", expiresAt: null };
+            return customStatusCache;
+        }
         const parsed: CustomStatusState = JSON.parse(raw);
         if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
             const cleared = { emoji: "", text: "", expiresAt: null };
+            customStatusCache = cleared;
             await AsyncStorage.setItem(KEYS.CUSTOM_STATUS, JSON.stringify(cleared));
             return cleared;
         }
+        customStatusCache = parsed;
         return parsed;
     } catch {
         return { emoji: "", text: "", expiresAt: null };
@@ -257,6 +326,7 @@ export async function getMyCustomStatus(): Promise<CustomStatusState> {
 }
 
 export async function saveMyCustomStatus(status: CustomStatusState): Promise<void> {
+    customStatusCache = status;
     try {
         await AsyncStorage.setItem(KEYS.CUSTOM_STATUS, JSON.stringify(status));
         notifyListeners();
@@ -288,16 +358,23 @@ export const DEFAULT_APPEARANCE: ChatAppearanceConfig = {
 };
 
 export async function getChatAppearance(): Promise<ChatAppearanceConfig> {
+    if (appearanceCache) return appearanceCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.APPEARANCE);
-        if (!raw) return DEFAULT_APPEARANCE;
-        return { ...DEFAULT_APPEARANCE, ...JSON.parse(raw) };
+        if (!raw) {
+            appearanceCache = DEFAULT_APPEARANCE;
+            return DEFAULT_APPEARANCE;
+        }
+        const resolved: ChatAppearanceConfig = { ...DEFAULT_APPEARANCE, ...JSON.parse(raw) };
+        appearanceCache = resolved;
+        return resolved;
     } catch {
         return DEFAULT_APPEARANCE;
     }
 }
 
 export async function saveChatAppearance(config: ChatAppearanceConfig): Promise<void> {
+    appearanceCache = config;
     try {
         await AsyncStorage.setItem(KEYS.APPEARANCE, JSON.stringify(config));
         notifyListeners();
@@ -316,16 +393,23 @@ export const DEFAULT_PRIVACY_SHIELD: PrivacyShieldConfig = {
 };
 
 export async function getPrivacyShield(): Promise<PrivacyShieldConfig> {
+    if (privacyShieldCache) return privacyShieldCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.PRIVACY_SHIELD);
-        if (!raw) return DEFAULT_PRIVACY_SHIELD;
-        return { ...DEFAULT_PRIVACY_SHIELD, ...JSON.parse(raw) };
+        if (!raw) {
+            privacyShieldCache = DEFAULT_PRIVACY_SHIELD;
+            return DEFAULT_PRIVACY_SHIELD;
+        }
+        const resolved: PrivacyShieldConfig = { ...DEFAULT_PRIVACY_SHIELD, ...JSON.parse(raw) };
+        privacyShieldCache = resolved;
+        return resolved;
     } catch {
         return DEFAULT_PRIVACY_SHIELD;
     }
 }
 
 export async function savePrivacyShield(cfg: PrivacyShieldConfig): Promise<void> {
+    privacyShieldCache = cfg;
     try {
         await AsyncStorage.setItem(KEYS.PRIVACY_SHIELD, JSON.stringify(cfg));
         notifyListeners();
@@ -334,10 +418,15 @@ export async function savePrivacyShield(cfg: PrivacyShieldConfig): Promise<void>
 
 // ── 8. Archived Chats Fallback Store ──────────────────────────────────────────
 export async function getLocalArchivedIds(userId?: string): Promise<string[]> {
+    const k = userId || "default";
+    const hit = archivedCache.get(k);
+    if (hit) return hit;
     try {
-        const raw = await AsyncStorage.getItem(`${KEYS.ARCHIVED_PREFIX}${userId || "default"}`);
+        const raw = await AsyncStorage.getItem(`${KEYS.ARCHIVED_PREFIX}${k}`);
         const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed : [];
+        const list = Array.isArray(parsed) ? parsed : [];
+        archivedCache.set(k, list);
+        return list;
     } catch {
         return [];
     }
@@ -348,12 +437,14 @@ export async function setLocalArchivedId(
     conversationId: string,
     archive: boolean
 ): Promise<string[]> {
+    const k = userId || "default";
     try {
         const current = await getLocalArchivedIds(userId);
         const next = archive
             ? Array.from(new Set([...current, conversationId]))
             : current.filter((id) => id !== conversationId);
-        await AsyncStorage.setItem(`${KEYS.ARCHIVED_PREFIX}${userId || "default"}`, JSON.stringify(next));
+        archivedCache.set(k, next);
+        await AsyncStorage.setItem(`${KEYS.ARCHIVED_PREFIX}${k}`, JSON.stringify(next));
         notifyListeners();
         return next;
     } catch {
@@ -401,7 +492,7 @@ export type ParsedRichCard =
     | null;
 
 export function parseBubblyCard(content?: string | null): ParsedRichCard {
-    if (!content || typeof content !== "string") return null;
+    if (!content || typeof content !== "string" || !content.includes("[BUBBLY_")) return null;
     try {
         const gameIdx = content.indexOf(GAME_PREFIX);
         if (gameIdx !== -1) {
@@ -431,13 +522,20 @@ export function formatRichPreviewText(content?: string | null): string {
     return content || "";
 }
 
+const checklistCache = new Map<string, Record<string, boolean>>();
+let silentIdsCache: Set<string> | null = null;
+
 // Local checklist toggle map (supports Notes-to-Self & fallback if server hasn't migrated)
 export async function getLocalChecklistOverrides(
     messageId: string
 ): Promise<Record<string, boolean>> {
+    const hit = checklistCache.get(messageId);
+    if (hit) return { ...hit };
     try {
         const raw = await AsyncStorage.getItem(`${KEYS.CHECKLIST_LOCAL_PREFIX}${messageId}`);
-        return raw ? JSON.parse(raw) : {};
+        const parsed = raw ? JSON.parse(raw) : {};
+        checklistCache.set(messageId, parsed);
+        return { ...parsed };
     } catch {
         return {};
     }
@@ -451,6 +549,7 @@ export async function toggleLocalChecklistOverride(
     try {
         const current = await getLocalChecklistOverrides(messageId);
         current[itemId] = nextVal;
+        checklistCache.set(messageId, current);
         await AsyncStorage.setItem(`${KEYS.CHECKLIST_LOCAL_PREFIX}${messageId}`, JSON.stringify(current));
     } catch {}
 }
@@ -458,20 +557,24 @@ export async function toggleLocalChecklistOverride(
 // ── 10. Silent Message Local Trackers ─────────────────────────────────────────
 export async function markLocalSilentMessage(clientId: string): Promise<void> {
     try {
-        const raw = await AsyncStorage.getItem(KEYS.SILENT_LOCAL_IDS);
-        const arr: string[] = raw ? JSON.parse(raw) : [];
-        const next = Array.from(new Set([clientId, ...arr])).slice(0, 100);
-        await AsyncStorage.setItem(KEYS.SILENT_LOCAL_IDS, JSON.stringify(next));
+        const current = await getLocalSilentIds();
+        const nextSet = new Set([clientId, ...current]);
+        const nextArr = Array.from(nextSet).slice(0, 100);
+        silentIdsCache = new Set(nextArr);
+        await AsyncStorage.setItem(KEYS.SILENT_LOCAL_IDS, JSON.stringify(nextArr));
     } catch {}
 }
 
 export async function getLocalSilentIds(): Promise<Set<string>> {
+    if (silentIdsCache) return silentIdsCache;
     try {
         const raw = await AsyncStorage.getItem(KEYS.SILENT_LOCAL_IDS);
         const arr: string[] = raw ? JSON.parse(raw) : [];
-        return new Set(arr);
+        silentIdsCache = new Set(arr);
+        return silentIdsCache;
     } catch {
-        return new Set();
+        silentIdsCache = new Set();
+        return silentIdsCache;
     }
 }
 

@@ -1,18 +1,19 @@
-import { StyleSheet, TouchableOpacity, View, Platform, Vibration } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import React from 'react';
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import Avatar from "./Avatar";
 import Typo from "./Typo";
-import moment from "moment";
+import { formatConversationRowDate } from "../utils/chatCache";
 import { ConversationListItemProps } from "../types";
 import { useAuth } from "../contexts/authContext";
 import { scale, verticalScale } from "../utils/styling";
 import { TextStyle } from 'react-native';
 import * as Icons from "phosphor-react-native";
 import { CHAT_FOLDER_META, ChatFolderTag, formatRichPreviewText } from "../utils/featureStorage";
+import { hapticTap } from "../utils/haptics";
 
 // ── Highlight matched text ──
-const HighlightText = ({
+const HighlightText = React.memo(({
     text,
     query,
     size = 14,
@@ -69,7 +70,7 @@ const HighlightText = ({
             )}
         </Typo>
     );
-};
+});
 
 const ConversationItem = ({
     item,
@@ -118,20 +119,18 @@ const ConversationItem = ({
         if (lastMessage.type === "call") return lastMessage.callMeta?.kind === "video" ? "Video call" : "Voice call";
         if (lastMessage.type === "file") return lastMessage.attachmentMeta?.name || "Document";
         if (lastMessage.type === "checklist") return lastMessage.checklist?.title ? `✅ ${lastMessage.checklist.title}` : "✅ Checklist";
-        if (isImage) return lastMessage.content || "Photo";
+        if (isImage) {
+            const isGif =
+                lastMessage?.attachmentMeta?.mimeType === "image/gif" ||
+                Boolean(lastMessage?.attachement && String(lastMessage.attachement).split("?")[0].toLowerCase().endsWith(".gif"));
+            if (isGif) return lastMessage.content ? `GIF · ${lastMessage.content}` : "GIF";
+            return lastMessage.content || "Photo";
+        }
         return formatRichPreviewText(lastMessage.content) || "Attachment";
     };
 
-    const getLastMessageDate = () => {
-        if (!lastMessage?.createdAt) return null;
-        const messageDate = moment(lastMessage.createdAt);
-        const today = moment();
-        if (messageDate.isSame(today, "day")) return messageDate.format("h:mm A");
-        if (messageDate.isSame(today, "year")) return messageDate.format("MMM D");
-        return messageDate.format("MMM D, YYYY");
-    };
-
     const openConversation = () => {
+        hapticTap("medium");
         router.push({
             pathname: "/(main)/conversation",
             params: {
@@ -148,13 +147,11 @@ const ConversationItem = ({
     };
 
     const handleLongPress = () => {
-        if (Platform.OS !== 'web') {
-            try { Vibration.vibrate(35); } catch (_) {}
-        }
+        hapticTap("rigid");
         onLongPress?.(item);
     };
 
-    const lastMessageDate = getLastMessageDate();
+    const lastMessageDate = formatConversationRowDate(lastMessage?.createdAt);
     const lastMessageContent = getLastMessageContent();
 
     return (

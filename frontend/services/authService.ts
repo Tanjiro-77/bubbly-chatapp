@@ -43,13 +43,20 @@ export const register = async (email: string, password: string, name: string, av
     }
 };
 
-export const registerWithPhone = async (phoneNumber: string, password: string, name: string, avatar?: string | null): Promise<{ token: string }> => {
+export const registerWithPhone = async (
+    phoneNumber: string,
+    password: string,
+    name: string,
+    avatar?: string | null,
+    email?: string
+): Promise<{ token: string }> => {
     try {
         const response = await axios.post(`${API_URL}/auth/phone/register`, {
             phoneNumber,
             password,
             name,
             avatar,
+            ...(email ? { email } : {}),
         });
         return response.data;
     } catch (error: any) {

@@ -354,16 +354,5 @@ export const isSocketConnected = (): boolean => {
 };
 
 export const onSocketConnectionChange = (handler: (connected: boolean) => void) => {
-    const unsubRegistry = subscribeSocketStatus(handler);
-    const socket = getSocket();
-    if (!socket) return unsubRegistry;
-    const handleConnect = () => handler(true);
-    const handleDisconnect = () => handler(false);
-    socket.on("connect", handleConnect);
-    socket.on("disconnect", handleDisconnect);
-    return () => {
-        unsubRegistry();
-        socket.off("connect", handleConnect);
-        socket.off("disconnect", handleDisconnect);
-    };
+    return subscribeSocketStatus(handler);
 };

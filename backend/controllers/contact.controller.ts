@@ -3,6 +3,8 @@ import { AuthRequest } from "../middleware/auth";
 import User from "../modals/User";
 import { generateToken } from "../utils/token";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /**
  * Normalizes phone numbers by stripping whitespace, dashes, brackets, etc.
  * Preserves leading '+' for international numbers.
@@ -109,12 +111,12 @@ export const syncContacts = async (req: AuthRequest, res: Response): Promise<voi
 };
 
 /**
- * Update user phone number.
+ * Update user phone number (and optional missing email).
  * PUT /api/user/phone
  */
 export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { phoneNumber } = req.body ?? {};
+        const { phoneNumber, email } = req.body ?? {};
 
         if (typeof phoneNumber !== "string") {
             res.status(400).json({ success: false, msg: "Please provide a valid phone number" });
@@ -127,6 +129,13 @@ export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promis
             return;
         }
 
+        const hasEmailUpdate = typeof email === "string" && email.trim().length > 0;
+        const normalizedEmail = hasEmailUpdate ? email.trim().toLowerCase() : undefined;
+        if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
+            res.status(400).json({ success: false, msg: "Please enter a valid email address" });
+            return;
+        }
+
         const l10 = getLast10Digits(cleaned);
         const phoneConditions: any[] = [{ phoneNumber: { $eq: cleaned } }];
         if (l10.length >= 10) {
@@ -134,21 +143,37 @@ export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promis
         }
 
         // Check if phone number (or last-10-digits match) is already taken by another user
-        const existing = await User.findOne({
+        const existingPhone = await User.findOne({
             _id: { $ne: req.userId },
             $or: phoneConditions,
         });
 
-        if (existing) {
+        if (existingPhone) {
             res.status(400).json({ success: false, msg: "This phone number is already linked to another Bubbly account" });
             return;
         }
 
+        if (normalizedEmail) {
+            const existingEmail = await User.findOne({
+                _id: { $ne: req.userId },
+                email: { $eq: normalizedEmail },
+            });
+            if (existingEmail) {
+                res.status(400).json({ success: false, msg: "This email address is already linked to another Bubbly account" });
+                return;
+            }
+        }
+
+        const updateFields: Record<string, any> = { phoneNumber: cleaned };
+        if (normalizedEmail) {
+            updateFields.email = normalizedEmail;
+        }
+
         const user = await User.findByIdAndUpdate(
             req.userId,
-            { phoneNumber: cleaned },
+            updateFields,
             { new: true }
-        ).select("_id name email avatar phoneNumber");
+        ).select("_id name email avatar phoneNumber customStatus theme");
 
         if (!user) {
             res.status(404).json({ success: false, msg: "User not found" });
@@ -159,8 +184,9 @@ export const updatePhoneNumber = async (req: AuthRequest, res: Response): Promis
 
         res.json({
             success: true,
-            msg: "Phone number updated successfully",
+            msg: "Contact details updated successfully",
             phoneNumber: user.phoneNumber,
+            email: user.email,
             token,
             user,
         });

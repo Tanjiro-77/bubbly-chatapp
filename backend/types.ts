@@ -42,6 +42,7 @@ export interface UserProps extends Document {
     recentSearches: string[];
     pushTokens?: string[];
     notificationsEnabled?: boolean;
+    callRingtone?: "incoming_call" | "incoming_call_2" | "incoming_call_3" | "incoming_call_4";
     theme: {
         mode: "light" | "dark" | "system";
         accent: string;

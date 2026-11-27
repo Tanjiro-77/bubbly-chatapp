@@ -134,7 +134,7 @@ const CallLogsScreen = () => {
             avatar: target.avatar || "",
         };
 
-        hapticTap("heavy");
+        hapticTap("boom");
         callInvite({
             conversationId: convId,
             calleeId: target._id,
@@ -256,7 +256,7 @@ const CallLogsScreen = () => {
                 <View style={styles.segmentedContainer}>
                     <TouchableOpacity
                         style={[styles.segmentBtn, activeTab === "all" && styles.segmentBtnActive]}
-                        onPress={() => { hapticTap("light"); setActiveTab("all"); }}
+                        onPress={() => { hapticTap("medium"); setActiveTab("all"); }}
                         activeOpacity={0.8}
                     >
                         <Typo
@@ -269,7 +269,7 @@ const CallLogsScreen = () => {
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.segmentBtn, activeTab === "missed" && styles.segmentBtnActive]}
-                        onPress={() => { hapticTap("light"); setActiveTab("missed"); }}
+                        onPress={() => { hapticTap("medium"); setActiveTab("missed"); }}
                         activeOpacity={0.8}
                     >
                         <Typo

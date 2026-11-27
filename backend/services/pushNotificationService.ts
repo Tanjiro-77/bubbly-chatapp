@@ -3,19 +3,64 @@ import User from "../modals/User";
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_TOKEN_REGEX = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 
+export type CallRingtoneId =
+    | "incoming_call"
+    | "incoming_call_2"
+    | "incoming_call_3"
+    | "incoming_call_4";
+
+export const CALL_RINGTONE_META: Record<
+    CallRingtoneId,
+    { ringtoneId: CallRingtoneId; channelId: string; sound: string }
+> = {
+    incoming_call: {
+        ringtoneId: "incoming_call",
+        channelId: "calls_ringtone_1",
+        sound: "incoming_call.mp3",
+    },
+    incoming_call_2: {
+        ringtoneId: "incoming_call_2",
+        channelId: "calls_ringtone_2",
+        sound: "incoming_call_2.mp3",
+    },
+    incoming_call_3: {
+        ringtoneId: "incoming_call_3",
+        channelId: "calls_ringtone_3",
+        sound: "incoming_call_3.mp3",
+    },
+    incoming_call_4: {
+        ringtoneId: "incoming_call_4",
+        channelId: "calls_ringtone_4",
+        sound: "incoming_call_4.mp3",
+    },
+};
+
+export function isValidCallRingtone(ringtone: unknown): ringtone is CallRingtoneId {
+    return typeof ringtone === "string" && ringtone in CALL_RINGTONE_META;
+}
+
+export function resolveCallRingtonePushConfig(ringtone?: unknown) {
+    if (isValidCallRingtone(ringtone)) {
+        return CALL_RINGTONE_META[ringtone];
+    }
+    return CALL_RINGTONE_META.incoming_call;
+}
+
 export interface ExpoPushMessage {
     to: string;
     title?: string;
     subtitle?: string;
     body: string;
     data?: Record<string, unknown>;
-    sound?: "default" | null;
+    sound?: string | null;
     priority?: "default" | "normal" | "high";
     channelId?: string;
     categoryId?: string;
     ttl?: number;
     badge?: number;
     mutableContent?: boolean;
+    interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";
+    _contentAvailable?: boolean;
 }
 
 export function isValidExpoPushToken(token: unknown): token is string {
@@ -28,7 +73,7 @@ export function isValidExpoPushToken(token: unknown): token is string {
 export function formatMessageNotificationBody(message: {
     type?: string;
     content?: string;
-    attachmentMeta?: { name?: string };
+    attachmentMeta?: { name?: string; mimeType?: string };
     location?: { label?: string };
     voiceDuration?: number;
     isViewOnce?: boolean;
@@ -41,8 +86,11 @@ export function formatMessageNotificationBody(message: {
     const trimmedContent = rawTrimmed.split(/\n?\[BUBBLY_(?:GAME|COUNTDOWN|CHECKLIST)\]/)[0].trim();
 
     switch (message.type) {
-        case "image":
+        case "image": {
+            const isGif = message.attachmentMeta?.mimeType === "image/gif";
+            if (isGif) return trimmedContent ? `🎞️ GIF · ${trimmedContent}` : "🎞️ GIF";
             return trimmedContent ? `📷 ${trimmedContent}` : "📷 Photo";
+        }
         case "video":
             return trimmedContent ? `🎥 ${trimmedContent}` : "🎥 Video";
         case "voice": {
@@ -155,7 +203,7 @@ export async function sendMessagePushNotifications(params: {
         _id?: any;
         type?: string;
         content?: string;
-        attachmentMeta?: { name?: string };
+        attachmentMeta?: { name?: string; mimeType?: string };
         location?: { label?: string };
         voiceDuration?: number;
         isViewOnce?: boolean;
@@ -222,9 +270,13 @@ export async function sendMessagePushNotifications(params: {
             notifications.push({
                 to: token,
                 title,
-                body,
-                sound: "default",
+                subtitle: isGroup ? senderName : undefined,
+                body: isGroup ? preview : body,
+                sound: "notification.mp3",
                 priority: "high",
+                interruptionLevel: "time-sensitive",
+                mutableContent: true,
+                ttl: 86400,
                 channelId: "messages",
                 data: {
                     type: "message",
@@ -236,6 +288,7 @@ export async function sendMessagePushNotifications(params: {
                     conversationType: conversation.type,
                     conversationName: conversation.name || senderName,
                     conversationAvatar: conversation.avatar || sender.avatar || "",
+                    timestamp: Date.now(),
                 },
             });
         }
@@ -257,7 +310,7 @@ export async function sendCallPushNotification(params: {
     conversationId: string;
 }): Promise<{ sent: boolean }> {
     const callee = await User.findById(params.calleeId)
-        .select("pushTokens notificationsEnabled")
+        .select("pushTokens notificationsEnabled callRingtone")
         .lean();
 
     if (!callee || callee.notificationsEnabled === false) {
@@ -274,15 +327,20 @@ export async function sendCallPushNotification(params: {
 
     const callerName = params.caller.name || "Someone";
     const isVideo = params.kind === "video";
+    const ringtoneMeta = resolveCallRingtonePushConfig((callee as any).callRingtone);
 
     const notifications: ExpoPushMessage[] = tokens.map((token) => ({
         to: token,
         title: isVideo ? "Incoming Video Call" : "Incoming Voice Call",
+        subtitle: isVideo ? "Video Call · Bubbly" : "Voice Call · Bubbly",
         body: `${callerName} is calling you on Bubbly`,
-        sound: "default",
+        sound: ringtoneMeta.sound,
         priority: "high",
-        ttl: 60,
-        channelId: "calls",
+        interruptionLevel: "time-sensitive",
+        mutableContent: true,
+        _contentAvailable: true,
+        ttl: 45,
+        channelId: ringtoneMeta.channelId,
         categoryId: "incoming_call",
         data: {
             type: "call",
@@ -292,6 +350,8 @@ export async function sendCallPushNotification(params: {
             callerId: params.caller.id,
             callerName,
             callerAvatar: params.caller.avatar || "",
+            ringtoneId: ringtoneMeta.ringtoneId,
+            timestamp: Date.now(),
         },
     }));
 
@@ -326,13 +386,16 @@ export async function sendMissedCallPushNotification(params: {
     const notifications: ExpoPushMessage[] = tokens.map((token) => ({
         to: token,
         title: `Missed ${params.kind === "video" ? "Video" : "Voice"} Call`,
-        body: `${params.callerName || "Someone"} called you`,
-        sound: "default",
+        body: `${params.callerName || "Someone"} tried to reach you`,
+        sound: "notification.mp3",
         priority: "high",
+        interruptionLevel: "time-sensitive",
+        mutableContent: true,
         channelId: "messages",
         data: {
             type: "missed_call",
             callId: params.callId,
+            dismissCallId: params.callId,
             conversationId: params.conversationId,
             conversationType: "direct",
             kind: params.kind,
@@ -342,6 +405,7 @@ export async function sendMissedCallPushNotification(params: {
             senderId: params.callerId || "",
             senderName: params.callerName || "Someone",
             senderAvatar: params.callerAvatar || "",
+            timestamp: Date.now(),
         },
     }));
 

@@ -21,6 +21,7 @@ import { updateProfile, isSocketConnected } from "../../socket/socketEvents";
 import * as ImagePicker from 'expo-image-picker';
 import { uploadFileToCloudinary } from "../../services/imageService";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { InviteSheetModal } from "../../components/InviteSheetModal";
 import {
     CustomStatusState,
     getMyCustomStatus,
@@ -31,6 +32,7 @@ import {
 const ProfileModal = () => {
     const { user, signOut, updateToken, updateUserPhone } = useAuth();
     const [loading, setLoading] = useState(false);
+    const [showInviteModal, setShowInviteModal] = useState(false);
     const router = useRouter();
 
     const [userData, setUserData] = useState<UserDataProps>({
@@ -78,6 +80,7 @@ const ProfileModal = () => {
     }, [user]);
 
     const onPickImage = async () => {
+        hapticTap("medium");
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
@@ -85,18 +88,22 @@ const ProfileModal = () => {
                 quality: 0.6,
             });
             if (!result.canceled && result.assets?.length) {
+                hapticTap("success");
                 setUserData({ ...userData, avatar: result.assets[0] });
             }
         } catch {
+            hapticTap("error");
             BubblyAlert.alert("Error", "Could not open image library.");
         }
     };
 
     const handleLogout = async () => {
+        hapticTap("heavy");
         await signOut();
     };
 
     const showLogoutAlert = () => {
+        hapticTap("warning");
         BubblyAlert.alert("Sign Out", "Are you sure you want to sign out of Bubbly?", [
             { text: "Cancel", style: 'cancel' },
             { text: "Sign Out", onPress: handleLogout, style: 'destructive' }
@@ -106,13 +113,16 @@ const ProfileModal = () => {
     const onSubmit = async () => {
         let { name, avatar } = userData;
         if (!name.trim()) {
+            hapticTap("error");
             BubblyAlert.alert('Profile', "Please enter your name");
             return;
         }
         if (!isSocketConnected()) {
+            hapticTap("error");
             BubblyAlert.alert("Connection Lost", "Please wait until you are connected to update your profile.");
             return;
         }
+        hapticTap("heavy");
         setLoading(true);
         let data: any = { name: name.trim(), avatar };
         if (avatar && avatar?.uri) {
@@ -126,9 +136,20 @@ const ProfileModal = () => {
             }
         }
 
-        if (phoneNumber.trim() !== (user?.phoneNumber || "")) {
+        const trimmedPhone = phoneNumber.trim();
+        const phoneDigits = trimmedPhone.replace(/\D/g, "");
+        if (!trimmedPhone || phoneDigits.length < 7 || phoneDigits.length > 18) {
+            setLoading(false);
+            BubblyAlert.alert(
+                "Phone Number Required",
+                "A valid phone number (7 to 18 digits) is required so friends can find you via contact sync."
+            );
+            return;
+        }
+
+        if (trimmedPhone !== (user?.phoneNumber || "")) {
             try {
-                await updateUserPhone(phoneNumber.trim());
+                await updateUserPhone(trimmedPhone);
             } catch (err: any) {
                 setLoading(false);
                 BubblyAlert.alert("Phone Number Error", err.message || "Could not update phone number");
@@ -156,7 +177,7 @@ const ProfileModal = () => {
 
                 {/* ── Header ── */}
                 <Animated.View
-                    entering={FadeInDown.duration(400).springify()}
+                    entering={FadeInDown.duration(220)}
                     style={styles.header}
                 >
                     <BackButton color={colors.neutral800} iconSize={22} />
@@ -165,7 +186,7 @@ const ProfileModal = () => {
                             Account & Profile
                         </Typo>
                         <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
-                            Bubbly v4.0.2 Profile
+                            Bubbly v4.1.5 Profile
                         </Typo>
                     </View>
                     <View style={{ width: verticalScale(36) }} />
@@ -179,7 +200,7 @@ const ProfileModal = () => {
 
                     {/* ── Avatar Section with Halo ── */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).delay(80).springify()}
+                        entering={FadeInDown.duration(240).delay(30)}
                         style={styles.avatarSection}
                     >
                         <View style={styles.avatarHaloRing}>
@@ -214,7 +235,7 @@ const ProfileModal = () => {
 
                     {/* ── Section: Account Information ── */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).delay(150).springify()}
+                        entering={FadeInDown.duration(260).delay(50)}
                         style={styles.fields}
                     >
                         <Typo
@@ -292,7 +313,7 @@ const ProfileModal = () => {
                                     weight="bold"
                                 />
                                 <Typo size={12} fontWeight="700" color={colors.neutral600} style={styles.label}>
-                                    PHONE NUMBER
+                                    PHONE NUMBER *
                                 </Typo>
                             </View>
                             <Input
@@ -309,7 +330,7 @@ const ProfileModal = () => {
                                 }
                             />
                             <Typo size={11} color={colors.neutral400} style={{ marginLeft: 6 }}>
-                                Allows your phone contacts to discover you on Bubbly
+                                Required so phone contacts can discover you on Bubbly
                             </Typo>
                         </View>
 
@@ -328,7 +349,7 @@ const ProfileModal = () => {
                                 icon={<Typo size={16}>{statusEmoji || "💬"}</Typo>}
                                 rightIcon={
                                     (statusText || statusEmoji) ? (
-                                        <TouchableOpacity onPress={() => { setStatusEmoji(""); setStatusText(""); }}>
+                                        <TouchableOpacity onPress={() => { hapticTap("light"); setStatusEmoji(""); setStatusText(""); }}>
                                             <Icons.X size={16} color={colors.neutral400} weight="bold" />
                                         </TouchableOpacity>
                                     ) : undefined
@@ -340,7 +361,7 @@ const ProfileModal = () => {
                                     return (
                                         <TouchableOpacity
                                             key={preset.text}
-                                            onPress={() => { hapticTap("light"); setStatusEmoji(preset.emoji); setStatusText(preset.text); }}
+                                            onPress={() => { hapticTap("medium"); setStatusEmoji(preset.emoji); setStatusText(preset.text); }}
                                             style={{
                                                 flexDirection: 'row',
                                                 alignItems: 'center',
@@ -364,7 +385,7 @@ const ProfileModal = () => {
 
                     {/* ── Section: Quick Actions & Settings ── */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).delay(220).springify()}
+                        entering={FadeInDown.duration(240).delay(60)}
                         style={styles.actionsSection}
                     >
                         <Typo
@@ -375,6 +396,41 @@ const ProfileModal = () => {
                         >
                             PREFERENCES & APP
                         </Typo>
+
+                        {/* Invite Friends */}
+                        <Pressable
+                            onPress={() => {
+                                hapticTap("medium");
+                                setShowInviteModal(true);
+                            }}
+                            style={({ pressed }) => [
+                                styles.actionCard,
+                                pressed && { opacity: 0.7, backgroundColor: colors.neutral100 }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
+                                <View style={[styles.actionIconWrap, { backgroundColor: '#dcfce7' }]}>
+                                    <Icons.PaperPlaneTilt
+                                        size={verticalScale(18)}
+                                        color={'#16a34a'}
+                                        weight="fill"
+                                    />
+                                </View>
+                                <View style={styles.actionTextWrap}>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                        Invite Friends
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
+                                        Send SMS, WhatsApp or personal invite link
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.CaretRight
+                                size={verticalScale(16)}
+                                color={colors.neutral300}
+                                weight="bold"
+                            />
+                        </Pressable>
 
                         {/* Settings */}
                         <Pressable
@@ -458,7 +514,7 @@ const ProfileModal = () => {
                                 </View>
                                 <View style={styles.actionTextWrap}>
                                     <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
-                                        About Bubbly v4.0.2
+                                        About Bubbly v4.1.5
                                     </Typo>
                                     <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Build info, credits & terms
@@ -509,7 +565,7 @@ const ProfileModal = () => {
 
             {/* ── Footer Button ── */}
             <Animated.View
-                entering={FadeInUp.duration(500).delay(250).springify()}
+                entering={FadeInUp.duration(240).delay(70)}
                 style={styles.footer}
             >
                 <Button
@@ -524,6 +580,12 @@ const ProfileModal = () => {
             </Animated.View>
             </KeyboardAvoidingView>
 
+            <InviteSheetModal
+                visible={showInviteModal}
+                senderName={user?.name}
+                senderId={user?.id}
+                onClose={() => setShowInviteModal(false)}
+            />
         </ScreenWrapper>
     );
 };

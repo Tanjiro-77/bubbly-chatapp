@@ -31,6 +31,102 @@ function cleanupCall(callId: string) {
     activeCalls.delete(callId);
 }
 
+async function notifyUnansweredCall(params: {
+    conversationId: string;
+    callerId: string;
+    calleeId: string;
+    callId: string;
+    kind: "voice" | "video";
+    messageStatus: "missed" | "rejected" | "ended";
+    duration?: number;
+    sendPush?: boolean;
+}) {
+    const { conversationId, callerId, calleeId, callId, kind, messageStatus, duration = 0, sendPush = true } = params;
+    await createAndBroadcastMessage({
+        conversationId,
+        senderId: callerId,
+        type: "call",
+        callMeta: { callId, kind, status: messageStatus, duration },
+        skipRateLimit: true,
+        skipPermissionCheck: true,
+    });
+
+    if (sendPush) {
+        const callerDoc = await User.findById(callerId).select("name avatar").lean();
+        sendMissedCallPushNotification({
+            calleeId,
+            callerId,
+            callerName: callerDoc?.name || "Someone",
+            callerAvatar: callerDoc?.avatar || undefined,
+            callId,
+            kind,
+            conversationId,
+        }).catch((err) => console.error("Missed call push error:", err));
+    }
+}
+
+export async function endCallById(io: SocketIOServer, callId: string, userId: string) {
+    const call = await Call.findById(callId);
+    if (!call) return null;
+
+    if (call.callerId.toString() !== userId && call.calleeId.toString() !== userId) {
+        throw new Error("Not authorized");
+    }
+
+    if (["ended", "missed", "rejected", "failed", "cancelled"].includes(call.status)) {
+        return call;
+    }
+
+    const now = new Date();
+    const isCaller = call.callerId.toString() === userId;
+    const finalStatus: "ended" | "cancelled" | "missed" =
+        call.status === "connected" || (call.status === "connecting" && Boolean(call.startedAt))
+            ? "ended"
+            : isCaller
+            ? "cancelled"
+            : "missed";
+    const messageStatus: "ended" | "missed" = finalStatus === "ended" ? "ended" : "missed";
+    const duration = call.startedAt
+        ? Math.max(0, Math.floor((now.getTime() - call.startedAt.getTime()) / 1000))
+        : 0;
+
+    const finalizedCall = await Call.findOneAndUpdate(
+        { _id: call._id, status: { $in: ["ringing", "connecting", "connected"] } },
+        { $set: { endedAt: now, status: finalStatus, duration } },
+        { new: true }
+    );
+
+    if (!finalizedCall) {
+        return await Call.findById(callId);
+    }
+
+    cleanupCall(finalizedCall._id.toString());
+
+    await notifyUnansweredCall({
+        conversationId: finalizedCall.conversationId.toString(),
+        callerId: finalizedCall.callerId.toString(),
+        calleeId: finalizedCall.calleeId.toString(),
+        callId: finalizedCall._id.toString(),
+        kind: finalizedCall.kind,
+        messageStatus,
+        duration: finalizedCall.duration,
+        sendPush: finalStatus === "missed" || finalStatus === "cancelled",
+    });
+
+    io.to(userRoom(finalizedCall.callerId.toString())).emit("call:ended", {
+        callId: finalizedCall._id.toString(),
+        reason: finalStatus,
+        duration: finalizedCall.duration,
+    });
+    io.to(userRoom(finalizedCall.calleeId.toString())).emit("call:ended", {
+        callId: finalizedCall._id.toString(),
+        reason: finalStatus,
+        duration: finalizedCall.duration,
+    });
+
+    return finalizedCall;
+}
+
 export async function acceptCallById(io: SocketIOServer, callId: string, userId: string) {
     const updatedCall = await Call.findOneAndUpdate(
         { _id: callId, calleeId: userId, status: "ringing" },
@@ -275,24 +371,15 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                     if (pendingCall) {
                         cleanupCall(call._id.toString());
 
-                        await createAndBroadcastMessage({
+                        await notifyUnansweredCall({
                             conversationId: pendingCall.conversationId.toString(),
-                            senderId: callerId,
-                            type: "call",
-                            callMeta: { callId: pendingCall._id.toString(), kind: data.kind, status: "missed", duration: 0 },
-                            skipRateLimit: true,
-                            skipPermissionCheck: true,
-                        });
-
-                        sendMissedCallPushNotification({
-                            calleeId: resolvedCalleeId!,
                             callerId,
-                            callerName,
-                            callerAvatar: socket.data.avatar,
+                            calleeId: resolvedCalleeId!,
                             callId: pendingCall._id.toString(),
                             kind: data.kind,
-                            conversationId: pendingCall.conversationId.toString(),
-                        }).catch((err) => console.error("Missed call push error:", err));
+                            messageStatus: "missed",
+                            sendPush: true,
+                        });
 
                         io.to(userRoom(resolvedCalleeId!)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
                         io.to(userRoom(callerId)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
@@ -361,6 +448,15 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             );
             if (!call) return;
             cleanupCall(call._id.toString());
+            await notifyUnansweredCall({
+                conversationId: call.conversationId.toString(),
+                callerId: call.callerId.toString(),
+                calleeId: call.calleeId.toString(),
+                callId: call._id.toString(),
+                kind: call.kind,
+                messageStatus: "missed",
+                sendPush: true,
+            });
             io.to(userRoom(call.calleeId.toString())).emit("call:ended", { callId: call._id.toString(), reason: "cancelled" });
             io.to(userRoom(call.callerId.toString())).emit("call:ended", { callId: call._id.toString(), reason: "cancelled" });
         } catch (error) {
@@ -399,126 +495,7 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
         try {
             const userId = socket.data.userId;
             if (!data?.callId || !isValidObjectId(data.callId)) return;
-
-            const call = await Call.findById(data.callId);
-            if (!call) return;
-
-            if (
-                call.callerId.toString() !== userId &&
-                call.calleeId.toString() !== userId
-            ) {
-                return;
-            }
-
-            // Already finalized → do nothing.
-            if (
-                call.status === "ended" ||
-                call.status === "missed" ||
-                call.status === "rejected" ||
-                call.status === "failed" ||
-                call.status === "cancelled"
-            ) {
-                return;
-            }
-
-            const now = new Date();
-            const isCaller = call.callerId.toString() === userId;
-
-            const finalStatus: "ended" | "cancelled" | "missed" =
-                call.status === "connected" || (call.status === "connecting" && Boolean(call.startedAt))
-                    ? "ended"
-                    : isCaller
-                    ? "cancelled"
-                    : "missed";
-
-            const messageStatus: "ended" | "missed" =
-                finalStatus === "ended" ? "ended" : "missed";
-
-            const duration = call.startedAt
-                ? Math.max(
-                    0,
-                    Math.floor(
-                        (now.getTime() - call.startedAt.getTime()) / 1000
-                    )
-                )
-                : 0;
-
-            // IMPORTANT:
-            // Atomically finalize the call.
-            // Only the FIRST request can update it.
-            const finalizedCall = await Call.findOneAndUpdate(
-                {
-                    _id: call._id,
-                    status: {
-                        $in: ["ringing", "connecting", "connected"],
-                    },
-                },
-                {
-                    $set: {
-                        endedAt: now,
-                        status: finalStatus,
-                        duration,
-                    },
-                },
-                {
-                    new: true,
-                }
-            );
-
-            // Another call:end already finalized this call.
-            if (!finalizedCall) {
-                return;
-            }
-
-            cleanupCall(finalizedCall._id.toString());
-
-            await createAndBroadcastMessage({
-                conversationId: finalizedCall.conversationId.toString(),
-                senderId: finalizedCall.callerId.toString(),
-                type: "call",
-                callMeta: {
-                    callId: finalizedCall._id.toString(),
-                    kind: finalizedCall.kind,
-                    status: messageStatus,
-                    duration: finalizedCall.duration,
-                },
-                skipRateLimit: true,
-                skipPermissionCheck: true,
-            });
-
-            if (finalStatus === "missed" || finalStatus === "cancelled") {
-                const callerDoc = await User.findById(finalizedCall.callerId)
-                    .select("name avatar")
-                    .lean();
-                sendMissedCallPushNotification({
-                    calleeId: finalizedCall.calleeId.toString(),
-                    callerId: finalizedCall.callerId.toString(),
-                    callerName: callerDoc?.name || "Someone",
-                    callerAvatar: callerDoc?.avatar || undefined,
-                    callId: finalizedCall._id.toString(),
-                    kind: finalizedCall.kind,
-                    conversationId: finalizedCall.conversationId.toString(),
-                }).catch((err) => console.error("Missed call push error:", err));
-            }
-
-            const endReason = finalStatus === "ended" ? "ended" : finalStatus;
-
-            io.to(
-                userRoom(finalizedCall.callerId.toString())
-            ).emit("call:ended", {
-                callId: finalizedCall._id.toString(),
-                reason: endReason,
-                duration: finalizedCall.duration,
-            });
-
-            io.to(
-                userRoom(finalizedCall.calleeId.toString())
-            ).emit("call:ended", {
-                callId: finalizedCall._id.toString(),
-                reason: endReason,
-                duration: finalizedCall.duration,
-            });
-
+            await endCallById(io, data.callId, userId);
         } catch (error) {
             console.log("call:end", error);
         }

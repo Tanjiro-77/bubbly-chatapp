@@ -212,6 +212,7 @@ export const VaultModal: React.FC<VaultModalProps> = ({
                           src={isGroup ? c.avatar : partner?.avatar}
                           name={title}
                           size="sm"
+                          isGroup={isGroup}
                         />
                         <span className="font-bold text-xs truncate text-stone-900 dark:text-white">
                           {title}

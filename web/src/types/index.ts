@@ -32,7 +32,20 @@ export type MessageType =
   | "system"
   | "call"
   | "poll"
+  | "checklist"
   | "announcement";
+
+export interface ChecklistItemProps {
+  id: string;
+  text: string;
+  completed: boolean;
+  completedBy?: string;
+}
+
+export interface ChecklistProps {
+  title: string;
+  items: ChecklistItemProps[];
+}
 
 export interface AttachmentMetaProps {
   url: string;
@@ -109,6 +122,7 @@ export interface MessageProps {
   voiceDuration?: number;
   callMeta?: CallMetaProps | null;
   poll?: PollProps | null;
+  checklist?: ChecklistProps | null;
   reactions: ReactionProps[];
   replyTo?: ReplyToProps | null;
   isDeleted?: boolean;
@@ -148,6 +162,7 @@ export interface ConversationProps {
     isDeleted?: boolean;
     callMeta?: CallMetaProps | null;
     poll?: PollProps | null;
+    checklist?: ChecklistProps | null;
   };
   unreadCount?: number;
   isMuted?: boolean;
@@ -160,7 +175,9 @@ export interface ConversationProps {
     createdAt: string;
     sender?: { id: string; name: string; avatar?: string | null } | null;
   }[];
+  admins?: Array<{ _id: string; name?: string; avatar?: string | null } | string>;
   groupAdmins?: string[];
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -207,6 +224,8 @@ export type StoryType = "text" | "image" | "video";
 export interface StoryViewerProps {
   userId: string;
   viewedAt: string;
+  name?: string;
+  avatar?: string;
 }
 
 export interface StoryReactionProps {

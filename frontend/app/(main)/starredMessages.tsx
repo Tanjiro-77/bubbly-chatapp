@@ -27,6 +27,7 @@ import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { getStarredMessages, toggleStarMessage, isSocketConnected } from "../../socket/socketEvents";
 import { formatRichPreviewText } from "../../utils/featureStorage";
+import { hapticTap } from "../../utils/haptics";
 import moment from "moment";
 
 interface StarredItem {
@@ -127,6 +128,7 @@ const StarredMessagesScreen = () => {
         const msg = item.message || item.messageId;
         const msgId = msg?.id || msg?._id || item._id || item.savedId;
         if (!msgId) return;
+        hapticTap("warning");
 
         BubblyAlert.alert(
             "Remove Star",
@@ -137,6 +139,7 @@ const StarredMessagesScreen = () => {
                     text: "Remove",
                     style: "destructive",
                     onPress: () => {
+                        hapticTap("heavy");
                         toggleStarMessage({
                             messageId: msgId,
                             conversationId: item.conversationId,
@@ -151,6 +154,7 @@ const StarredMessagesScreen = () => {
 
     const handleJumpToChat = useCallback((item: StarredItem) => {
         if (!item.conversationId) return;
+        hapticTap("medium");
         const msg = item.message || item.messageId;
         const sender = msg?.sender || msg?.senderId;
         const conv = (item as any).conversation;
@@ -291,7 +295,7 @@ const StarredMessagesScreen = () => {
                             onChangeText={setSearchQuery}
                             autoFocus
                         />
-                        <TouchableOpacity onPress={() => { setSearchQuery(""); setIsSearching(false); }}>
+                        <TouchableOpacity onPress={() => { hapticTap("light"); setSearchQuery(""); setIsSearching(false); }}>
                             <Icons.X size={verticalScale(16)} color={colors.neutral500} />
                         </TouchableOpacity>
                     </View>
@@ -307,7 +311,7 @@ const StarredMessagesScreen = () => {
                         </View>
                         <TouchableOpacity
                             style={styles.iconBtn}
-                            onPress={() => setIsSearching(true)}
+                            onPress={() => { hapticTap("medium"); setIsSearching(true); }}
                             activeOpacity={0.7}
                         >
                             <Icons.MagnifyingGlass size={verticalScale(20)} color={colors.neutral700} />

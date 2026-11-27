@@ -149,7 +149,7 @@ export default function QRCodeScreen() {
     const handleCopyLink = async () => {
         try {
             await Clipboard.setStringAsync(inviteLink);
-            hapticTap("success");
+            hapticTap("celebration");
             setCopiedToast(true);
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
             toastTimerRef.current = setTimeout(() => setCopiedToast(false), 2000);
@@ -157,6 +157,7 @@ export default function QRCodeScreen() {
     };
 
     const handleShare = async () => {
+        hapticTap("medium");
         try {
             await Share.share({
                 title: "Connect with me on Bubbly!",
@@ -167,6 +168,7 @@ export default function QRCodeScreen() {
     };
 
     const handlePasteId = async () => {
+        hapticTap("medium");
         try {
             const text = await Clipboard.getStringAsync();
             if (text) setManualIdInput(text.trim());
@@ -187,6 +189,7 @@ export default function QRCodeScreen() {
     const handleConnectManual = () => {
         const raw = manualIdInput.trim();
         if (!raw) {
+            hapticTap("error");
             BubblyAlert.alert("Input Required", "Please enter a valid Bubbly user ID or paste an invite link.");
             return;
         }
@@ -196,13 +199,16 @@ export default function QRCodeScreen() {
 
         if (/^[a-fA-F0-9]{24}$/.test(targetId) && currentUser?.id) {
             if (!isSocketConnected()) {
+                hapticTap("error");
                 BubblyAlert.alert("Offline", "Connect to the internet to start a chat via QR ID.");
                 return;
             }
             if (targetId === currentUser.id) {
+                hapticTap("warning");
                 BubblyAlert.alert("That's You", "You cannot start a chat with your own QR ID.");
                 return;
             }
+            hapticTap("heavy");
             const onRes = (res: any) => {
                 newConversation(onRes, true);
                 pendingNewConvRef.current = null;
@@ -262,7 +268,7 @@ export default function QRCodeScreen() {
                 <View style={styles.segmentedRow}>
                     <TouchableOpacity
                         style={[styles.segmentBtn, activeTab === 0 && styles.segmentBtnActive]}
-                        onPress={() => setActiveTab(0)}
+                        onPress={() => { hapticTap("medium"); setActiveTab(0); }}
                         activeOpacity={0.8}
                     >
                         <Icons.QrCode
@@ -281,7 +287,7 @@ export default function QRCodeScreen() {
 
                     <TouchableOpacity
                         style={[styles.segmentBtn, activeTab === 1 && styles.segmentBtnActive]}
-                        onPress={() => setActiveTab(1)}
+                        onPress={() => { hapticTap("medium"); setActiveTab(1); }}
                         activeOpacity={0.8}
                     >
                         <Icons.Scan
@@ -307,7 +313,7 @@ export default function QRCodeScreen() {
                     {activeTab === 0 ? (
                         /* ── TAB 1: MY QR CODE ── */
                         <Animated.View
-                            entering={FadeInDown.duration(450).springify()}
+                            entering={FadeInDown.duration(240)}
                             style={styles.card}
                         >
                             {/* Profile Info */}
@@ -362,7 +368,7 @@ export default function QRCodeScreen() {
                                         <TouchableOpacity
                                             key={sw.id}
                                             onPress={() => {
-                                                hapticTap("light");
+                                                hapticTap("medium");
                                                 setQrColor(sw.color);
                                             }}
                                             style={{
@@ -411,7 +417,7 @@ export default function QRCodeScreen() {
                     ) : (
                         /* ── TAB 2: SCAN QR CODE ── */
                         <Animated.View
-                            entering={FadeInUp.duration(450).springify()}
+                            entering={FadeInUp.duration(240)}
                             style={styles.card}
                         >
                             <Typo size={16} fontWeight="700" color={colors.neutral900} style={{ textAlign: "center" }}>

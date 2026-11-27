@@ -9,7 +9,12 @@ export function connectSocket(): Promise<Socket> {
     return Promise.reject(new Error("No token found. User must login first"));
   }
 
-  if (!socket) {
+  if (socket) {
+    socket.auth = { token };
+    if (!socket.connected) {
+      socket.connect();
+    }
+  } else {
     socket = io(API_URL, {
       auth: { token },
       transports: ["websocket", "polling"],

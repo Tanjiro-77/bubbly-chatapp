@@ -7,7 +7,6 @@ import {
     Switch,
     Platform,
     ActivityIndicator,
-    Vibration,
 } from "react-native";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
@@ -95,6 +94,7 @@ export default function StorageManagerScreen() {
     }, [scanStorageMetrics]);
 
     const updatePref = useCallback(async (key: keyof StoragePreferences, val: boolean) => {
+        hapticTap("medium");
         setPrefs((prev) => {
             const next = { ...prev, [key]: val };
             AsyncStorage.setItem(STORAGE_PREFS_KEY, JSON.stringify(next)).catch(() => {});
@@ -111,9 +111,11 @@ export default function StorageManagerScreen() {
 
     const handleClearCache = async () => {
         if (storageData.cache === 0) {
+            hapticTap("light");
             BubblyAlert.alert("Cache Already Clean", "There are no temporary cache files to delete right now.");
             return;
         }
+        hapticTap("warning");
 
         BubblyAlert.alert(
             "Clear App Cache",
@@ -126,7 +128,7 @@ export default function StorageManagerScreen() {
                     onPress: async () => {
                         setClearingCache(true);
                         try {
-                            hapticTap("success");
+                            hapticTap("celebration");
                             await Promise.all([
                                 Image.clearDiskCache?.().catch(() => false),
                                 Image.clearMemoryCache?.().catch(() => false),
@@ -137,6 +139,7 @@ export default function StorageManagerScreen() {
                             setCacheCleared(true);
                             BubblyAlert.alert("Storage Cleaned ✨", `Cleared image disk/memory caches & freed ${freedMB} MB!`);
                         } catch (_) {
+                            hapticTap("error");
                             BubblyAlert.alert("Error", "Could not clear cache at this time.");
                         } finally {
                             setClearingCache(false);
@@ -148,6 +151,7 @@ export default function StorageManagerScreen() {
     };
 
     const handleResetStats = () => {
+        hapticTap("warning");
         BubblyAlert.alert(
             "Reset Network Statistics",
             "Are you sure you want to reset all network and call counters?",
@@ -157,6 +161,7 @@ export default function StorageManagerScreen() {
                     text: "Reset",
                     style: "destructive",
                     onPress: () => {
+                        hapticTap("heavy");
                         BubblyAlert.alert("Statistics Reset", "All network usage counters have been reset to zero.");
                     },
                 },

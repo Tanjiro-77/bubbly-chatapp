@@ -13,6 +13,8 @@ import { useAuth } from "../../contexts/authContext";
 import Button from "../../components/Button";
 import { scale, verticalScale } from "../../utils/styling";
 import { hapticTap } from "../../utils/haptics";
+import { getCachedContacts, getMemoryContacts, setCachedContacts } from "../../utils/chatCache";
+import { InviteRecipient, InviteSheetModal } from "../../components/InviteSheetModal";
 import { getContacts, newConversation, isSocketConnected } from "../../socket/socketEvents";
 import { uploadFileToCloudinary } from "../../services/imageService";
 import { fetchDevicePhoneContacts, syncContactsWithBackend, findUserByPhoneNumber, PhoneContactItem, MatchedContactItem } from "../../services/contactService";
@@ -24,7 +26,7 @@ const NewConversationModal = () => {
     const isGroupMode = isGroup == '1';
     const router = useRouter();
     const { user: currentUser, token } = useAuth();
-    const [contacts, setContacts] = useState<any[]>([]);
+    const [contacts, setContacts] = useState<any[]>(() => getMemoryContacts(currentUser?.id) ?? []);
     const [searchQuery, setSearchQuery] = useState("");
     const [groupAvatar, setGroupAvatar] = useState<{ uri: string } | null>(null);
     const [groupName, setGroupName] = useState("");
@@ -40,7 +42,11 @@ const NewConversationModal = () => {
     const [contactsTab, setContactsTab] = useState<'all' | 'phone'>('all');
     const [lookupPhone, setLookupPhone] = useState('');
     const [isLookingUpPhone, setIsLookingUpPhone] = useState(false);
+    const [inviteModalVisible, setInviteModalVisible] = useState(false);
+    const [inviteRecipient, setInviteRecipient] = useState<InviteRecipient | null>(null);
+    const [invitedNumbers, setInvitedNumbers] = useState<string[]>([]);
     const awaitingCreateRef = useRef(false);
+    const createTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const syncCacheKey = currentUser?.id
         ? `@bubbly_synced_contacts_${currentUser.id}`
@@ -87,6 +93,13 @@ const NewConversationModal = () => {
     }, [syncCacheKey, token]);
 
     useEffect(() => {
+        if (currentUser?.id) {
+            getCachedContacts(currentUser.id).then((cached) => {
+                if (cached.length > 0) {
+                    setContacts((prev) => (prev.length === 0 ? cached : prev));
+                }
+            }).catch(() => {});
+        }
         getContacts(processGetContacts);
         newConversation(processNewConversation);
         getContacts(null);
@@ -94,16 +107,42 @@ const NewConversationModal = () => {
         return () => {
             getContacts(processGetContacts, true);
             newConversation(processNewConversation, true);
+            if (createTimeoutRef.current) {
+                clearTimeout(createTimeoutRef.current);
+                createTimeoutRef.current = null;
+            }
         };
-    }, []);
+    }, [currentUser?.id]);
+
+    const clearCreateTimeout = () => {
+        if (createTimeoutRef.current) {
+            clearTimeout(createTimeoutRef.current);
+            createTimeoutRef.current = null;
+        }
+    };
+
+    const armCreateTimeout = () => {
+        clearCreateTimeout();
+        createTimeoutRef.current = setTimeout(() => {
+            if (awaitingCreateRef.current) {
+                awaitingCreateRef.current = false;
+                setIsLoading(false);
+                BubblyAlert.alert("Connection Timeout", "Could not start conversation. Please check your connection and try again.");
+            }
+        }, 10000);
+    };
 
     const processGetContacts = (res: any) => {
-        if (res.success) setContacts(res.data);
+        if (res.success && Array.isArray(res.data)) {
+            setContacts(res.data);
+            setCachedContacts(currentUser?.id, res.data);
+        }
     };
 
     const processNewConversation = (res: any) => {
         if (!awaitingCreateRef.current) return;
         awaitingCreateRef.current = false;
+        clearCreateTimeout();
         setIsLoading(false);
         if (res.success) {
             router.replace({
@@ -124,20 +163,25 @@ const NewConversationModal = () => {
     };
 
     const onPickImage = async () => {
+        hapticTap("medium");
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
                 aspect: [1, 1],
                 quality: 0.6,
             });
-            if (!result.canceled && result.assets?.length) setGroupAvatar(result.assets[0]);
+            if (!result.canceled && result.assets?.length) {
+                hapticTap("success");
+                setGroupAvatar(result.assets[0]);
+            }
         } catch {
+            hapticTap("error");
             BubblyAlert.alert("Error", "Could not open image library.");
         }
     };
 
     const toggleParticipant = (user: any) => {
-        hapticTap("light");
+        hapticTap("medium");
         setSelectedParticipants((prev: string[]) =>
             prev.includes(user.id)
                 ? prev.filter((id: string) => id !== user.id)
@@ -147,19 +191,22 @@ const NewConversationModal = () => {
 
     const onSelectUser = (user: any) => {
         if (!currentUser) {
+            hapticTap("error");
             BubblyAlert.alert("Authentication", "Please login to start a conversation");
             return;
         }
-        hapticTap("medium");
         if (isGroupMode) {
             toggleParticipant(user);
         } else {
             if (!isSocketConnected()) {
+                hapticTap("error");
                 BubblyAlert.alert("Offline", "Connect to the internet to start a chat.");
                 return;
             }
+            hapticTap("heavy");
             awaitingCreateRef.current = true;
             setIsLoading(true);
+            armCreateTimeout();
             newConversation({
                 type: "direct",
                 participants: [currentUser.id, user.id]
@@ -169,14 +216,17 @@ const NewConversationModal = () => {
 
     const createGroup = async () => {
         if (!groupName.trim()) {
+            hapticTap("error");
             BubblyAlert.alert("Group Name", "Please enter a group name.");
             return;
         }
         if (!currentUser || selectedParticipants.length < 2) return;
         if (!isSocketConnected()) {
+            hapticTap("error");
             BubblyAlert.alert("Offline", "Connect to the internet to create a group.");
             return;
         }
+        hapticTap("heavy");
         setIsLoading(true);
         try {
             let avatar = null;
@@ -185,6 +235,7 @@ const NewConversationModal = () => {
                 if (uploadResult.success) avatar = uploadResult.data;
             }
             awaitingCreateRef.current = true;
+            armCreateTimeout();
             newConversation({
                 type: "group",
                 participants: [currentUser.id, ...selectedParticipants],
@@ -193,6 +244,7 @@ const NewConversationModal = () => {
             });
         } catch (error: any) {
             awaitingCreateRef.current = false;
+            clearCreateTimeout();
             setIsLoading(false);
             BubblyAlert.alert("Error", error.message);
         }
@@ -202,6 +254,7 @@ const NewConversationModal = () => {
         if (!token || !currentUser) return;
         const cleaned = lookupPhone.trim();
         if (!cleaned) return;
+        hapticTap("medium");
         setIsLookingUpPhone(true);
         try {
             const res = await findUserByPhoneNumber(cleaned, token);
@@ -210,7 +263,21 @@ const NewConversationModal = () => {
                 onSelectUser(res.user);
             }
         } catch (err: any) {
-            BubblyAlert.alert("User Not Found", err.message || "No registered user has that phone number.");
+            hapticTap("error");
+            BubblyAlert.alert(
+                "User Not Found",
+                err.message || "No registered user has that phone number.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Invite via Link / SMS",
+                        onPress: () => {
+                            setInviteRecipient({ phoneNumber: cleaned });
+                            setInviteModalVisible(true);
+                        },
+                    },
+                ]
+            );
         } finally {
             setIsLookingUpPhone(false);
         }
@@ -228,10 +295,12 @@ const NewConversationModal = () => {
 
     const handleSyncPhoneContacts = async () => {
         if (!token) {
+            hapticTap("error");
             BubblyAlert.alert("Authentication", "Please log in to sync contacts.");
             return;
         }
 
+        hapticTap("heavy");
         setIsSyncingPhone(true);
         try {
             const { status, canAskAgain, contacts: fetchedList } = await fetchDevicePhoneContacts();
@@ -273,7 +342,7 @@ const NewConversationModal = () => {
                     syncedAt,
                 })
             ).catch(() => {});
-            hapticTap("success");
+            hapticTap("celebration");
 
             if (syncResult.matchedContacts.length > 0) {
                 BubblyAlert.alert(
@@ -287,6 +356,7 @@ const NewConversationModal = () => {
                 );
             }
         } catch (err: any) {
+            hapticTap("error");
             console.error("handleSyncPhoneContacts error:", err);
             BubblyAlert.alert("Sync Error", err.message || "Failed to sync device contacts");
         } finally {
@@ -294,23 +364,42 @@ const NewConversationModal = () => {
         }
     };
 
-    const handleInviteContact = async (c: PhoneContactItem) => {
-        try {
-            await Share.share({
-                title: "Invite to Bubbly",
-                message: `Hey ${c.name}! Join me on Bubbly Messenger to chat, make crystal-clear calls, and share stories: https://bubbly.chat`,
-            });
-        } catch (_) {}
+    const handleInviteContact = (c: PhoneContactItem) => {
+        hapticTap("medium");
+        setInviteRecipient({
+            id: c.id,
+            name: c.name,
+            phoneNumber: c.phoneNumber,
+        });
+        setInviteModalVisible(true);
     };
 
-    // Filter phone contacts based on search query
+    const handleOpenGeneralInvite = () => {
+        hapticTap("medium");
+        setInviteRecipient(null);
+        setInviteModalVisible(true);
+    };
+
+    // Filter phone contacts based on search query & exclude contacts already matched on Bubbly
+    const matchedPhoneSet = useMemo(() => {
+        const s = new Set<string>();
+        matchedPhoneContacts.forEach((m) => {
+            if (m.phoneNumber) s.add(m.phoneNumber.replace(/[^\d]/g, "").slice(-10));
+        });
+        return s;
+    }, [matchedPhoneContacts]);
+
     const filteredPhoneContacts = useMemo(() => {
-        if (!searchQuery.trim()) return phoneContacts;
+        const unmatched = phoneContacts.filter((c) => {
+            const l10 = c.phoneNumber.replace(/[^\d]/g, "").slice(-10);
+            return !l10 || !matchedPhoneSet.has(l10);
+        });
+        if (!searchQuery.trim()) return unmatched;
         const q = searchQuery.toLowerCase().trim();
-        return phoneContacts.filter((c: PhoneContactItem) =>
+        return unmatched.filter((c: PhoneContactItem) =>
             c.name.toLowerCase().includes(q) || c.phoneNumber.includes(q)
         );
-    }, [phoneContacts, searchQuery]);
+    }, [phoneContacts, matchedPhoneSet, searchQuery]);
 
     // Selected user objects for horizontal chips carousel (checks both All and Matched Phone users)
     const selectedUsers = useMemo(() => {
@@ -329,7 +418,7 @@ const NewConversationModal = () => {
 
                 {/* ── Header ── */}
                 <Animated.View
-                    entering={FadeInDown.duration(400).springify()}
+                    entering={FadeInDown.duration(220)}
                     style={styles.header}
                 >
                     <BackButton color={colors.neutral800} iconSize={22} />
@@ -346,7 +435,7 @@ const NewConversationModal = () => {
 
                 {/* ── Search Bar ── */}
                 <Animated.View
-                    entering={FadeInDown.duration(450).delay(80).springify()}
+                    entering={FadeInDown.duration(220).delay(30)}
                     style={styles.searchContainer}
                 >
                     <Icons.MagnifyingGlass size={18} color={colors.neutral400} weight="bold" />
@@ -358,7 +447,7 @@ const NewConversationModal = () => {
                         onChangeText={setSearchQuery}
                     />
                     {searchQuery.length > 0 && (
-                        <TouchableOpacity onPress={() => setSearchQuery("")} activeOpacity={0.7}>
+                        <TouchableOpacity onPress={() => { hapticTap("light"); setSearchQuery(""); }} activeOpacity={0.7}>
                             <Icons.XCircle size={18} color={colors.neutral400} weight="fill" />
                         </TouchableOpacity>
                     )}
@@ -367,7 +456,7 @@ const NewConversationModal = () => {
                 {/* ── Group Mode Setup Header ── */}
                 {isGroupMode && (
                     <Animated.View
-                        entering={FadeInDown.duration(500).delay(120).springify()}
+                        entering={FadeInDown.duration(220).delay(30)}
                         style={styles.groupSetup}
                     >
                         {/* Group Avatar Picker */}
@@ -509,6 +598,33 @@ const NewConversationModal = () => {
                     )}
                 </TouchableOpacity>
 
+                {/* ── General Invite Card ── */}
+                {!isGroupMode && (
+                    <TouchableOpacity
+                        onPress={handleOpenGeneralInvite}
+                        activeOpacity={0.8}
+                        style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: spacingX._10,
+                            marginHorizontal: spacingX._20,
+                            marginTop: spacingY._8,
+                            paddingHorizontal: spacingX._12,
+                            paddingVertical: verticalScale(9),
+                            borderRadius: radius._12,
+                            backgroundColor: colors.neutral50,
+                            borderWidth: 1,
+                            borderColor: colors.neutral200,
+                        }}
+                    >
+                        <Icons.PaperPlaneTilt size={16} color={colors.primaryDark} weight="fill" />
+                        <Typo size={12.5} fontWeight="700" color={colors.neutral800} style={{ flex: 1 }}>
+                            Invite a friend via SMS, WhatsApp or Link
+                        </Typo>
+                        <Icons.CaretRight size={15} color={colors.neutral400} weight="bold" />
+                    </TouchableOpacity>
+                )}
+
                 {/* ── Segmented Tabs (All Users vs Phone Contacts) ── */}
                 {hasSyncedPhone && (
                     <View style={styles.segmentedTabs}>
@@ -535,7 +651,7 @@ const NewConversationModal = () => {
 
                 {/* ── Contacts Section Header ── */}
                 <Animated.View
-                    entering={FadeInDown.duration(500).delay(150).springify()}
+                    entering={FadeInDown.duration(220).delay(40)}
                     style={styles.sectionRow}
                 >
                     <Typo
@@ -640,12 +756,22 @@ const NewConversationModal = () => {
                                             </Typo>
                                         </View>
                                         <TouchableOpacity
-                                            style={styles.inviteBtn}
+                                            style={[
+                                                styles.inviteBtn,
+                                                invitedNumbers.includes(c.phoneNumber) && {
+                                                    backgroundColor: "#dcfce7",
+                                                    borderColor: "#86efac",
+                                                },
+                                            ]}
                                             onPress={() => handleInviteContact(c)}
                                             activeOpacity={0.7}
                                         >
-                                            <Typo size={12} fontWeight="700" color={colors.primaryDark}>
-                                                Invite
+                                            <Typo
+                                                size={12}
+                                                fontWeight="700"
+                                                color={invitedNumbers.includes(c.phoneNumber) ? "#15803d" : colors.primaryDark}
+                                            >
+                                                {invitedNumbers.includes(c.phoneNumber) ? "Invited ✓" : "Invite"}
                                             </Typo>
                                         </TouchableOpacity>
                                     </View>
@@ -674,10 +800,7 @@ const NewConversationModal = () => {
                             const isSelected = selectedParticipants.includes(user.id);
 
                             return (
-                                <Animated.View
-                                    key={user.id || index}
-                                    entering={FadeInDown.duration(350).delay(index * 25).springify()}
-                                >
+                                <View key={user.id || index}>
                                     <TouchableOpacity
                                         style={[
                                             styles.contactRow,
@@ -728,7 +851,7 @@ const NewConversationModal = () => {
                                     {index < filteredContacts.length - 1 && (
                                         <View style={styles.divider} />
                                     )}
-                                </Animated.View>
+                                </View>
                             );
                         })
                     )}
@@ -737,7 +860,7 @@ const NewConversationModal = () => {
                 {/* ── Create Group Sticky Footer ── */}
                 {isGroupMode && selectedParticipants.length >= 2 && (
                     <Animated.View
-                        entering={FadeInUp.duration(400).springify()}
+                        entering={FadeInUp.duration(220)}
                         style={styles.footer}
                     >
                         <View style={styles.footerMeta}>
@@ -766,6 +889,21 @@ const NewConversationModal = () => {
                 )}
 
             </KeyboardAvoidingView>
+
+            <InviteSheetModal
+                visible={inviteModalVisible}
+                recipient={inviteRecipient}
+                senderName={currentUser?.name}
+                senderId={currentUser?.id}
+                onInvited={(rec) => {
+                    if (rec?.phoneNumber) {
+                        setInvitedNumbers((prev) =>
+                            prev.includes(rec.phoneNumber!) ? prev : [...prev, rec.phoneNumber!]
+                        );
+                    }
+                }}
+                onClose={() => setInviteModalVisible(false)}
+            />
         </ScreenWrapper>
     );
 };

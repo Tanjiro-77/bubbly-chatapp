@@ -8,6 +8,7 @@ import {
   TouchableOpacityProps,
   ViewStyle,
 } from "react-native";
+import type { HapticKind } from "./utils/haptics";
 
 // ─────────────────────────────────────────────
 // TYPOGRAPHY
@@ -90,20 +91,22 @@ export type AuthContextProps = {
     googleId?: string;
   }) => Promise<void>;
 
-  updateUserPhone: (phoneNumber: string) => Promise<void>;
+  updateUserPhone: (phoneNumber: string, email?: string) => Promise<void>;
 
   signUp: (
     email: string,
     password: string,
     name: string,
-    avatar?: string
+    avatar?: string,
+    phoneNumber?: string
   ) => Promise<void>;
 
   signUpWithPhone: (
     phoneNumber: string,
     password: string,
     name: string,
-    avatar?: string
+    avatar?: string,
+    email?: string
   ) => Promise<void>;
 
   signOut: () => Promise<void>;
@@ -135,12 +138,14 @@ export interface ButtonProps extends TouchableOpacityProps {
   onPress?: () => void;
   loading?: boolean;
   children: React.ReactNode;
+  haptic?: HapticKind | false;
 }
 
 export type BackButtonProps = {
   style?: ViewStyle;
   color?: string;
   iconSize?: number;
+  haptic?: HapticKind | false;
 };
 
 export type AvatarProps = {
@@ -513,6 +518,8 @@ export type StoryType =
 export type StoryViewerProps = {
   userId: string;
   viewedAt: string;
+  name?: string;
+  avatar?: string;
 };
 
 export type StoryReactionProps = {

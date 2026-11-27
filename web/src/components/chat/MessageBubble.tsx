@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { VoicePlayer } from "./VoicePlayer";
 import { PollComponent } from "./PollComponent";
-import { translateMessage } from "../../services/chatService";
+import { formatRichContentSummary, isRichCardMessage, translateMessage } from "../../services/chatService";
 import { formatFileSize } from "../../services/mediaService";
 import { bubblyAlert } from "../common/BubblyDialog";
 
@@ -40,6 +40,7 @@ interface MessageBubbleProps {
   onEdit: (message: MessageProps) => void;
   onDelete: (messageId: string) => void;
   onVotePoll: (messageId: string, optionId: string) => void;
+  onClosePoll?: (messageId: string) => void;
   onOpenImage: (url: string) => void;
   onOpenViewOnce: (messageId: string) => void;
   onJumpToReply?: (replyId: string) => void;
@@ -61,6 +62,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onEdit,
   onDelete,
   onVotePoll,
+  onClosePoll,
   onOpenImage,
   onOpenViewOnce,
   onJumpToReply,
@@ -71,6 +73,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const messageId = message.id || message._id || "";
   const timeFormatted = message.createdAt ? format(new Date(message.createdAt), "h:mm a") : "";
+
+  if (message.isDeleted) {
+    return (
+      <div
+        id={`msg-${messageId}`}
+        className={`flex flex-col mb-1.5 select-none ${isMe ? "items-end" : "items-start"}`}
+      >
+        {showSenderName && !isMe && (
+          <span className="text-[11px] font-black text-amber-700 dark:text-amber-400 ml-3 mb-0.5">
+            {message.sender?.name || "Participant"}
+          </span>
+        )}
+        <div
+          className={`px-4 py-2 rounded-2xl text-xs italic border border-dashed border-stone-300 dark:border-zinc-700 bg-stone-100/80 dark:bg-zinc-900/60 text-stone-400 dark:text-zinc-500 flex items-center gap-2 ${
+            isMe ? "rounded-tr-xs" : "rounded-tl-xs"
+          }`}
+        >
+          <span>{isMe ? "You deleted this message" : "This message was deleted"}</span>
+          <span className="text-[10px] opacity-75">{timeFormatted}</span>
+        </div>
+      </div>
+    );
+  }
 
   const handleTranslate = async () => {
     if (translatedText) {
@@ -194,10 +219,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <Share2 className="w-3.5 h-3.5" />
           </button>
 
-          {message.content && message.type === "text" && (
+          {message.content &&
+            !isRichCardMessage(message.content) &&
+            !["voice", "file", "location", "call", "system", "poll", "checklist"].includes(message.type) && (
             <button
               onClick={handleTranslate}
-              className="p-1 hover:text-amber-500 rounded-full transition"
+              disabled={isTranslating}
+              className="p-1 hover:text-amber-500 rounded-full transition disabled:opacity-50"
               title="Translate"
             >
               <Languages className="w-3.5 h-3.5" />
@@ -206,7 +234,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {isMe && (
             <>
-              {message.type === "text" && (
+              {message.content &&
+                !message.voiceUrl &&
+                !isRichCardMessage(message.content) &&
+                !["voice", "file", "location", "call", "system", "poll", "checklist"].includes(message.type) && (
                 <button
                   onClick={() => onEdit(message)}
                   className="p-1 hover:text-amber-500 rounded-full transition"
@@ -377,7 +408,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   messageId={messageId}
                   isMe={isMe}
                   onVote={onVotePoll}
+                  onClose={onClosePoll}
                 />
+              )}
+
+              {/* CHECKLIST TYPE */}
+              {message.type === "checklist" && message.checklist && (
+                <div className="w-full min-w-[220px] rounded-2xl p-3 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 my-1">
+                  <div className="font-bold text-xs text-stone-900 dark:text-white mb-2">
+                    ✅ {message.checklist.title || "Checklist"}
+                  </div>
+                  <div className="space-y-1">
+                    {message.checklist.items?.map((it) => (
+                      <div key={it.id} className="flex items-center gap-2 text-xs">
+                        <span>{it.completed ? "☑️" : "⬜"}</span>
+                        <span className={it.completed ? "line-through opacity-60" : ""}>{it.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {/* CALL LOG TYPE */}
@@ -411,9 +460,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               )}
 
               {/* TEXT CONTENT WITH SEARCH HIGHLIGHTING */}
-              {message.content && (
+              {message.content && message.type !== "checklist" && (
                 <p className="whitespace-pre-wrap break-words leading-relaxed select-text font-medium text-[13.5px]">
-                  {renderHighlightedContent(message.content)}
+                  {renderHighlightedContent(formatRichContentSummary(message.content))}
                 </p>
               )}
 

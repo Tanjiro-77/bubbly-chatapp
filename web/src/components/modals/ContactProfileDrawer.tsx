@@ -12,6 +12,7 @@ interface ContactProfileDrawerProps {
   isOnline?: boolean;
   onClose: () => void;
   onOpenSharedMedia: () => void;
+  onToggleMute?: () => void;
 }
 
 export const ContactProfileDrawer: React.FC<ContactProfileDrawerProps> = ({
@@ -21,9 +22,14 @@ export const ContactProfileDrawer: React.FC<ContactProfileDrawerProps> = ({
   isOnline = false,
   onClose,
   onOpenSharedMedia,
+  onToggleMute,
 }) => {
   const handleToggleMute = () => {
     if (!conversationId) return;
+    if (onToggleMute) {
+      onToggleMute();
+      return;
+    }
     toggleMuteConversation({
       conversationId,
       unmute: isMuted,

@@ -62,6 +62,7 @@ import {
     QuickRepliesManagerModal,
     rollBubblyGame,
 } from "../../components/ConversationFeatureModals"
+import { GifPickerModal, GifSelection } from "../../components/GifPickerModal"
 import {
     ACCENT_SWATCHES,
     BubblyCountdownPayload,
@@ -85,6 +86,13 @@ import {
     subscribeFeatureUpdates,
 } from "../../utils/featureStorage"
 import { hapticTap } from "../../utils/haptics"
+import {
+    formatSeparatorDateLabel,
+    getCachedMessages,
+    getLocalDateKey,
+    getMemoryMessages,
+    setCachedMessages,
+} from "../../utils/chatCache"
 import Animated, {
     FadeInDown, FadeInUp, FadeIn, FadeOut, FadeOutDown,
     useSharedValue, useAnimatedStyle,
@@ -120,18 +128,10 @@ const formatLastSeen = (lastSeen: string | null): string => {
 };
 
 // ── Date label ──
-const getDateLabel = (dateStr: string): string => {
-    const date = moment(dateStr);
-    const today = moment();
-    const yesterday = moment().subtract(1, 'day');
-    if (date.isSame(today, 'day')) return 'Today';
-    if (date.isSame(yesterday, 'day')) return 'Yesterday';
-    if (date.isSame(today, 'year')) return date.format('dddd, MMMM D');
-    return date.format('MMMM D, YYYY');
-};
+const getDateLabel = (dateStr: string): string => formatSeparatorDateLabel(dateStr)
 
 // ── Date Separator ──
-const DateSeparator = ({ date }: { date: string }) => (
+const DateSeparator = React.memo(({ date }: { date: string }) => (
     <View style={separatorStyles.wrapper}>
         <View style={separatorStyles.line} />
         <View style={separatorStyles.pill}>
@@ -139,7 +139,7 @@ const DateSeparator = ({ date }: { date: string }) => (
         </View>
         <View style={separatorStyles.line} />
     </View>
-);
+));
 
 const separatorStyles = StyleSheet.create({
     wrapper: { flexDirection: 'row', alignItems: 'center', marginVertical: spacingY._10, paddingHorizontal: spacingX._10, gap: spacingX._10 },
@@ -1195,9 +1195,10 @@ const groupInfoStyles = StyleSheet.create({
 
 // ── Attachment Options ──
 const AttachmentOptions = ({
-    onPickImage, onPickFile, onCreatePoll, onSchedule, onCreateChecklist, onOpenGames, onCreateCountdown, onClose,
+    onPickImage, onPickGif, onPickFile, onCreatePoll, onSchedule, onCreateChecklist, onOpenGames, onCreateCountdown, onClose,
 }: {
     onPickImage: () => void;
+    onPickGif: () => void;
     onPickFile: () => void;
     onCreatePoll: () => void;
     onSchedule: () => void;
@@ -1209,55 +1210,62 @@ const AttachmentOptions = ({
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={attachStyles.container}>
         <View style={attachStyles.headerRow}>
             <Typo size={11.5} fontWeight="800" color={colors.neutral500}>ATTACH & INTERACTIVE</Typo>
-            <TouchableOpacity style={attachStyles.closeOption} onPress={onClose} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.closeOption} onPress={() => { hapticTap("light"); onClose(); }} activeOpacity={0.7}>
                 <Icons.X size={verticalScale(14)} color={colors.neutral500} weight="bold" />
             </TouchableOpacity>
         </View>
 
         <View style={attachStyles.gridRow}>
-            <TouchableOpacity style={attachStyles.option} onPress={onPickImage} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onPickImage(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: colors.primaryLight }]}>
                     <Icons.Image size={verticalScale(20)} color={colors.primaryDark} weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Image</Typo>
             </TouchableOpacity>
 
-            <TouchableOpacity style={attachStyles.option} onPress={onPickFile} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onPickGif(); }} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#f3e8ff' }]}>
+                    <Icons.FilmStrip size={verticalScale(20)} color="#7c3aed" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>GIF</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onPickFile(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: colors.neutral100 }]}>
                     <Icons.FileText size={verticalScale(20)} color={colors.neutral600} weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>File</Typo>
             </TouchableOpacity>
 
-            <TouchableOpacity style={attachStyles.option} onPress={onCreatePoll} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onCreatePoll(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: '#f0fdf4' }]}>
                     <Icons.ChartBar size={verticalScale(20)} color={colors.green} weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Poll</Typo>
             </TouchableOpacity>
 
-            <TouchableOpacity style={attachStyles.option} onPress={onCreateChecklist} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onCreateChecklist(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: '#eff6ff' }]}>
                     <Icons.CheckSquare size={verticalScale(20)} color="#0284c7" weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Checklist</Typo>
             </TouchableOpacity>
 
-            <TouchableOpacity style={attachStyles.option} onPress={onSchedule} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onSchedule(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: '#fef3c7' }]}>
                     <Icons.ClockCountdown size={verticalScale(20)} color="#d97706" weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Schedule</Typo>
             </TouchableOpacity>
 
-            <TouchableOpacity style={attachStyles.option} onPress={onOpenGames} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onOpenGames(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: '#f5f3ff' }]}>
                     <Icons.GameController size={verticalScale(20)} color="#7c3aed" weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Games</Typo>
             </TouchableOpacity>
 
-            <TouchableOpacity style={attachStyles.option} onPress={onCreateCountdown} activeOpacity={0.7}>
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onCreateCountdown(); }} activeOpacity={0.7}>
                 <View style={[attachStyles.iconWrap, { backgroundColor: '#fff1f2' }]}>
                     <Icons.HourglassMedium size={verticalScale(20)} color="#e11d48" weight="fill" />
                 </View>
@@ -1320,11 +1328,14 @@ const Conversation = () => {
     const [groupCreatedBy, setGroupCreatedBy] = useState<string | undefined>(initialCreatedBy || undefined);
     const [selectedFile, setSelectedFile] = useState<SelectedFileProps | null>(null);
     const [loading, setLoading] = useState(false);
-    const [messages, setMessages] = useState<MessageProps[]>([]);
+    const [messages, setMessages] = useState<MessageProps[]>(
+        () => getMemoryMessages(conversationId) ?? []
+    );
     const [messageStatuses, setMessageStatuses] = useState<Record<string, "sending" | "sent" | "delivered" | "seen">>({});
     const [replyTo, setReplyTo] = useState<ReplyToProps | null>(null);
     const [typingUser, setTypingUser] = useState<string | null>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isTypingRef = useRef(false);
     const isMountedRef = useRef(true);
     const isStartingRecordingRef = useRef(false);
@@ -1416,6 +1427,7 @@ const Conversation = () => {
     const [showCountdownModal, setShowCountdownModal] = useState(false);
     const [showQuickRepliesMgr, setShowQuickRepliesMgr] = useState(false);
     const [showInsightsModal, setShowInsightsModal] = useState(false);
+    const [showGifModal, setShowGifModal] = useState(false);
     const [selectedMsgIds, setSelectedMsgIds] = useState<string[]>([]);
     const [outboxCount, setOutboxCount] = useState(0);
     const [contactCustomStatus, setContactCustomStatus] = useState<{ emoji?: string; text?: string } | null>(null);
@@ -1483,7 +1495,7 @@ const Conversation = () => {
             setParticipants(parseParamArray(stringifiedParticipants));
             setGroupAdmins(parseParamArray(stringifiedAdmins));
             setGroupCreatedBy(initialCreatedBy || undefined);
-            setMessages([]);
+            setMessages(getMemoryMessages(conversationId) ?? []);
             setMessageStatuses({});
             setPinnedMessages([]);
             setMessage('');
@@ -1516,7 +1528,14 @@ const Conversation = () => {
                 setMessage(draft);
             }
         }).catch(() => {});
-    }, [conversationId]);
+        if (!isNotesToSelf) {
+            getCachedMessages(conversationId).then((cached) => {
+                if (cached.length > 0 && isMountedRef.current) {
+                    setMessages((prev) => (prev.length === 0 ? cached : prev));
+                }
+            }).catch(() => {});
+        }
+    }, [conversationId, isNotesToSelf]);
 
     // ── Scheduled Messages (Feature 3: Backend Worker + Local Notes Fallback) ──
     const [scheduledMessages, setScheduledMessages] = useState<{ id: string; conversationId: string; content: string; sendAt: number; label: string }[]>([]);
@@ -1955,7 +1974,7 @@ const Conversation = () => {
     };
 
     const scrollToBottom = () => {
-        hapticTap("light");
+        hapticTap("medium");
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         setNewMessagesBelow(0);
         setIsScrolledUp(false);
@@ -1977,6 +1996,7 @@ const Conversation = () => {
             }).catch(() => {});
             return () => {
                 if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
                 if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
                 if (recordingRef.current) {
                     try { recordingRef.current.stop(); } catch {}
@@ -2037,7 +2057,20 @@ const Conversation = () => {
         };
 
         const messageAckHandler = async (ack: any) => {
-            if (!ack?.success || !ack.clientId || !ack.data?.id) return;
+            if (!ack?.clientId) return;
+            if (!ack?.success) {
+                setMessages(prev => prev.filter(m => m.id !== ack.clientId));
+                setMessageStatuses(prev => {
+                    const next = { ...prev };
+                    delete next[ack.clientId];
+                    return next;
+                });
+                if (ack?.msg) {
+                    BubblyAlert.alert("Send Failed", ack.msg);
+                }
+                return;
+            }
+            if (!ack.data?.id) return;
             const localSilent = (await getLocalSilentIds()).has(ack.clientId);
             if (localSilent || ack.data.isSilent) {
                 await markLocalSilentMessage(ack.data.id);
@@ -2048,7 +2081,9 @@ const Conversation = () => {
                 const tempMsg = prev.find(m => m.id === ack.clientId);
                 const resolvedSilent = Boolean(ack.data.isSilent || tempMsg?.isSilent || localSilent);
                 const deduped = prev.filter(m => m.id !== ack.data.id);
-                return deduped.map(m => m.id === ack.clientId ? { ...ack.data, isSilent: resolvedSilent, conversationId: conversationId as string } : m);
+                const updated = deduped.map(m => m.id === ack.clientId ? { ...ack.data, isSilent: resolvedSilent, conversationId: conversationId as string } : m);
+                setCachedMessages(conversationId as string, updated);
+                return updated;
             });
             setMessageStatuses(prev => {
                 const next = { ...prev };
@@ -2136,6 +2171,7 @@ const Conversation = () => {
                 pendingForwardListRef.current = null;
             }
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
             if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
             if (recordingRef.current) {
                 try { recordingRef.current.stop(); } catch {}
@@ -2195,7 +2231,7 @@ const Conversation = () => {
     // CALL HANDLERS
     // ─────────────────────────────────────────────
     const handleStartCall = useCallback(async (callKind: 'voice' | 'video') => {
-        hapticTap("heavy");
+        hapticTap("boom");
         if (!currentUser || !conversationId || isNotesToSelf) return;
         const targetCalleeId = otherParticipant?._id || "";
         if (!targetCalleeId && !isDirect) return;
@@ -2226,7 +2262,7 @@ const Conversation = () => {
                 isOutgoing: 'true',
             },
         });
-    }, [isDirect]);
+    }, [isDirect, conversationId]);
 
     const callFailedHandler = useCallback((data: any) => {
         BubblyAlert.alert(data.reason === 'busy' ? '🔴 User Busy' : '❌ Call Failed', data.msg || 'Could not connect the call');
@@ -2353,7 +2389,11 @@ const Conversation = () => {
                 return prev;
             }
 
-            return [normalizedMessage, ...prev];
+            const next = [normalizedMessage, ...prev];
+            if (!isNotesToSelf) {
+                setCachedMessages(conversationId as string, next);
+            }
+            return next;
         });
 
         setTypingUser(null);
@@ -2396,18 +2436,28 @@ const Conversation = () => {
                     setTimeout(() => {
                         const jumpIdx = pageMessages.findIndex(m => m.id === jumpTarget);
                         if (jumpIdx !== -1) {
-                            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                            try {
+                                flatListRef.current?.scrollToIndex({ index: jumpIdx, animated: true, viewPosition: 0.5 });
+                            } catch {
+                                flatListRef.current?.scrollToOffset({ offset: jumpIdx * 76, animated: true });
+                            }
                         }
-                    }, 200);
+                    }, 220);
                 }
             } else if (incomingPage === 0) {
                 setMessages(prev => {
                     if (minLoadedPageRef.current > 0) {
                         const existingIds = new Set(prev.map(m => m.id));
                         const newer = pageMessages.filter(m => !existingIds.has(m.id));
-                        return [...newer, ...prev];
+                        const merged = [...newer, ...prev];
+                        setCachedMessages(conversationId as string, merged);
+                        return merged;
                     }
-                    return pageMessages;
+                    const pageIds = new Set(pageMessages.map(m => m.id));
+                    const pendingLocal = prev.filter(m => m.id?.startsWith("temp_") && !pageIds.has(m.id));
+                    const merged = [...pendingLocal, ...pageMessages];
+                    setCachedMessages(conversationId as string, pageMessages);
+                    return merged;
                 });
                 if (minLoadedPageRef.current > 0) {
                     minLoadedPageRef.current = 0;
@@ -2548,12 +2598,27 @@ const Conversation = () => {
             BubblyAlert.alert("Offline", "Connect to the internet to send rich cards.");
             return;
         }
+        const clientId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const optimisticCard: MessageProps = {
+            id: clientId,
+            conversationId: conversationId as string,
+            sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+            content: textPayload,
+            type: checklistObj ? "checklist" : "text",
+            checklist: checklistObj || null,
+            reactions: [],
+            isSilent: isSilentSend,
+            createdAt: new Date().toISOString(),
+        };
+        setMessages(prev => [optimisticCard, ...prev]);
+        setMessageStatuses(prev => ({ ...prev, [clientId]: "sending" }));
         newMessage({
             conversationId,
             sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
             content: textPayload,
             type: "text",
             isSilent: isSilentSend,
+            clientId,
         });
         setIsSilentSend(false);
     }, [currentUser, conversationId, isNotesToSelf, isSilentSend]);
@@ -2635,19 +2700,19 @@ const Conversation = () => {
     }, [message, quickReplies]);
 
     const handleSelectQuickReply = useCallback((tpl: QuickReplyTemplate) => {
-        hapticTap("light");
+        hapticTap("medium");
         setMessage(tpl.text);
     }, []);
 
     const handleToggleSelectMsg = useCallback((msgId: string) => {
-        hapticTap("light");
+        hapticTap("medium");
         setSelectedMsgIds((prev) =>
             prev.includes(msgId) ? prev.filter((id) => id !== msgId) : [...prev, msgId]
         );
     }, []);
 
     const handleEnterSelectionMode = useCallback((msgId: string) => {
-        hapticTap("medium");
+        hapticTap("rigid");
         setSelectedMsgIds([msgId]);
     }, []);
 
@@ -2684,9 +2749,11 @@ const Conversation = () => {
             return isNotesToSelf || msg?.sender?.id === currentUser?.id;
         });
         if (ownIds.length === 0) {
+            hapticTap("error");
             BubblyAlert.alert("Delete", "You can only delete your own messages.");
             return;
         }
+        hapticTap("warning");
         BubblyAlert.alert(
             "Delete Selected Messages",
             `Delete ${ownIds.length} message(s)?`,
@@ -2696,6 +2763,7 @@ const Conversation = () => {
                     text: "Delete",
                     style: "destructive",
                     onPress: () => {
+                        hapticTap("heavy");
                         if (isNotesToSelf) {
                             setMessages(prev => {
                                 const updated = prev.map(m =>
@@ -2749,16 +2817,19 @@ const Conversation = () => {
     }, [currentUser, conversationId, isNotesToSelf]);
 
     // ─────────────────────────────────────────────
-    // TYPING & DRAFTS (V3.1.2)
+    // TYPING & DRAFTS (Debounced for 0-lag typing)
     // ─────────────────────────────────────────────
-    const handleMessageChange = (text: string) => {
+    const handleMessageChange = useCallback((text: string) => {
         setMessage(text);
         if (conversationId) {
-            if (text.trim()) {
-                AsyncStorage.setItem(`@bubbly_draft_${conversationId}`, text).catch(() => {});
-            } else {
-                AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
-            }
+            if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+            draftSaveTimerRef.current = setTimeout(() => {
+                if (text.trim()) {
+                    AsyncStorage.setItem(`@bubbly_draft_${conversationId}`, text).catch(() => {});
+                } else {
+                    AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+                }
+            }, 320);
         }
         if (!currentUser || !conversationId || isNotesToSelf) return;
         if (!isTypingRef.current) {
@@ -2770,14 +2841,14 @@ const Conversation = () => {
             isTypingRef.current = false;
             emitStopTyping({ conversationId: conversationId as string, senderId: currentUser.id as string });
         }, 2000);
-    };
+    }, [conversationId, currentUser, isNotesToSelf]);
 
     // ─────────────────────────────────────────────
     // REPLY
     // ─────────────────────────────────────────────
-    const handleReply = (item: MessageProps) => {
+    const handleReply = useCallback((item: MessageProps) => {
         setReplyTo({ id: item.id, content: item.content, senderName: item.sender.name, voiceUrl: item.voiceUrl || null });
-    };
+    }, []);
 
     const handleCancelReply = () => setReplyTo(null);
 
@@ -2797,7 +2868,7 @@ const Conversation = () => {
             await audioRecorder.prepareToRecordAsync();
             if (!isMountedRef.current) return;
             audioRecorder.record();
-            hapticTap("heavy");
+            hapticTap("rigid");
             recordingRef.current = audioRecorder;
             setIsRecording(true);
             recordingDurationRef.current = 0;
@@ -2809,7 +2880,7 @@ const Conversation = () => {
                 recordingDurationRef.current = next;
                 setRecordingDuration(next);
                 if (next >= 120) {
-                    stopRecording(false);
+                    stopRecordingRef.current?.(false);
                 }
             }, 1000);
         } catch (error) {
@@ -2821,7 +2892,7 @@ const Conversation = () => {
     };
 
     const pauseForReview = async () => {
-        hapticTap("light");
+        hapticTap("medium");
         try {
             if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
             micScale.value = withSpring(1);
@@ -2847,7 +2918,7 @@ const Conversation = () => {
     };
 
     const stopRecording = async (cancel = false) => {
-        hapticTap(cancel ? "warning" : "success");
+        hapticTap(cancel ? "warning" : "celebration");
         try {
             if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
             micScale.value = withSpring(1);
@@ -2871,6 +2942,9 @@ const Conversation = () => {
             setRecordingDuration(0);
         }
     };
+
+    const stopRecordingRef = useRef(stopRecording);
+    stopRecordingRef.current = stopRecording;
 
     const cancelRecording = async () => { await stopRecording(true); };
 
@@ -2917,18 +2991,130 @@ const Conversation = () => {
     };
 
     // ─────────────────────────────────────────────
-    // IMAGE PICKER (V3.1.2 HD Photo Support)
+    // IMAGE & GIF PICKER
     // ─────────────────────────────────────────────
     const onPickImage = async () => {
         setShowAttachOptions(false);
         try {
-            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], aspect: [4, 3], quality: isHd ? 1.0 : 0.7 });
+            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: isHd ? 1.0 : 0.8 });
             if (!result.canceled && result.assets?.length) {
                 const asset = result.assets[0];
-                setSelectedFile({ uri: asset.uri, name: asset.uri.split('/').pop() || 'image.jpg', mimeType: asset.mimeType || 'image/jpeg', size: asset.fileSize || 0, isImage: true });
+                const isGifAsset = asset.mimeType === 'image/gif' || asset.uri.split('?')[0].toLowerCase().endsWith('.gif');
+                setSelectedFile({
+                    uri: asset.uri,
+                    name: asset.uri.split('/').pop() || (isGifAsset ? 'animated.gif' : 'image.jpg'),
+                    mimeType: isGifAsset ? 'image/gif' : (asset.mimeType || 'image/jpeg'),
+                    size: asset.fileSize || 0,
+                    isImage: true,
+                });
             }
         } catch {
             BubblyAlert.alert("Error", "Could not open image library.");
+        }
+    };
+
+    const handleSendGif = async (selection: GifSelection) => {
+        if (!currentUser || !conversationId) return;
+        setShowGifModal(false);
+        setShowAttachOptions(false);
+
+        if (isNotesToSelf) {
+            const localOrRemoteUrl = selection.url || selection.localUri || "";
+            if (!localOrRemoteUrl) return;
+            const noteMsg: MessageProps = {
+                id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: "",
+                attachement: localOrRemoteUrl,
+                attachmentMeta: {
+                    url: localOrRemoteUrl,
+                    name: selection.name || "animated.gif",
+                    mimeType: "image/gif",
+                    size: selection.size || 0,
+                    resourceType: "image",
+                },
+                type: 'image',
+                replyTo: replyTo || null,
+                reactions: [],
+                isSilent: isSilentSend,
+                createdAt: new Date().toISOString(),
+            };
+            setMessages(prev => {
+                const updated = [noteMsg, ...prev];
+                AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
+                return updated;
+            });
+            setReplyTo(null);
+            setIsSilentSend(false);
+            return;
+        }
+
+        if (!isOnlineNetwork || !isSocketConnected()) {
+            BubblyAlert.alert("Offline", "Connect to the internet to send GIFs.");
+            return;
+        }
+
+        try {
+            let resolvedUrl = selection.url || "";
+            if (selection.localUri && !resolvedUrl) {
+                setLoading(true);
+                const uploadResult = await uploadFileToCloudinary(
+                    { uri: selection.localUri, mimeType: "image/gif", name: selection.name || "animated.gif" },
+                    "message-attachements"
+                );
+                if (!uploadResult.success || !uploadResult.data) {
+                    BubblyAlert.alert("GIF Error", "Could not upload the selected GIF.");
+                    return;
+                }
+                resolvedUrl = uploadResult.data;
+            }
+            if (!resolvedUrl) return;
+
+            const clientId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+            const currentReply = replyTo;
+            const currentSilent = isSilentSend;
+            const gifMeta = {
+                url: resolvedUrl,
+                name: selection.name || "animated.gif",
+                mimeType: "image/gif",
+                size: selection.size || 0,
+                resourceType: "image" as const,
+            };
+            const optimisticGifMsg: MessageProps = {
+                id: clientId,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: "",
+                attachement: resolvedUrl,
+                attachmentMeta: gifMeta,
+                type: 'image',
+                replyTo: currentReply || null,
+                reactions: [],
+                isSilent: currentSilent,
+                createdAt: new Date().toISOString(),
+            };
+
+            setMessages(prev => [optimisticGifMsg, ...prev]);
+            setMessageStatuses(prev => ({ ...prev, [clientId]: "sending" }));
+            setReplyTo(null);
+            setIsSilentSend(false);
+
+            newMessage({
+                conversationId,
+                sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                content: "",
+                attachement: resolvedUrl,
+                attachmentMeta: gifMeta,
+                type: 'image',
+                replyTo: currentReply?.id || null,
+                isSilent: currentSilent,
+                clientId,
+            });
+        } catch {
+            BubblyAlert.alert("GIF Error", "Failed to send GIF.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -3019,6 +3205,10 @@ const Conversation = () => {
                 AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
                 return updated;
             });
+            if (draftSaveTimerRef.current) {
+                clearTimeout(draftSaveTimerRef.current);
+                draftSaveTimerRef.current = null;
+            }
             if (conversationId) {
                 AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
             }
@@ -3036,6 +3226,10 @@ const Conversation = () => {
 
         // ── Offline Message Outbox (Feature 1) ──
         if (!selectedFile && (!isOnlineNetwork || !isSocketConnected())) {
+            if (draftSaveTimerRef.current) {
+                clearTimeout(draftSaveTimerRef.current);
+                draftSaveTimerRef.current = null;
+            }
             const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
             const offlineMsg: MessageProps = {
                 id: tempId,
@@ -3087,6 +3281,56 @@ const Conversation = () => {
             return;
         }
 
+        // ── Instant Optimistic Text Send (0ms UI latency) ──
+        if (!selectedFile) {
+            if (draftSaveTimerRef.current) {
+                clearTimeout(draftSaveTimerRef.current);
+                draftSaveTimerRef.current = null;
+            }
+            const cleanText = message.trim();
+            const currentReply = replyTo;
+            const currentSilent = isSilentSend;
+            const clientId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+            const optimisticMsg: MessageProps = {
+                id: clientId,
+                conversationId: conversationId as string,
+                sender: { id: currentUser.id as string, name: currentUser.name || "You", avatar: currentUser.avatar || null },
+                content: cleanText,
+                attachement: null,
+                attachmentMeta: null,
+                type: 'text',
+                replyTo: currentReply || null,
+                reactions: [],
+                isSilent: currentSilent,
+                createdAt: new Date().toISOString(),
+            };
+
+            setMessages(prev => [optimisticMsg, ...prev]);
+            setMessageStatuses(prev => ({ ...prev, [clientId]: "sending" }));
+            if (currentSilent) {
+                markLocalSilentMessage(clientId);
+            }
+            if (conversationId) {
+                AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+            }
+            setMessage("");
+            setReplyTo(null);
+            setIsSilentSend(false);
+
+            newMessage({
+                conversationId,
+                sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
+                content: cleanText,
+                attachement: null,
+                attachmentMeta: null,
+                type: 'text',
+                replyTo: currentReply?.id || null,
+                isSilent: currentSilent,
+                clientId,
+            });
+            return;
+        }
+
         setLoading(true);
         try {
             let attachement = null;
@@ -3095,7 +3339,10 @@ const Conversation = () => {
 
             if (selectedFile) {
                 if (selectedFile.isImage) {
-                    const uploadResult = await uploadFileToCloudinary({ uri: selectedFile.uri }, "message-attachements");
+                    const uploadResult = await uploadFileToCloudinary(
+                        { uri: selectedFile.uri, mimeType: selectedFile.mimeType, name: selectedFile.name },
+                        "message-attachements"
+                    );
                     if (!uploadResult.success) { setLoading(false); BubblyAlert.alert("Error", "Could not send the image!"); return; }
                     attachement = uploadResult.data;
                     attachmentMeta = { url: uploadResult.data, name: selectedFile.name, size: selectedFile.size, mimeType: selectedFile.mimeType, isViewOnce, isHd };
@@ -3120,6 +3367,10 @@ const Conversation = () => {
                 isSilent: isSilentSend,
                 isViewOnce: selectedFile?.isImage ? isViewOnce : false,
             });
+            if (draftSaveTimerRef.current) {
+                clearTimeout(draftSaveTimerRef.current);
+                draftSaveTimerRef.current = null;
+            }
             if (conversationId) {
                 AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
             }
@@ -3138,21 +3389,19 @@ const Conversation = () => {
     const messagesWithSeparators = useMemo((): MessageListItem[] => {
         if (messages.length === 0) return [];
 
-        const chronological = [...messages].reverse();
         const result: MessageListItem[] = [];
-        let lastDateStr = '';
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            const msgDateStr = getLocalDateKey(msg.createdAt);
+            const prevChronological = i < messages.length - 1 ? messages[i + 1] : null;
+            const prevDateStr = prevChronological ? getLocalDateKey(prevChronological.createdAt) : '';
 
-        chronological.forEach((msg) => {
-            const msgDateStr = moment(msg.createdAt).format('YYYY-MM-DD');
-
-            if (msgDateStr !== lastDateStr) {
+            if (msgDateStr !== prevDateStr) {
                 result.push({
                     id: `separator-${msgDateStr}`,
                     type: 'separator',
-                    date: msg.createdAt
+                    date: msg.createdAt,
                 });
-
-                lastDateStr = msgDateStr;
             }
 
             result.push({
@@ -3160,7 +3409,7 @@ const Conversation = () => {
                 type: 'message',
                 message: msg,
             });
-        });
+        }
 
         return result.reverse();
     }, [messages]);
@@ -3199,22 +3448,22 @@ const Conversation = () => {
         });
     }, [conversationId]);
 
-    const handlePin = (messageId: string) => {
+    const handlePin = useCallback((messageId: string) => {
         if (isNotesToSelf) return;
         pinMessage({ conversationId: conversationId as string, messageId });
-    };
+    }, [isNotesToSelf, conversationId]);
 
-    const handleUnpin = (messageId: string) => {
+    const handleUnpin = useCallback((messageId: string) => {
         if (isNotesToSelf) return;
         unpinMessage({ conversationId: conversationId as string, messageId });
-    };
+    }, [isNotesToSelf, conversationId]);
 
-    const handleToggleStar = (messageId: string) => {
+    const handleToggleStar = useCallback((messageId: string) => {
         if (isNotesToSelf) return;
         toggleStarMessage({ messageId, conversationId: conversationId as string });
-    };
+    }, [isNotesToSelf, conversationId]);
 
-    const handleOpenForward = (msg: MessageProps) => {
+    const handleOpenForward = useCallback((msg: MessageProps) => {
         setForwardingMessage(msg);
         if (isSocketConnected()) {
             if (pendingForwardListRef.current) {
@@ -3232,7 +3481,7 @@ const Conversation = () => {
             getConversations(null);
         }
         setForwardModalVisible(true);
-    };
+    }, [conversationId]);
 
     const handleSendForward = (targetConvIds: string[]) => {
         if (!forwardingMessage || !targetConvIds || targetConvIds.length === 0) return;
@@ -3528,7 +3777,7 @@ const Conversation = () => {
                 deliveryStatus={messageStatuses[item.message.id]}
                 searchHighlight={isSearching && searchQuery.trim() ? searchQuery.trim() : undefined}
                 isTargetHighlight={highlightMessageId === item.message.id}
-                customBubbleMine={selectedTheme.id === 'default' && accentMineBubble ? accentMineBubble : selectedTheme.bubbleMine}
+                customBubbleMine={selectedTheme.id === 'bubbly' && accentMineBubble ? accentMineBubble : selectedTheme.bubbleMine}
                 customBubbleOther={selectedTheme.bubbleOther}
                 isNotesToSelf={isNotesToSelf}
                 onLocalDelete={handleLocalDelete}
@@ -3580,7 +3829,7 @@ const Conversation = () => {
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : "height"} style={styles.container}>
 
                 {/* ── Header ── */}
-                <Animated.View entering={FadeInDown.duration(400).springify()} style={styles.header}>
+                <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
                     <View style={styles.headerLeft}>
                         <BackButton iconSize={22} />
                         <TouchableOpacity
@@ -3588,6 +3837,7 @@ const Conversation = () => {
                             activeOpacity={0.75}
                             onPress={() => {
                                 if (isNotesToSelf) return;
+                                hapticTap("medium");
                                 router.push({
                                     pathname: '/(main)/contactProfile',
                                     params: {
@@ -3643,7 +3893,7 @@ const Conversation = () => {
 
                     {/* ── Header Right ── */}
                     <View style={styles.headerRight}>
-                        <TouchableOpacity style={styles.callBtn} onPress={() => setIsSearching(prev => !prev)} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.callBtn} onPress={() => { hapticTap("medium"); setIsSearching(prev => !prev); }} activeOpacity={0.7}>
                             <Icons.MagnifyingGlass weight="bold" color={colors.white} size={verticalScale(18)} />
                         </TouchableOpacity>
                         {!isNotesToSelf && isDirect && (
@@ -3656,7 +3906,7 @@ const Conversation = () => {
                                 </TouchableOpacity>
                             </>
                         )}
-                        <TouchableOpacity style={styles.moreBtn} activeOpacity={0.7} onPress={handleOpenMoreMenu}>
+                        <TouchableOpacity style={styles.moreBtn} activeOpacity={0.7} onPress={() => { hapticTap("medium"); handleOpenMoreMenu(); }}>
                             <Icons.DotsThreeVertical weight="bold" color={colors.white} size={verticalScale(20)} />
                         </TouchableOpacity>
                     </View>
@@ -3680,11 +3930,12 @@ const Conversation = () => {
                             </Typo>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 6 }}>
-                            <TouchableOpacity onPress={flushOutbox} style={styles.manageSchedBtn}>
+                            <TouchableOpacity onPress={() => { hapticTap("heavy"); flushOutbox(); }} style={styles.manageSchedBtn}>
                                 <Typo size={11} fontWeight="700" color="#d97706">Send Now</Typo>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={async () => {
+                                    hapticTap("warning");
                                     if (conversationId) await AsyncStorage.removeItem(`@bubbly_outbox_${conversationId}`).catch(() => {});
                                     setOutboxCount(0);
                                     setMessages(prev => prev.filter(m => !m.id.startsWith('temp_')));
@@ -3712,13 +3963,19 @@ const Conversation = () => {
                         </Typo>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                             <TouchableOpacity
-                                onPress={() => setSelectedMsgIds(messages.filter(m => !m.isDeleted && m.type !== 'system').map(m => m.id))}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    setSelectedMsgIds(messages.filter(m => !m.isDeleted && m.type !== 'system').map(m => m.id));
+                                }}
                                 style={[styles.manageSchedBtn, { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'transparent' }]}
                             >
                                 <Typo size={11} fontWeight="700" color={colors.white}>All</Typo>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                onPress={() => setSelectedMsgIds([])}
+                                onPress={() => {
+                                    hapticTap("light");
+                                    setSelectedMsgIds([]);
+                                }}
                                 style={[styles.manageSchedBtn, { backgroundColor: colors.primary, borderColor: 'transparent' }]}
                             >
                                 <Typo size={11} fontWeight="800" color={colors.black}>Cancel</Typo>
@@ -3779,9 +4036,11 @@ const Conversation = () => {
                         renderItem={renderMessageItem}
                         onEndReached={handleLoadMore}
                         onEndReachedThreshold={0.3}
-                        initialNumToRender={15}
-                        maxToRenderPerBatch={10}
-                        windowSize={7}
+                        initialNumToRender={16}
+                        maxToRenderPerBatch={12}
+                        updateCellsBatchingPeriod={24}
+                        windowSize={9}
+                        removeClippedSubviews={Platform.OS === 'android'}
                         keyboardShouldPersistTaps="handled"
                         onScroll={handleScroll}
                         scrollEventThrottle={32}
@@ -3909,6 +4168,7 @@ const Conversation = () => {
                         {showAttachOptions && (
                             <AttachmentOptions
                                 onPickImage={onPickImage}
+                                onPickGif={() => { setShowAttachOptions(false); setShowGifModal(true); }}
                                 onPickFile={onPickFile}
                                 onCreatePoll={() => { setShowAttachOptions(false); setShowPollModal(true); }}
                                 onSchedule={() => { setShowAttachOptions(false); setShowScheduleModal(true); }}
@@ -3925,7 +4185,8 @@ const Conversation = () => {
                                     <TouchableOpacity
                                         style={styles.trashRecordBtn}
                                         onPress={() => {
-                                            reviewPlayer.pause();
+                                            hapticTap("warning");
+                                            try { reviewPlayer.pause(); } catch {}
                                             setVoiceReview(null);
                                         }}
                                         activeOpacity={0.7}
@@ -3936,14 +4197,17 @@ const Conversation = () => {
                                     <TouchableOpacity
                                         style={styles.playReviewBtn}
                                         onPress={async () => {
-                                            if (reviewPlayerStatus.playing) {
-                                                reviewPlayer.pause();
-                                            } else {
-                                                if (reviewPlayerStatus.didJustFinish) {
-                                                    try { await (reviewPlayer as any).seekTo?.(0); } catch {}
+                                            hapticTap("medium");
+                                            try {
+                                                if (reviewPlayerStatus.playing) {
+                                                    reviewPlayer.pause();
+                                                } else {
+                                                    if (reviewPlayerStatus.didJustFinish) {
+                                                        try { await (reviewPlayer as any).seekTo?.(0); } catch {}
+                                                    }
+                                                    reviewPlayer.play();
                                                 }
-                                                reviewPlayer.play();
-                                            }
+                                            } catch {}
                                         }}
                                         activeOpacity={0.8}
                                     >
@@ -3966,7 +4230,8 @@ const Conversation = () => {
                                     <TouchableOpacity
                                         style={styles.sendBtn}
                                         onPress={async () => {
-                                            reviewPlayer.pause();
+                                            hapticTap("heavy");
+                                            try { reviewPlayer.pause(); } catch {}
                                             const { uri, duration } = voiceReview;
                                             setVoiceReview(null);
                                             await sendVoiceMessage(uri, duration);
@@ -4009,7 +4274,7 @@ const Conversation = () => {
                                     <TouchableOpacity
                                         style={[styles.actionBtn, { width: verticalScale(38), height: verticalScale(44) }, showFormatBar && { backgroundColor: colors.primaryLight }]}
                                         onPress={() => {
-                                            hapticTap("light");
+                                            hapticTap("medium");
                                             setShowFormatBar(prev => !prev);
                                         }}
                                         activeOpacity={0.75}
@@ -4041,11 +4306,11 @@ const Conversation = () => {
                                                 },
                                             ]}
                                             onPress={() => {
-                                                hapticTap("light");
+                                                hapticTap("heavy");
                                                 onSend();
                                             }}
                                             onLongPress={() => {
-                                                hapticTap("medium");
+                                                hapticTap("rigid");
                                                 setIsSilentSend(prev => !prev);
                                             }}
                                             delayLongPress={320}
@@ -4133,7 +4398,13 @@ const Conversation = () => {
                                                 maxLength={100}
                                             />
                                             {pollOptions.length > 2 && (
-                                                <TouchableOpacity onPress={() => setPollOptions(pollOptions.filter((_, i) => i !== index))} style={pollModalStyles.removeOption}>
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        hapticTap("warning");
+                                                        setPollOptions(pollOptions.filter((_, i) => i !== index));
+                                                    }}
+                                                    style={pollModalStyles.removeOption}
+                                                >
                                                     <Icons.X size={14} color={colors.rose} weight="bold" />
                                                 </TouchableOpacity>
                                             )}
@@ -4142,7 +4413,14 @@ const Conversation = () => {
 
                                     {/* ── Add option ── */}
                                     {pollOptions.length < 10 && (
-                                        <TouchableOpacity style={pollModalStyles.addOptionBtn} onPress={() => setPollOptions([...pollOptions, ''])} activeOpacity={0.7}>
+                                        <TouchableOpacity
+                                            style={pollModalStyles.addOptionBtn}
+                                            onPress={() => {
+                                                hapticTap("medium");
+                                                setPollOptions([...pollOptions, '']);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
                                             <Icons.Plus size={16} color={colors.primary} weight="bold" />
                                             <Typo size={13} fontWeight="600" color={colors.primaryDark}>Add Option</Typo>
                                         </TouchableOpacity>
@@ -4155,7 +4433,14 @@ const Conversation = () => {
                                     )}
 
                                     {/* ── Multiple choice toggle ── */}
-                                    <TouchableOpacity style={pollModalStyles.toggleRow} onPress={() => setPollAllowMultiple(prev => !prev)} activeOpacity={0.7}>
+                                    <TouchableOpacity
+                                        style={pollModalStyles.toggleRow}
+                                        onPress={() => {
+                                            hapticTap("medium");
+                                            setPollAllowMultiple(prev => !prev);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
                                         <View style={pollModalStyles.toggleInfo}>
                                             <Typo size={14} fontWeight="600" color={colors.neutral800}>Multiple Choice</Typo>
                                             <Typo size={12} color={colors.neutral500}>Allow voting for multiple options</Typo>
@@ -4166,7 +4451,14 @@ const Conversation = () => {
                                     </TouchableOpacity>
 
                                     {/* ── Create button ── */}
-                                    <TouchableOpacity style={pollModalStyles.createBtn} onPress={handleCreatePoll} activeOpacity={0.8}>
+                                    <TouchableOpacity
+                                        style={pollModalStyles.createBtn}
+                                        onPress={() => {
+                                            hapticTap("success");
+                                            handleCreatePoll();
+                                        }}
+                                        activeOpacity={0.8}
+                                    >
                                         <Icons.ChartBar size={18} color={colors.black} weight="fill" />
                                         <Typo size={15} fontWeight="700" color={colors.black}>Create Poll</Typo>
                                     </TouchableOpacity>
@@ -4262,6 +4554,12 @@ const Conversation = () => {
                 messages={messages}
                 currentUserId={currentUser?.id}
                 onClose={() => setShowInsightsModal(false)}
+            />
+
+            <GifPickerModal
+                visible={showGifModal}
+                onSelectGif={handleSendGif}
+                onClose={() => setShowGifModal(false)}
             />
         </ScreenWrapper>
     );

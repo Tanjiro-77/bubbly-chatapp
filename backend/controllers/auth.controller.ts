@@ -17,26 +17,33 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
         const hasEmail = typeof email === "string" && email.trim().length > 0;
         const hasPhone = typeof phoneNumber === "string" && phoneNumber.trim().length > 0;
 
-        if (!hasEmail && !hasPhone) {
-            res.status(400).json({ success: false, msg: "Please enter an email or phone number" });
+        if (!hasEmail || !hasPhone) {
+            res.status(400).json({
+                success: false,
+                msg: !hasEmail && !hasPhone
+                    ? "Both email and phone number are required"
+                    : !hasEmail
+                    ? "Email address is required"
+                    : "Phone number is required so friends can find you",
+            });
             return;
         }
 
         const trimmedName = name.trim();
-        const normalizedEmail = hasEmail ? email.trim().toLowerCase() : undefined;
-        const cleanedPhone = hasPhone ? normalizePhone(phoneNumber) : undefined;
+        const normalizedEmail = email.trim().toLowerCase();
+        const cleanedPhone = normalizePhone(phoneNumber);
 
         if (!trimmedName || trimmedName.length > 70) {
             res.status(400).json({ success: false, msg: "Name must be between 1 and 70 characters" });
             return;
         }
 
-        if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
+        if (!EMAIL_REGEX.test(normalizedEmail)) {
             res.status(400).json({ success: false, msg: "Please enter a valid email address" });
             return;
         }
 
-        if (cleanedPhone !== undefined && (cleanedPhone.length < 7 || cleanedPhone.length > 18)) {
+        if (cleanedPhone.length < 7 || cleanedPhone.length > 18) {
             res.status(400).json({ success: false, msg: "Phone number must be between 7 and 18 digits" });
             return;
         }
@@ -74,15 +81,15 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 
         const safeAvatar = typeof avatar === "string" ? avatar.slice(0, 500) : "";
 
-        // Create a new user (note: leave email/phoneNumber undefined when absent so sparse unique indexes don't collide)
+        // Create user with both email and phone number required for reliable contact discovery
         const userDoc: any = {
+            email: normalizedEmail,
+            phoneNumber: cleanedPhone,
             password,
             name: trimmedName,
             avatar: safeAvatar,
-            authProvider: cleanedPhone && !normalizedEmail ? "phone" : "local",
+            authProvider: "local",
         };
-        if (normalizedEmail) userDoc.email = normalizedEmail;
-        if (cleanedPhone) userDoc.phoneNumber = cleanedPhone;
 
         const user = new User(userDoc);
 
@@ -101,8 +108,12 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
             token,
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("registerUser error:", error instanceof Error ? error.message : "Unknown error");
+        if (error?.code === 11000) {
+            res.status(400).json({ success: false, msg: "An account with this email or phone number already exists" });
+            return;
+        }
         res.status(500).json({ success: false, msg: "Server error during registration" });
     }
 };
@@ -323,8 +334,12 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
                 phoneNumber: user.phoneNumber,
             }
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error("googleAuth error:", error instanceof Error ? error.message : "Unknown error");
+        if (error?.code === 11000) {
+            res.status(400).json({ success: false, msg: "An account with this email or Google ID already exists" });
+            return;
+        }
         res.status(500).json({ success: false, msg: "Google authentication failed" });
     }
 };

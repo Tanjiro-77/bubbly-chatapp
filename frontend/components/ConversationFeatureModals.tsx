@@ -66,9 +66,11 @@ export const ChecklistCreatorModal = ({
                 completedBy: "",
             }));
         if (validItems.length === 0) {
+            hapticTap("error");
             setError("Add at least 1 checklist item");
             return;
         }
+        hapticTap("success");
         onCreate({ title: cleanTitle, items: validItems });
         setTitle("");
         setItems(["", "", ""]);
@@ -122,7 +124,10 @@ export const ChecklistCreatorModal = ({
                                         />
                                         {items.length > 1 && (
                                             <TouchableOpacity
-                                                onPress={() => setItems(items.filter((_, i) => i !== idx))}
+                                                onPress={() => {
+                                                    hapticTap("warning");
+                                                    setItems(items.filter((_, i) => i !== idx));
+                                                }}
                                                 style={modalStyles.removeBtn}
                                             >
                                                 <Icons.X size={14} color={colors.rose} weight="bold" />
@@ -134,7 +139,10 @@ export const ChecklistCreatorModal = ({
                                 {items.length < 12 && (
                                     <TouchableOpacity
                                         style={modalStyles.addBtn}
-                                        onPress={() => setItems([...items, ""])}
+                                        onPress={() => {
+                                            hapticTap("medium");
+                                            setItems([...items, ""]);
+                                        }}
                                     >
                                         <Icons.Plus size={15} color={colors.primaryDark} weight="bold" />
                                         <Typo size={13} fontWeight="700" color={colors.primaryDark}>Add Task</Typo>
@@ -202,7 +210,7 @@ export const GamePickerModal = ({
     const [question, setQuestion] = useState("");
 
     const play = (kind: BubblyGameKind) => {
-        hapticTap("medium");
+        hapticTap("rigid");
         const res = rollBubblyGame(kind, question);
         setQuestion("");
         onSelectGame(res);
@@ -290,7 +298,7 @@ export const CountdownCreatorModal = ({
     ];
 
     const triggerCreate = (ms: number) => {
-        hapticTap("success");
+        hapticTap("celebration");
         onCreate({
             title: title.trim() || "Upcoming Event",
             emoji,
@@ -430,7 +438,11 @@ export const QuickRepliesManagerModal = ({
     const handleAdd = () => {
         const cleanTrig = trigger.trim().replace(/^\/+/, "").replace(/\s+/g, "").toLowerCase().slice(0, 20);
         const cleanText = text.trim().slice(0, 250);
-        if (!cleanTrig || !cleanText) return;
+        if (!cleanTrig || !cleanText) {
+            hapticTap("error");
+            return;
+        }
+        hapticTap("success");
         const next: QuickReplyTemplate[] = [
             { id: `qr_${Date.now()}`, trigger: cleanTrig, text: cleanText },
             ...templates.filter((t) => t.trigger !== cleanTrig),
@@ -487,7 +499,10 @@ export const QuickRepliesManagerModal = ({
                                                 <Typo size={12.5} color={colors.neutral700} textProps={{ numberOfLines: 2 }}>{tpl.text}</Typo>
                                             </View>
                                             <TouchableOpacity
-                                                onPress={() => onSave(templates.filter((t) => t.id !== tpl.id))}
+                                                onPress={() => {
+                                                    hapticTap("warning");
+                                                    onSave(templates.filter((t) => t.id !== tpl.id));
+                                                }}
                                                 style={modalStyles.removeBtn}
                                             >
                                                 <Icons.Trash size={14} color={colors.rose} weight="bold" />
@@ -681,7 +696,7 @@ export const QuickJumpModal = ({
                                             key={act.id}
                                             style={modalStyles.commandRow}
                                             onPress={() => {
-                                                hapticTap("light");
+                                                hapticTap("medium");
                                                 onClose();
                                                 setQ("");
                                                 if (act.route === "__focus__") onToggleFocus();
@@ -714,7 +729,7 @@ export const QuickJumpModal = ({
                                                         key={c._id}
                                                         style={modalStyles.commandRow}
                                                         onPress={() => {
-                                                            hapticTap("light");
+                                                            hapticTap("medium");
                                                             setQ("");
                                                             onClose();
                                                             onSelectConversation(c);

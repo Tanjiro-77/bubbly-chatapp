@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform, Modal, TouchableWithoutFeedback } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, TextInput, FlatList, Platform, Modal, TouchableWithoutFeedback, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from "../../components/BubblyAlert";
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
@@ -11,6 +11,7 @@ import Button from "../../components/Button";
 import StoryBar from '../../components/StoryBar';
 import {
     getConversations, newConversation, newMessage,
+    getStories,
     onUnreadCountUpdate,
     onUserStatus,
     onTyping,
@@ -47,6 +48,11 @@ import {
 } from "../../utils/featureStorage";
 import { verticalScale, scale } from "../../utils/styling";
 import { hapticTap } from "../../utils/haptics";
+import {
+    getCachedConversations,
+    getMemoryConversations,
+    setCachedConversations,
+} from "../../utils/chatCache";
 import * as Icons from 'phosphor-react-native';
 import { useRouter, useFocusEffect } from "expo-router";
 import ConversationItem from "../../components/ConversationItem";
@@ -69,9 +75,13 @@ const Home = () => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [socketOnline, setSocketOnline] = useState(isSocketConnected());
     const [selectedTab, setSelectedTab] = useState(0); // 0 = direct, 1 = group
     const [filterCategory, setFilterCategory] = useState<FilterCategory>("all");
-    const [conversations, setConversations] = useState<ConversationProps[]>([]);
+    const [conversations, setConversations] = useState<ConversationProps[]>(
+        () => getMemoryConversations(currentUser?.id) ?? []
+    );
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearchActive, setIsSearchActive] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
@@ -79,6 +89,7 @@ const Home = () => {
     const [draftMap, setDraftMap] = useState<Record<string, string>>({});
     const [lockedChatIds, setLockedChatIds] = useState<string[]>([]);
     const typingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    const didInitialMountFetchRef = useRef(false);
 
     const [actionConv, setActionConv] = useState<ConversationProps | null>(null);
     const [actionModalVisible, setActionModalVisible] = useState(false);
@@ -97,7 +108,17 @@ const Home = () => {
 
     const loadDraftsAndLocked = useCallback(async () => {
         try {
-            const storedLocked = await AsyncStorage.getItem(lockedStorageKey);
+            const [storedLocked, allKeys, tags, nicks, arch, focus, status, rems] = await Promise.all([
+                AsyncStorage.getItem(lockedStorageKey),
+                AsyncStorage.getAllKeys(),
+                getChatTagsMap(),
+                getNicknamesMap(),
+                getLocalArchivedIds(currentUser?.id),
+                getFocusMode(),
+                getMyCustomStatus(),
+                getActiveReminders(),
+            ]);
+
             if (storedLocked) {
                 try {
                     setLockedChatIds(JSON.parse(storedLocked));
@@ -106,7 +127,13 @@ const Home = () => {
                 setLockedChatIds([]);
             }
 
-            const allKeys = await AsyncStorage.getAllKeys();
+            setChatTagsMap(tags);
+            setNicknamesMap(nicks);
+            setLocalArchivedIds(arch);
+            setFocusModeState(focus);
+            setMyStatus(status);
+            setReminders(rems);
+
             const draftKeys = allKeys.filter(k => k.startsWith('@bubbly_draft_'));
             if (draftKeys.length > 0) {
                 const pairs = await AsyncStorage.multiGet(draftKeys);
@@ -121,20 +148,6 @@ const Home = () => {
             } else {
                 setDraftMap({});
             }
-            const [tags, nicks, arch, focus, status, rems] = await Promise.all([
-                getChatTagsMap(),
-                getNicknamesMap(),
-                getLocalArchivedIds(currentUser?.id),
-                getFocusMode(),
-                getMyCustomStatus(),
-                getActiveReminders(),
-            ]);
-            setChatTagsMap(tags);
-            setNicknamesMap(nicks);
-            setLocalArchivedIds(arch);
-            setFocusModeState(focus);
-            setMyStatus(status);
-            setReminders(rems);
         } catch (_) {}
     }, [lockedStorageKey, currentUser?.id]);
 
@@ -154,6 +167,10 @@ const Home = () => {
 
     useFocusEffect(
         useCallback(() => {
+            if (!didInitialMountFetchRef.current) {
+                didInitialMountFetchRef.current = true;
+                return;
+            }
             loadDraftsAndLocked();
             if (isSocketConnected()) {
                 getConversations(null);
@@ -181,8 +198,18 @@ const Home = () => {
         onAddedToGroup(addedToGroupHandler);
         onRemovedFromGroup(removedFromGroupHandler);
         const unsubConnection = onSocketConnectionChange((connected) => {
+            setSocketOnline(connected);
             if (connected) getConversations(null);
         });
+        setSocketOnline(isSocketConnected());
+
+        if (currentUser?.id) {
+            getCachedConversations(currentUser.id).then((cached) => {
+                if (cached.length > 0) {
+                    setConversations((prev) => (prev.length === 0 ? cached : prev));
+                }
+            }).catch(() => {});
+        }
         getConversations(null);
 
         return () => {
@@ -242,43 +269,65 @@ const Home = () => {
                     getConversations(null);
                     return prev;
                 }
-                return prev.map((item) => {
+                const next = prev.map((item) => {
                     if (item._id == conversationId) {
                         return { ...item, lastMessage: res.data };
                     }
                     return item;
                 });
+                setCachedConversations(currentUser?.id, next);
+                return next;
             });
         }
     };
 
     const processConversations = (res: ResponseProps) => {
-        if (res.success && Array.isArray(res.data)) setConversations(res.data);
+        setRefreshing(false);
+        setLoading(false);
+        if (res.success && Array.isArray(res.data)) {
+            setConversations(res.data);
+            setCachedConversations(currentUser?.id, res.data);
+        }
     };
+
+    const handleRefresh = useCallback(() => {
+        hapticTap("light");
+        setRefreshing(true);
+        getConversations(null);
+        getStories(null);
+        setTimeout(() => setRefreshing(false), 3500);
+    }, []);
 
     const newConversationHandler = (res: ResponseProps) => {
         if (res.success && res.data?._id) {
             setConversations((prev) => {
                 const exists = prev.some((c) => c._id === res.data._id);
-                if (exists) {
-                    return prev.map((c) => (c._id === res.data._id ? { ...c, ...res.data } : c));
-                }
-                return [res.data, ...prev];
+                const next = exists
+                    ? prev.map((c) => (c._id === res.data._id ? { ...c, ...res.data } : c))
+                    : [res.data, ...prev];
+                setCachedConversations(currentUser?.id, next);
+                return next;
             });
         }
     };
 
     const deleteConversationHandler = (res: any) => {
         if (res?.success && res.data?.conversationId) {
-            setConversations(prev => prev.filter(c => c._id !== res.data.conversationId));
+            setConversations(prev => {
+                const next = prev.filter(c => c._id !== res.data.conversationId);
+                setCachedConversations(currentUser?.id, next);
+                return next;
+            });
         }
     };
 
     const groupUpdatedHandler = (res: any) => {
         if (res?.success && res.data?._id) {
-            setConversations(prev =>
-                prev.map(c => (c._id === res.data._id ? { ...c, ...res.data } : c))
-            );
+            setConversations(prev => {
+                const next = prev.map(c => (c._id === res.data._id ? { ...c, ...res.data } : c));
+                setCachedConversations(currentUser?.id, next);
+                return next;
+            });
         }
     };
 
@@ -295,27 +344,44 @@ const Home = () => {
         );
     };
 
-    const sortByDate = (a: ConversationProps, b: ConversationProps) => {
-        const aDate = a?.lastMessage?.createdAt || a.createdAt;
-        const bDate = b?.lastMessage?.createdAt || b.createdAt;
-        return new Date(bDate).getTime() - new Date(aDate).getTime();
-    };
+    const lockedSet = useMemo(() => new Set(lockedChatIds), [lockedChatIds]);
+    const localArchivedSet = useMemo(() => new Set(localArchivedIds), [localArchivedIds]);
 
     const isConvArchived = useCallback((c: ConversationProps) => {
-        return !!(c as any).isArchived || localArchivedIds.includes(c._id);
-    }, [localArchivedIds]);
+        return !!(c as any).isArchived || localArchivedSet.has(c._id);
+    }, [localArchivedSet]);
 
-    const directConversations = conversations
-        .filter((item) => item.type === "direct" && !lockedChatIds.includes(item._id) && !isConvArchived(item))
-        .sort(sortByDate);
+    const { directConversations, groupConversations, archivedConversations } = useMemo(() => {
+        const direct: ConversationProps[] = [];
+        const group: ConversationProps[] = [];
+        const archived: ConversationProps[] = [];
+        const tsMap = new Map<string, number>();
 
-    const groupConversations = conversations
-        .filter((item) => item.type === "group" && !lockedChatIds.includes(item._id) && !isConvArchived(item))
-        .sort(sortByDate);
+        for (const item of conversations) {
+            if (lockedSet.has(item._id)) continue;
+            const rawDate = item?.lastMessage?.createdAt || item.createdAt;
+            tsMap.set(item._id, rawDate ? Date.parse(String(rawDate)) || 0 : 0);
+            if (isConvArchived(item)) {
+                archived.push(item);
+            } else if (item.type === "direct") {
+                direct.push(item);
+            } else if (item.type === "group") {
+                group.push(item);
+            }
+        }
 
-    const archivedConversations = conversations
-        .filter((item) => !lockedChatIds.includes(item._id) && isConvArchived(item))
-        .sort(sortByDate);
+        const byLatest = (a: ConversationProps, b: ConversationProps) =>
+            (tsMap.get(b._id) || 0) - (tsMap.get(a._id) || 0);
+
+        direct.sort(byLatest);
+        group.sort(byLatest);
+        archived.sort(byLatest);
+        return {
+            directConversations: direct,
+            groupConversations: group,
+            archivedConversations: archived,
+        };
+    }, [conversations, lockedSet, isConvArchived]);
 
     const activeList = selectedTab === 0 ? directConversations : groupConversations;
 
@@ -351,23 +417,28 @@ const Home = () => {
         });
     }, [searchQuery, categorizedList, nicknamesMap]);
 
-    const totalUnreadDirect = directConversations.reduce(
-        (sum, c) => sum + (c.unreadCount || 0), 0
+    const totalUnreadDirect = useMemo(
+        () => directConversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+        [directConversations]
     );
-    const totalUnreadGroup = groupConversations.reduce(
-        (sum, c) => sum + (c.unreadCount || 0), 0
+    const totalUnreadGroup = useMemo(
+        () => groupConversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+        [groupConversations]
     );
     const totalUnreadCurrent = selectedTab === 0 ? totalUnreadDirect : totalUnreadGroup;
-    const totalPinnedCurrent = activeList.filter(c => !!(c as any).isPinned).length;
+    const totalPinnedCurrent = useMemo(
+        () => activeList.filter(c => !!(c as any).isPinned).length,
+        [activeList]
+    );
 
     // ── VIP Pinned Contacts ──
     const pinnedVIPs = useMemo(() => {
         return conversations.filter(c =>
-            !lockedChatIds.includes(c._id) &&
+            !lockedSet.has(c._id) &&
             !isConvArchived(c) &&
             !!(c as any).isPinned
         );
-    }, [conversations, lockedChatIds, isConvArchived]);
+    }, [conversations, lockedSet, isConvArchived]);
 
     const handleSearchClose = () => {
         setSearchQuery("");
@@ -375,7 +446,7 @@ const Home = () => {
     };
 
     const handleTabChange = (tab: number) => {
-        hapticTap("light");
+        hapticTap("medium");
         setSelectedTab(tab);
         setSearchQuery("");
         setFilterCategory("all");
@@ -383,18 +454,20 @@ const Home = () => {
 
     // ── Long-Press Action Sheet Handlers ──
     const handleLongPress = useCallback((item: ConversationProps) => {
-        hapticTap("heavy");
+        hapticTap("rigid");
         setActionConv(item);
         setActionModalVisible(true);
     }, []);
 
     const handleCloseActionModal = () => {
+        hapticTap("light");
         setActionModalVisible(false);
         setActionConv(null);
     };
 
     const handleTogglePin = () => {
         if (!actionConv) return;
+        hapticTap("rigid");
         const convId = actionConv._id;
         const willPin = !(actionConv as any).isPinned;
         togglePinConversation({ conversationId: convId, pin: willPin });
@@ -404,6 +477,7 @@ const Home = () => {
 
     const handleToggleMute = () => {
         if (!actionConv) return;
+        hapticTap("medium");
         const convId = actionConv._id;
         const newMuted = !actionConv.isMuted;
         toggleMuteConversation({ conversationId: convId, unmute: !newMuted });
@@ -413,6 +487,7 @@ const Home = () => {
 
     const handleToggleRead = () => {
         if (!actionConv) return;
+        hapticTap("medium");
         const convId = actionConv._id;
         if ((actionConv.unreadCount || 0) > 0) {
             markAsRead(convId);
@@ -426,11 +501,12 @@ const Home = () => {
 
     const handleLockToVault = async () => {
         if (!actionConv) return;
+        hapticTap("rigid");
         const convId = actionConv._id;
         const convName = actionConv.name || "Conversation";
         handleCloseActionModal();
         try {
-            const nextLocked = [...lockedChatIds, convId];
+            const nextLocked = Array.from(new Set([...lockedChatIds, convId]));
             await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(nextLocked));
             setLockedChatIds(nextLocked);
             setTimeout(() => {
@@ -441,6 +517,7 @@ const Home = () => {
 
     const handleToggleArchive = async () => {
         if (!actionConv) return;
+        hapticTap("medium");
         const convId = actionConv._id;
         const willArchive = !isConvArchived(actionConv);
         handleCloseActionModal();
@@ -452,6 +529,7 @@ const Home = () => {
 
     const handleAssignTag = () => {
         if (!actionConv) return;
+        hapticTap("medium");
         const convId = actionConv._id;
         handleCloseActionModal();
         setTimeout(() => {
@@ -555,7 +633,7 @@ const Home = () => {
 
                 {/* ── V3 Flagship Header ── */}
                 <Animated.View
-                    entering={FadeInDown.duration(500).springify()}
+                    entering={FadeInDown.duration(220)}
                     style={styles.header}
                 >
                     <View style={styles.headerTopRow}>
@@ -563,7 +641,30 @@ const Home = () => {
                             <View style={styles.brandRow}>
                                 <View style={styles.brandBadge}>
                                     <Typo size={9.5} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
-                                        V4.0.2
+                                        V4.1.5
+                                    </Typo>
+                                </View>
+                                <View
+                                    style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        backgroundColor: socketOnline ? "rgba(34, 197, 94, 0.16)" : "rgba(245, 158, 11, 0.18)",
+                                        paddingHorizontal: scale(6),
+                                        paddingVertical: verticalScale(2),
+                                        borderRadius: radius.full,
+                                    }}
+                                >
+                                    <View
+                                        style={{
+                                            width: 5.5,
+                                            height: 5.5,
+                                            borderRadius: 3,
+                                            backgroundColor: socketOnline ? "#22c55e" : "#fbbf24",
+                                        }}
+                                    />
+                                    <Typo size={9.5} fontWeight="700" color={socketOnline ? "#86efac" : "#fde68a"}>
+                                        {socketOnline ? "Live" : "Syncing"}
                                     </Typo>
                                 </View>
                                 <Typo size={12} color={'rgba(255,255,255,0.65)'} fontWeight="500" style={{ flexShrink: 1 }} textProps={{ numberOfLines: 1 }}>
@@ -579,7 +680,13 @@ const Home = () => {
                                 {currentUser?.name || "Bubbly Chat"}
                             </Typo>
                             {(myStatus.text || myStatus.emoji) ? (
-                                <TouchableOpacity onPress={() => router.push("/(main)/profileModel")} activeOpacity={0.75}>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        hapticTap("light");
+                                        router.push("/(main)/profileModel");
+                                    }}
+                                    activeOpacity={0.75}
+                                >
                                     <Typo size={11.5} color={colors.primaryLight} fontWeight="600" textProps={{ numberOfLines: 1 }}>
                                         {myStatus.emoji} {myStatus.text}
                                     </Typo>
@@ -590,7 +697,7 @@ const Home = () => {
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: scale(8), flexShrink: 0 }}>
                             <TouchableOpacity
                                 onPress={() => {
-                                    hapticTap("light");
+                                    hapticTap("medium");
                                     setShowQuickJump(true);
                                 }}
                                 activeOpacity={0.8}
@@ -627,7 +734,10 @@ const Home = () => {
                                 <Icons.Moon size={18} color={focusMode.enabled ? colors.black : colors.white} weight={focusMode.enabled ? "fill" : "bold"} />
                             </TouchableOpacity>
                             <TouchableOpacity
-                                onPress={() => router.push("/(main)/profileModel")}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    router.push("/(main)/profileModel");
+                                }}
                                 activeOpacity={0.8}
                                 style={styles.avatarBtn}
                             >
@@ -727,7 +837,7 @@ const Home = () => {
 
                 {/* ── Main Sheet ── */}
                 <Animated.View
-                    entering={FadeInUp.duration(600).delay(100).springify()}
+                    entering={FadeInUp.duration(260).delay(30)}
                     style={styles.content}
                 >
                     {/* ── Story Bar ── */}
@@ -767,19 +877,22 @@ const Home = () => {
                                             key={vip._id}
                                             style={styles.vipCard}
                                             activeOpacity={0.75}
-                                            onPress={() => router.push({
-                                                pathname: "/(main)/conversation",
-                                                params: {
-                                                    id: vip._id,
-                                                    name: vip.name,
-                                                    avatar: vip.avatar,
-                                                    type: vip.type,
-                                                    participants: JSON.stringify(vip.participants),
-                                                    admins: JSON.stringify(vip.admins || []),
-                                                    createdBy: vip.createdBy ? String(vip.createdBy) : "",
-                                                    disappearingSeconds: String(vip.disappearingSeconds || 0),
-                                                }
-                                            })}
+                                            onPress={() => {
+                                                hapticTap("medium");
+                                                router.push({
+                                                    pathname: "/(main)/conversation",
+                                                    params: {
+                                                        id: vip._id,
+                                                        name: vip.name,
+                                                        avatar: vip.avatar,
+                                                        type: vip.type,
+                                                        participants: JSON.stringify(vip.participants),
+                                                        admins: JSON.stringify(vip.admins || []),
+                                                        createdBy: vip.createdBy ? String(vip.createdBy) : "",
+                                                        disappearingSeconds: String(vip.disappearingSeconds || 0),
+                                                    }
+                                                });
+                                            }}
                                             onLongPress={() => handleLongPress(vip)}
                                         >
                                             <View style={styles.vipAvatarWrap}>
@@ -889,7 +1002,7 @@ const Home = () => {
                                 styles.filterChip,
                                 filterCategory === "all" && styles.filterChipActive,
                             ]}
-                            onPress={() => { hapticTap("light"); setFilterCategory("all"); }}
+                            onPress={() => { hapticTap("medium"); setFilterCategory("all"); }}
                             activeOpacity={0.7}
                         >
                             <Typo
@@ -906,7 +1019,7 @@ const Home = () => {
                                 styles.filterChip,
                                 filterCategory === "unread" && styles.filterChipActive,
                             ]}
-                            onPress={() => { hapticTap("light"); setFilterCategory("unread"); }}
+                            onPress={() => { hapticTap("medium"); setFilterCategory("unread"); }}
                             activeOpacity={0.7}
                         >
                             <Typo
@@ -923,7 +1036,7 @@ const Home = () => {
                                 styles.filterChip,
                                 filterCategory === "pinned" && styles.filterChipActive,
                             ]}
-                            onPress={() => { hapticTap("light"); setFilterCategory("pinned"); }}
+                            onPress={() => { hapticTap("medium"); setFilterCategory("pinned"); }}
                             activeOpacity={0.7}
                         >
                             <Icons.PushPin
@@ -1065,8 +1178,17 @@ const Home = () => {
                         keyboardShouldPersistTaps="handled"
                         initialNumToRender={12}
                         maxToRenderPerBatch={10}
-                        windowSize={7}
+                        updateCellsBatchingPeriod={24}
+                        windowSize={9}
                         removeClippedSubviews={Platform.OS === 'android'}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={handleRefresh}
+                                tintColor={colors.primaryDark}
+                                colors={[colors.primaryDark, colors.primary]}
+                            />
+                        }
                         ListHeaderComponent={
                             selectedTab === 0 && !searchQuery.trim() && filterCategory === "all" ? (
                                 <TouchableOpacity
@@ -1196,11 +1318,12 @@ const Home = () => {
 
             {/* ── Floating Action Button (FAB) ── */}
             <Animated.View
-                entering={FadeInUp.duration(500).delay(300).springify()}
+                entering={FadeInUp.duration(240).delay(60)}
                 style={[styles.fabWrap, { bottom: Math.max(insets.bottom, spacingY._15) + spacingY._12 }]}
             >
                 <Button
                     style={styles.fab}
+                    haptic={false}
                     onPress={() => {
                         hapticTap("heavy");
                         router.push({

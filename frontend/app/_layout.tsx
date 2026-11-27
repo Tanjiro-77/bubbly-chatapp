@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native'
+import { StyleSheet, Platform } from 'react-native'
 import React, { useEffect, useRef, useState } from 'react'
 import { Stack, useRouter, useSegments } from "expo-router"
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -10,17 +10,28 @@ import { initSentry, setupGlobalErrorHandlers, setSentryUser } from '../services
 import AppErrorBoundary from '../components/ErrorBoundary';
 import { BubblyAlertHost } from '../components/BubblyAlert';
 import { AppLockGate } from '../components/AppLockGate';
+import { ContactCompletionModal } from '../components/ContactCompletionModal';
 import { RealtimeNotifier } from '../components/RealtimeNotifier';
+import { initHapticStrength } from '../utils/haptics';
+import { initIncomingRingtone } from '../services/soundService';
+import { onSocketConnectionChange } from '../socket/socketEvents';
 import {
     claimIncomingCallScreen,
     configureNotificationHandler,
     handleNotificationResponse,
+    markCallHandledFromNotification,
+    registerForPushNotificationsAsync,
+    setupNotificationChannelsAndCategories,
+    subscribePushTokenUpdates,
 } from '../services/notificationService';
 
-// Initialize Sentry, Global Unhandled Exception Handlers, and Foreground Notification Handler
+// Initialize Sentry, Global Unhandled Exception Handlers, Channels, and Foreground Notification Handler
 initSentry();
 setupGlobalErrorHandlers();
 configureNotificationHandler();
+setupNotificationChannelsAndCategories().catch(() => {});
+initHapticStrength().catch(() => {});
+initIncomingRingtone().catch(() => {});
 
 // ─── Navigation guard ─────────────────────────────────────────────────────────
 // Runs on every auth state change and on startup.
@@ -69,8 +80,7 @@ const NavigationGuard = () => {
 
         // Onboarding is done. Now check auth state.
         if (user) {
-            // Authenticated — go to main app
-            // Only navigate if not already in (main), (legal), or explicit onboarding replay
+            // Authenticated — go to main app; if phone or email is missing, ContactCompletionModal prompts in-app
             const inMain = segments[0] === "(main)";
             if (!inMain && !inLegal && !inOnboarding) {
                 router.replace("/(main)/home");
@@ -92,13 +102,23 @@ const NavigationGuard = () => {
 const StackLayout = () => {
     const router = useRouter();
     const segments = useSegments();
-    const { user, isLoading } = useAuth();
+    const { user, token, isLoading } = useAuth();
     const lastHandledNotifIdRef = useRef<string | null>(null);
-    const activeIncomingCallIdRef = useRef<string | null>(null);
     const pendingResponseRef = useRef<Notifications.NotificationResponse | null>(null);
     const inMainRef = useRef<boolean>(false);
+    const tokenRef = useRef<string | null>(token);
+    tokenRef.current = token;
     inMainRef.current = segments[0] === "(main)";
     const lastNotificationResponse = Notifications.useLastNotificationResponse();
+
+    const preClaimCallAction = (response: Notifications.NotificationResponse) => {
+        const data = (response.notification.request.content.data || {}) as Record<string, any>;
+        if (data?.type === "call" && data?.callId) {
+            if (response.actionIdentifier === "ACCEPT" || response.actionIdentifier === "DECLINE") {
+                markCallHandledFromNotification(String(data.callId));
+            }
+        }
+    };
 
     const openIncomingCallScreen = (data: {
         callId: string;
@@ -126,6 +146,33 @@ const StackLayout = () => {
     useEffect(() => {
         if (!user) return;
 
+        // Keep push token synchronized whenever socket connects or OS rotates the token
+        const unsubTokenRefresh = subscribePushTokenUpdates(() => tokenRef.current);
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && tokenRef.current) {
+                registerForPushNotificationsAsync(tokenRef.current).catch(() => {});
+            }
+        });
+
+        // Capture any cold-start notification launch immediately before pending-call fallbacks race
+        if (Platform.OS !== "web") {
+            Notifications.getLastNotificationResponseAsync()
+                .then((launchResponse) => {
+                    if (!launchResponse) return;
+                    const id = launchResponse.notification.request.identifier;
+                    if (lastHandledNotifIdRef.current === id) return;
+                    preClaimCallAction(launchResponse);
+                    if (inMainRef.current) {
+                        lastHandledNotifIdRef.current = id;
+                        handleNotificationResponse(launchResponse, router).catch(() => {});
+                        Notifications.clearLastNotificationResponseAsync().catch(() => {});
+                    } else {
+                        pendingResponseRef.current = launchResponse;
+                    }
+                })
+                .catch(() => {});
+        }
+
         // Foreground push fallback if socket missed incoming call event
         const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
             const data = (notification.request.content.data || {}) as Record<string, any>;
@@ -144,6 +191,15 @@ const StackLayout = () => {
         const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
             const id = response.notification.request.identifier;
             if (lastHandledNotifIdRef.current === id) return;
+            preClaimCallAction(response);
+
+            const data = (response.notification.request.content.data || {}) as Record<string, any>;
+            if (response.actionIdentifier === "DECLINE" && data?.type === "call") {
+                lastHandledNotifIdRef.current = id;
+                handleNotificationResponse(response, router).catch(() => {});
+                Notifications.clearLastNotificationResponseAsync().catch(() => {});
+                return;
+            }
 
             if (inMainRef.current) {
                 lastHandledNotifIdRef.current = id;
@@ -155,6 +211,8 @@ const StackLayout = () => {
         });
 
         return () => {
+            unsubTokenRefresh();
+            unsubConn();
             receivedSub.remove();
             responseSub.remove();
         };
@@ -162,13 +220,25 @@ const StackLayout = () => {
 
     // Handle cold-start or deferred notification tap once authenticated inside (main)
     useEffect(() => {
-        if (isLoading || !user || segments[0] !== "(main)") return;
+        if (isLoading || !user) return;
 
         const response = pendingResponseRef.current || lastNotificationResponse;
         if (!response) return;
 
         const id = response.notification.request.identifier;
         if (lastHandledNotifIdRef.current === id) return;
+        preClaimCallAction(response);
+
+        const data = (response.notification.request.content.data || {}) as Record<string, any>;
+        if (response.actionIdentifier === "DECLINE" && data?.type === "call") {
+            lastHandledNotifIdRef.current = id;
+            pendingResponseRef.current = null;
+            handleNotificationResponse(response, router).catch(() => {});
+            Notifications.clearLastNotificationResponseAsync().catch(() => {});
+            return;
+        }
+
+        if (segments[0] !== "(main)") return;
 
         lastHandledNotifIdRef.current = id;
         pendingResponseRef.current = null;
@@ -178,7 +248,13 @@ const StackLayout = () => {
     }, [isLoading, user, segments, lastNotificationResponse]);
 
     return (
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack
+            screenOptions={{
+                headerShown: false,
+                animation: "slide_from_right",
+                contentStyle: { backgroundColor: "#0c0a09" },
+            }}
+        >
             {/* ── Onboarding ── */}
             <Stack.Screen
                 name="onboarding"
@@ -244,6 +320,7 @@ const RootLayout = () => {
                     <NavigationGuard />
                     <RealtimeNotifier />
                     <AppLockGate />
+                    <ContactCompletionModal />
                     <BubblyAlertHost />
                 </AuthProvider>
             </SafeAreaProvider>

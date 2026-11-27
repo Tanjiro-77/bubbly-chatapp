@@ -1,7 +1,7 @@
 import {
     StyleSheet, View, KeyboardAvoidingView,
     Platform, ScrollView, Pressable,
-    TouchableOpacity, ActivityIndicator
+    TouchableOpacity, ActivityIndicator, TextInput
 } from 'react-native'
 import { BubblyAlert } from "../../components/BubblyAlert"
 import React, { useRef, useState } from 'react'
@@ -19,12 +19,14 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated'
 import GoogleIcon from "../../components/GoogleIcon"
 import { useGoogleAuth } from "../../hooks/useGoogleAuth"
 import AuthLegalFooter from "../../components/AuthLegalFooter"
+import { hapticTap } from "../../utils/haptics"
 
 const Login = () => {
 
     const emailRef = useRef("");
     const phoneRef = useRef("");
     const passwordRef = useRef("");
+    const passwordInputRef = useRef<TextInput | null>(null);
     const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -38,13 +40,16 @@ const Login = () => {
         if (loginMethod === 'phone') {
             const cleanPhone = phoneRef.current.trim();
             if (!cleanPhone || !cleanPassword) {
+                hapticTap("error");
                 BubblyAlert.alert('Log In', "Please enter your phone number and password");
                 return;
             }
             try {
                 setIsLoading(true);
                 await signInWithPhone(cleanPhone, cleanPassword);
+                hapticTap("celebration");
             } catch (error: any) {
+                hapticTap("error");
                 BubblyAlert.alert("Login Error", error.message);
             } finally {
                 setIsLoading(false);
@@ -54,13 +59,16 @@ const Login = () => {
 
         const cleanEmail = emailRef.current.trim().toLowerCase();
         if (!cleanEmail || !cleanPassword) {
+            hapticTap("error");
             BubblyAlert.alert('Log In', "Please fill all the fields");
             return;
         }
         try {
             setIsLoading(true);
             await signIn(cleanEmail, cleanPassword);
+            hapticTap("celebration");
         } catch (error: any) {
+            hapticTap("error");
             BubblyAlert.alert("Login Error", error.message);
         } finally {
             setIsLoading(false);
@@ -76,7 +84,7 @@ const Login = () => {
 
                     {/* Header */}
                     <Animated.View
-                        entering={FadeInDown.duration(500).springify()}
+                        entering={FadeInDown.duration(240)}
                         style={styles.header}
                     >
                         <BackButton iconSize={24} />
@@ -84,7 +92,7 @@ const Login = () => {
 
                     {/* White sheet */}
                     <Animated.View
-                        entering={FadeInUp.duration(600).delay(100).springify()}
+                        entering={FadeInUp.duration(280).delay(40)}
                         style={styles.content}
                     >
                         <ScrollView
@@ -108,6 +116,7 @@ const Login = () => {
                                 <TouchableOpacity
                                     style={[styles.methodTab, loginMethod === 'phone' && styles.methodTabActive]}
                                     onPress={() => {
+                                        hapticTap("medium");
                                         emailRef.current = "";
                                         setLoginMethod('phone');
                                     }}
@@ -121,6 +130,7 @@ const Login = () => {
                                 <TouchableOpacity
                                     style={[styles.methodTab, loginMethod === 'email' && styles.methodTabActive]}
                                     onPress={() => {
+                                        hapticTap("medium");
                                         phoneRef.current = "";
                                         setLoginMethod('email');
                                     }}
@@ -145,6 +155,10 @@ const Login = () => {
                                             placeholder="+91 98765 43210"
                                             keyboardType="phone-pad"
                                             autoCapitalize="none"
+                                            autoComplete="tel"
+                                            textContentType="telephoneNumber"
+                                            returnKeyType="next"
+                                            onSubmitEditing={() => passwordInputRef.current?.focus()}
                                             onChangeText={(value: string) => phoneRef.current = value}
                                             icon={
                                                 <Icons.Phone
@@ -166,6 +180,10 @@ const Login = () => {
                                             keyboardType="email-address"
                                             autoCapitalize="none"
                                             autoCorrect={false}
+                                            autoComplete="email"
+                                            textContentType="emailAddress"
+                                            returnKeyType="next"
+                                            onSubmitEditing={() => passwordInputRef.current?.focus()}
                                             onChangeText={(value: string) => emailRef.current = value}
                                             icon={
                                                 <Icons.At
@@ -185,10 +203,13 @@ const Login = () => {
                                             PASSWORD
                                         </Typo>
                                         <Pressable
-                                            onPress={() => BubblyAlert.alert(
-                                                "Reset Password",
-                                                "You can sign in instantly with Google using the button below, or contact support at arnavkhari.77@gmail.com to reset your password."
-                                            )}
+                                            onPress={() => {
+                                                hapticTap("medium");
+                                                BubblyAlert.alert(
+                                                    "Reset Password",
+                                                    "You can sign in instantly with Google using the button below, or contact support at arnavkhari.77@gmail.com to reset your password."
+                                                );
+                                            }}
                                             style={({ pressed }) => pressed && { opacity: 0.5 }}
                                         >
                                             <Typo size={12} fontWeight="600" color={colors.neutral400}>
@@ -197,8 +218,13 @@ const Login = () => {
                                         </Pressable>
                                     </View>
                                     <Input
+                                        inputRef={passwordInputRef}
                                         placeholder="Your password"
                                         secureTextEntry={!showPassword}
+                                        autoComplete="password"
+                                        textContentType="password"
+                                        returnKeyType="done"
+                                        onSubmitEditing={handleSubmit}
                                         onChangeText={(value: string) => passwordRef.current = value}
                                         icon={
                                             <Icons.Lock
@@ -209,7 +235,10 @@ const Login = () => {
                                         }
                                         rightIcon={
                                             <TouchableOpacity
-                                                onPress={() => setShowPassword(prev => !prev)}
+                                                onPress={() => {
+                                                    hapticTap("medium");
+                                                    setShowPassword(prev => !prev);
+                                                }}
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 activeOpacity={0.7}
                                             >
@@ -246,7 +275,10 @@ const Login = () => {
                                 {/* Google Sign-In Button */}
                                 <TouchableOpacity
                                     style={styles.googleBtn}
-                                    onPress={triggerGoogleSignIn}
+                                    onPress={() => {
+                                        hapticTap("heavy");
+                                        triggerGoogleSignIn();
+                                    }}
                                     activeOpacity={0.8}
                                     disabled={isGoogleLoading || isLoading}
                                 >
@@ -268,7 +300,10 @@ const Login = () => {
                                         Don't have an account?
                                     </Typo>
                                     <Pressable
-                                        onPress={() => router.push("/(auth)/register")}
+                                        onPress={() => {
+                                            hapticTap("medium");
+                                            router.push("/(auth)/register");
+                                        }}
                                         style={({ pressed }) => pressed && { opacity: 0.6 }}
                                     >
                                         <Typo size={14} fontWeight="700" color={colors.neutral900}>

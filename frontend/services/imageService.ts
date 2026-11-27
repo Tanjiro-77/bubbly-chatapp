@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Platform } from "react-native";
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "../constants";
 import { ResponseProps } from "../types";
 
@@ -48,11 +49,30 @@ export const formatFileSize = (bytes: number): string => {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 };
 
+const inferImageMime = (uri: string, fallback = "image/jpeg"): string => {
+    const ext = uri.split("?")[0].split(".").pop()?.toLowerCase();
+    if (ext === "png") return "image/png";
+    if (ext === "webp") return "image/webp";
+    if (ext === "gif") return "image/gif";
+    if (ext === "heic" || ext === "heif") return "image/heic";
+    return fallback;
+};
+
+async function appendUploadFile(formData: FormData, uri: string, type: string, name: string) {
+    if (Platform.OS === "web") {
+        const res = await fetch(uri);
+        const blob = await res.blob();
+        formData.append("file", blob, name);
+    } else {
+        formData.append("file", { uri, type, name } as any);
+    }
+}
+
 // ─────────────────────────────────────────────
-// UPLOAD IMAGE (existing — unchanged)
+// UPLOAD IMAGE
 // ─────────────────────────────────────────────
 export const uploadFileToCloudinary = async (
-    file: { uri?: string } | string,
+    file: { uri?: string; mimeType?: string; name?: string } | string,
     folderName: string,
 ): Promise<ResponseProps> => {
     try {
@@ -61,11 +81,9 @@ export const uploadFileToCloudinary = async (
 
         if (file && file.uri) {
             const formData = new FormData();
-            formData.append("file", {
-                uri: file.uri,
-                type: "image/jpeg",
-                name: file.uri.split('/').pop() || "file.jpg",
-            } as any);
+            const fileName = file.name || file.uri.split("/").pop() || "file.jpg";
+            const mimeType = file.mimeType || inferImageMime(file.uri);
+            await appendUploadFile(formData, file.uri, mimeType, fileName);
             formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
             formData.append("folder", folderName);
 
@@ -84,7 +102,7 @@ export const uploadFileToCloudinary = async (
 };
 
 // ─────────────────────────────────────────────
-// UPLOAD AUDIO (existing — unchanged)
+// UPLOAD AUDIO
 // ─────────────────────────────────────────────
 export const uploadAudioToCloudinary = async (
     uri: string,
@@ -92,11 +110,13 @@ export const uploadAudioToCloudinary = async (
 ): Promise<ResponseProps> => {
     try {
         const formData = new FormData();
-        formData.append("file", {
+        const isWebAudio = Platform.OS === "web";
+        await appendUploadFile(
+            formData,
             uri,
-            type: "audio/m4a",
-            name: `voice_${Date.now()}.m4a`,
-        } as any);
+            isWebAudio ? "audio/webm" : "audio/m4a",
+            `voice_${Date.now()}.${isWebAudio ? "webm" : "m4a"}`
+        );
         formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
         formData.append("folder", folderName);
         formData.append("resource_type", "video");
@@ -126,11 +146,7 @@ export const uploadDocumentToCloudinary = async (
         const cloudinaryUrl = getCloudinaryUrl(resourceType);
 
         const formData = new FormData();
-        formData.append("file", {
-            uri,
-            type: mimeType,
-            name: fileName,
-        } as any);
+        await appendUploadFile(formData, uri, mimeType, fileName);
         formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
         formData.append("folder", folderName);
 

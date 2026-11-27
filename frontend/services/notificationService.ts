@@ -6,6 +6,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL } from "../constants";
 import { acceptCallHttp, getCallStatus, rejectCallHttp } from "./callService";
 import { callAccept, callReject } from "../socket/socketEvents";
+import { hapticTap } from "../utils/haptics";
+import {
+    INCOMING_RINGTONES,
+    NOTIFICATION_SOUND_FILE,
+    initIncomingRingtone,
+    syncCallRingtoneToBackend,
+} from "./soundService";
 
 const PUSH_TOKEN_STORAGE_KEY = "bubbly_expo_push_token";
 const NOTIF_ENABLED_STORAGE_KEY = "bubbly_notifications_enabled";
@@ -13,16 +20,45 @@ const SOUND_ENABLED_STORAGE_KEY = "bubbly_sound_enabled";
 
 let activeConversationId: string | null = null;
 let handlerConfigured = false;
+let channelsSetupPromise: Promise<void> | null = null;
+
 const recentIncomingCallIds = new Map<string, number>();
+const handledCallActionIds = new Map<string, number>();
+const seenMessageNotifIds = new Map<string, number>();
+const handledResponseIds = new Set<string>();
+
+function pruneTimedMap(map: Map<string, number>, maxAgeMs: number) {
+    const now = Date.now();
+    for (const [id, ts] of map.entries()) {
+        if (now - ts > maxAgeMs) map.delete(id);
+    }
+}
+
+export function markCallHandledFromNotification(callId: string): void {
+    if (!callId) return;
+    pruneTimedMap(handledCallActionIds, 60_000);
+    handledCallActionIds.set(String(callId), Date.now());
+}
+
+export function isCallHandledFromNotification(callId: string): boolean {
+    if (!callId) return false;
+    pruneTimedMap(handledCallActionIds, 60_000);
+    return handledCallActionIds.has(String(callId));
+}
 
 export function claimIncomingCallScreen(callId: string): boolean {
     if (!callId) return false;
-    const now = Date.now();
-    for (const [id, ts] of recentIncomingCallIds.entries()) {
-        if (now - ts > 30000) recentIncomingCallIds.delete(id);
-    }
+    pruneTimedMap(recentIncomingCallIds, 30_000);
     if (recentIncomingCallIds.has(callId)) return false;
-    recentIncomingCallIds.set(callId, now);
+    recentIncomingCallIds.set(callId, Date.now());
+    return true;
+}
+
+export function markMessageNotificationSeen(messageId: string): boolean {
+    if (!messageId) return true;
+    pruneTimedMap(seenMessageNotifIds, 60_000);
+    if (seenMessageNotifIds.has(messageId)) return false;
+    seenMessageNotifIds.set(messageId, Date.now());
     return true;
 }
 
@@ -37,7 +73,7 @@ export function getActiveConversationId(): string | null {
 /**
  * Configures foreground notification behavior (WhatsApp-style):
  * - Suppresses banner/sound if user is currently inside that exact conversation.
- * - Shows banner/sound for other chats and incoming calls.
+ * - Keeps incoming call notifications maximally visible even in Focus Mode.
  */
 export function configureNotificationHandler() {
     if (handlerConfigured) return;
@@ -46,11 +82,19 @@ export function configureNotificationHandler() {
     Notifications.setNotificationHandler({
         handleNotification: async (notification) => {
             const data = (notification.request.content.data || {}) as Record<string, any>;
+            const msgId = data?.messageId ? String(data.messageId) : "";
+            if (msgId) {
+                markMessageNotificationSeen(msgId);
+            }
+
+            if (data?.type === "missed_call" && data?.dismissCallId) {
+                clearDeliveredCallNotifications(String(data.dismissCallId)).catch(() => {});
+            }
 
             let soundEnabled = true;
             try {
                 const enabledPref = await AsyncStorage.getItem(NOTIF_ENABLED_STORAGE_KEY);
-                if (enabledPref === "false") {
+                if (enabledPref === "false" && data?.type !== "call") {
                     return {
                         shouldShowBanner: false,
                         shouldShowList: false,
@@ -92,6 +136,16 @@ export function configureNotificationHandler() {
                 };
             }
 
+            if (data?.type === "call") {
+                hapticTap("boom");
+                return {
+                    shouldShowBanner: true,
+                    shouldShowList: true,
+                    shouldPlaySound: true,
+                    shouldSetBadge: true,
+                };
+            }
+
             return {
                 shouldShowBanner: true,
                 shouldShowList: true,
@@ -104,56 +158,137 @@ export function configureNotificationHandler() {
 
 /**
  * Configures Android notification channels ('messages' & 'calls') and Accept/Decline call actions.
+ * Called eagerly at boot AND during push registration so killed/cold-start notifications always
+ * inherit the right channel importance, ringtone attributes, and lock-screen actions.
  */
-export async function setupNotificationChannelsAndCategories() {
+export async function setupNotificationChannelsAndCategories(): Promise<void> {
     if (Platform.OS === "web") return;
+    if (channelsSetupPromise) return channelsSetupPromise;
 
-    if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("messages", {
-            name: "Chat Messages",
-            description: "Notifications for new text, voice, and media messages",
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 150, 250],
-            enableVibrate: true,
-            sound: "default",
-            showBadge: true,
-            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        });
+    channelsSetupPromise = (async () => {
+        try {
+            if (Platform.OS === "android") {
+                await Notifications.setNotificationChannelAsync("messages", {
+                    name: "Chat Messages",
+                    description: "Real-time notifications for chat messages, media, and missed calls",
+                    importance: Notifications.AndroidImportance.MAX,
+                    vibrationPattern: [0, 280, 140, 280],
+                    enableVibrate: true,
+                    enableLights: true,
+                    lightColor: "#facc15",
+                    sound: NOTIFICATION_SOUND_FILE,
+                    showBadge: true,
+                    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+                });
 
-        await Notifications.setNotificationChannelAsync("calls", {
-            name: "Incoming Calls",
-            description: "High-priority alerts for incoming voice and video calls",
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 600, 400, 600, 400, 600],
-            enableVibrate: true,
-            sound: "default",
-            audioAttributes: {
-                usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
-                contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+                const callChannelBase = {
+                    importance: Notifications.AndroidImportance.MAX,
+                    vibrationPattern: [0, 700, 350, 700, 350, 700],
+                    enableVibrate: true,
+                    enableLights: true,
+                    lightColor: "#22c55e",
+                    audioAttributes: {
+                        usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+                        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+                    },
+                    bypassDnd: true,
+                    showBadge: true,
+                    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+                };
+
+                await Notifications.setNotificationChannelAsync("calls", {
+                    name: "Incoming Calls",
+                    description: "High-priority ring alerts for voice and video calls even when app is closed",
+                    sound: INCOMING_RINGTONES[0].soundFile,
+                    ...callChannelBase,
+                });
+
+                await Promise.all(
+                    INCOMING_RINGTONES.map((ringtone) =>
+                        Notifications.setNotificationChannelAsync(ringtone.channelId, {
+                            name: `Incoming Calls · ${ringtone.label}`,
+                            description: "Custom high-priority incoming call ringtone channel",
+                            sound: ringtone.soundFile,
+                            ...callChannelBase,
+                        })
+                    )
+                );
+            }
+
+            await Notifications.setNotificationCategoryAsync("incoming_call", [
+                {
+                    identifier: "ACCEPT",
+                    buttonTitle: "Accept",
+                    options: {
+                        opensAppToForeground: true,
+                    },
+                },
+                {
+                    identifier: "DECLINE",
+                    buttonTitle: "Decline",
+                    options: {
+                        isDestructive: true,
+                        opensAppToForeground: false,
+                    },
+                },
+            ]);
+        } catch {
+            channelsSetupPromise = null;
+        }
+    })();
+
+    return channelsSetupPromise;
+}
+
+/**
+ * Presents a high-priority local notification fallback (e.g., when backgrounded before Doze).
+ */
+export async function presentLocalNotification(params: {
+    title: string;
+    body: string;
+    channelId: string;
+    categoryIdentifier?: string;
+    sound?: string | undefined;
+    data: Record<string, any>;
+}): Promise<void> {
+    if (Platform.OS === "web") return;
+    try {
+        await setupNotificationChannelsAndCategories();
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                title: params.title,
+                body: params.body,
+                sound: params.sound,
+                categoryIdentifier: params.categoryIdentifier,
+                interruptionLevel: "timeSensitive",
+                data: params.data,
             },
-            bypassDnd: true,
-            showBadge: true,
-            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+            trigger: Platform.OS === "android" ? { channelId: params.channelId } : null,
         });
+    } catch {
+        // Ignore when notification permissions haven't been granted yet
     }
+}
 
-    await Notifications.setNotificationCategoryAsync("incoming_call", [
-        {
-            identifier: "ACCEPT",
-            buttonTitle: "Accept",
-            options: {
-                opensAppToForeground: true,
-            },
-        },
-        {
-            identifier: "DECLINE",
-            buttonTitle: "Decline",
-            options: {
-                isDestructive: true,
-                opensAppToForeground: false,
-            },
-        },
-    ]);
+/**
+ * Dismisses any stale incoming call notification for the given callId from the notification tray.
+ */
+export async function clearDeliveredCallNotifications(callId?: string): Promise<void> {
+    if (Platform.OS === "web") return;
+    try {
+        const presented = await Notifications.getPresentedNotificationsAsync();
+        await Promise.all(
+            presented
+                .filter((n) => {
+                    const data = (n.request.content.data || {}) as Record<string, any>;
+                    if (data?.type !== "call") return false;
+                    return !callId || String(data?.callId) === String(callId);
+                })
+                .map((n) => Notifications.dismissNotificationAsync(n.request.identifier).catch(() => {}))
+        );
+    } catch {
+        // Ignore on unsupported platforms
+    }
 }
 
 /**
@@ -207,6 +342,9 @@ export async function registerForPushNotificationsAsync(
                 },
                 body: JSON.stringify({ pushToken }),
             });
+            initIncomingRingtone()
+                .then((ringtoneId) => syncCallRingtoneToBackend(ringtoneId, jwt))
+                .catch(() => {});
         }
 
         return pushToken;
@@ -217,6 +355,20 @@ export async function registerForPushNotificationsAsync(
         );
         return null;
     }
+}
+
+/**
+ * Keeps the backend synchronized whenever the OS rotates FCM/APNs push tokens.
+ */
+export function subscribePushTokenUpdates(getAuthToken: () => string | null): () => void {
+    if (Platform.OS === "web") return () => {};
+    const sub = Notifications.addPushTokenListener(() => {
+        const jwt = getAuthToken();
+        if (jwt) {
+            registerForPushNotificationsAsync(jwt).catch(() => {});
+        }
+    });
+    return () => sub.remove();
 }
 
 /**
@@ -239,7 +391,6 @@ export async function unregisterPushTokenAsync(authToken?: string | null): Promi
                 body: JSON.stringify({ pushToken }),
             });
         }
-
     } catch (error) {
         console.warn(
             "Push token unregistration failed:",
@@ -272,29 +423,45 @@ export async function syncNotificationPreference(enabled: boolean): Promise<void
 }
 
 /**
- * Handles user interaction with a notification (tap, Accept, or Decline).
+ * Handles user interaction with a notification (tap, Accept, or Decline),
+ * including cold launches when the app was previously closed/off.
  */
 export async function handleNotificationResponse(
     response: Notifications.NotificationResponse,
     router: { push: (opts: any) => void }
 ): Promise<void> {
+    const notificationId = response.notification.request.identifier;
+    if (handledResponseIds.has(notificationId)) return;
+    handledResponseIds.add(notificationId);
+    if (handledResponseIds.size > 50) {
+        const first = handledResponseIds.values().next().value;
+        if (first) handledResponseIds.delete(first);
+    }
+
     const data = (response.notification.request.content.data || {}) as Record<string, any>;
     const actionId = response.actionIdentifier;
-    const notificationId = response.notification.request.identifier;
 
     if (data.type === "call" && data.callId) {
         const callId = String(data.callId);
 
         if (actionId === "DECLINE") {
+            markCallHandledFromNotification(callId);
+            hapticTap("warning");
             callReject(callId);
             await rejectCallHttp(callId);
+            await clearDeliveredCallNotifications(callId);
             await Notifications.dismissNotificationAsync(notificationId).catch(() => {});
             return;
         }
 
-        await Notifications.dismissNotificationAsync(notificationId).catch(() => {});
+        if (actionId === "ACCEPT") {
+            markCallHandledFromNotification(callId);
+        }
 
-        // Verify call is still ringing before launching call UI (e.g. on stale notification tap)
+        await Notifications.dismissNotificationAsync(notificationId).catch(() => {});
+        await clearDeliveredCallNotifications(callId);
+
+        // Verify call is still ringing before launching call UI (guards against stale notification taps)
         const statusRes = await getCallStatus(callId);
         const status = statusRes?.data?.status;
         if (status && !["ringing", "connecting"].includes(status)) {
@@ -322,6 +489,7 @@ export async function handleNotificationResponse(
         }
 
         if (actionId === "ACCEPT") {
+            hapticTap("boom");
             callAccept(callId);
             try {
                 const acceptRes = await acceptCallHttp(callId);
@@ -344,6 +512,7 @@ export async function handleNotificationResponse(
         }
 
         if (!claimIncomingCallScreen(callId)) return;
+        hapticTap("boom");
         router.push({
             pathname: "/(main)/incomingCall",
             params: {
@@ -359,6 +528,8 @@ export async function handleNotificationResponse(
     }
 
     if ((data.type === "message" || data.type === "missed_call") && data.conversationId) {
+        hapticTap("medium");
+        await Notifications.dismissNotificationAsync(notificationId).catch(() => {});
         const isDirect = (data.conversationType || "direct") === "direct";
         const senderId = data.senderId || data.callerId;
         const senderName = data.senderName || data.callerName || data.conversationName || "";

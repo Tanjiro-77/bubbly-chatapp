@@ -14,7 +14,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     Platform,
-    Vibration,
 } from "react-native";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
@@ -97,7 +96,7 @@ const VaultScreen = () => {
 
     const handleDigitPress = (digit: string) => {
         if (currentPin.length >= 4) return;
-        hapticTap("light");
+        hapticTap("medium");
         setPinError("");
         const newPin = currentPin + digit;
         setCurrentPin(newPin);
@@ -108,11 +107,13 @@ const VaultScreen = () => {
     };
 
     const handleBackspace = () => {
+        hapticTap("light");
         setPinError("");
         setCurrentPin(prev => prev.slice(0, -1));
     };
 
     const handleClear = () => {
+        hapticTap("medium");
         setPinError("");
         setCurrentPin("");
     };
@@ -120,18 +121,20 @@ const VaultScreen = () => {
     const handleCompletePin = async (pin: string) => {
         if (pinStage === "enter") {
             if (pin === savedPin) {
+                hapticTap("celebration");
                 setTimeout(() => {
                     setIsUnlocked(true);
                     setCurrentPin("");
                 }, 100);
             } else {
-                if (Platform.OS !== "web") Vibration.vibrate(100);
+                hapticTap("error");
                 setTimeout(() => {
                     setPinError("Incorrect PIN. Please try again.");
                     setCurrentPin("");
                 }, 150);
             }
         } else if (pinStage === "setup_new") {
+            hapticTap("rigid");
             setFirstSetupPin(pin);
             setTimeout(() => {
                 setCurrentPin("");
@@ -142,9 +145,11 @@ const VaultScreen = () => {
                 try {
                     await AsyncStorage.setItem(PIN_STORAGE_KEY, pin);
                 } catch (_) {
+                    hapticTap("error");
                     BubblyAlert.alert("Error", "Could not save Vault PIN. Please try again.");
                     return;
                 }
+                hapticTap("celebration");
                 setSavedPin(pin);
                 setTimeout(() => {
                     setIsUnlocked(true);
@@ -152,7 +157,7 @@ const VaultScreen = () => {
                     BubblyAlert.alert("Vault PIN Created", "Your Secret Chat Vault is now secured.");
                 }, 100);
             } else {
-                if (Platform.OS !== "web") Vibration.vibrate(100);
+                hapticTap("error");
                 setTimeout(() => {
                     setPinError("PINs do not match. Please try again.");
                     setCurrentPin("");
@@ -163,6 +168,7 @@ const VaultScreen = () => {
     };
 
     const handleUnlockConversation = async (convId: string) => {
+        hapticTap("medium");
         BubblyAlert.alert(
             "Unlock Chat",
             "This chat will be moved back to your main chats screen.",
@@ -171,6 +177,7 @@ const VaultScreen = () => {
                 {
                     text: "Unlock",
                     onPress: async () => {
+                        hapticTap("rigid");
                         const updated = lockedChatIds.filter(id => id !== convId);
                         setLockedChatIds(updated);
                         try {
@@ -183,6 +190,7 @@ const VaultScreen = () => {
     };
 
     const handleChangePin = () => {
+        hapticTap("medium");
         BubblyAlert.alert(
             "Change Vault PIN",
             "Do you want to create a new 4-digit PIN for your vault?",
@@ -382,6 +390,7 @@ const VaultScreen = () => {
                             style={styles.chatCard}
                             activeOpacity={0.7}
                             onPress={() => {
+                                hapticTap("medium");
                                 router.push({
                                     pathname: "/(main)/conversation",
                                     params: {

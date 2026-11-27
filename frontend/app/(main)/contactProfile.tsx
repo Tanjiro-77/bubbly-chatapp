@@ -136,7 +136,7 @@ const ContactProfileScreen = () => {
             BubblyAlert.alert("Offline", "Connect to the internet to place a call.");
             return;
         }
-        hapticTap("heavy");
+        hapticTap("boom");
         callInvite({
             conversationId: conversationIdStr,
             calleeId: userIdStr,
@@ -168,11 +168,12 @@ const ContactProfileScreen = () => {
                     list.push(conversationIdStr);
                 }
                 await AsyncStorage.setItem(lockedStorageKey, JSON.stringify(list));
-                hapticTap("heavy");
+                hapticTap("rigid");
                 setIsLocked(true);
                 BubblyAlert.alert("Chat Locked 🔒", "Conversation is now hidden in your Secret Vault.");
             }
         } catch (_) {
+            hapticTap("error");
             BubblyAlert.alert("Error", "Could not update vault lock.");
         }
     };
@@ -180,6 +181,7 @@ const ContactProfileScreen = () => {
     // ── Mute Toggle ──
     const handleMuteOptions = () => {
         if (!conversationIdStr) return;
+        hapticTap("medium");
         BubblyAlert.alert(
             "Mute Notifications",
             "Choose duration to mute notifications:",
@@ -187,6 +189,7 @@ const ContactProfileScreen = () => {
                 {
                     text: "8 Hours",
                     onPress: () => {
+                        hapticTap("medium");
                         toggleMuteConversation({ conversationId: conversationIdStr, durationHours: 8 });
                         setIsMuted(true);
                     },
@@ -194,6 +197,7 @@ const ContactProfileScreen = () => {
                 {
                     text: "1 Week",
                     onPress: () => {
+                        hapticTap("medium");
                         toggleMuteConversation({ conversationId: conversationIdStr, durationHours: 168 });
                         setIsMuted(true);
                     },
@@ -201,6 +205,7 @@ const ContactProfileScreen = () => {
                 {
                     text: "Always",
                     onPress: () => {
+                        hapticTap("medium");
                         toggleMuteConversation({ conversationId: conversationIdStr, durationHours: 0 });
                         setIsMuted(true);
                     },
@@ -208,6 +213,7 @@ const ContactProfileScreen = () => {
                 {
                     text: "Unmute",
                     onPress: () => {
+                        hapticTap("success");
                         toggleMuteConversation({ conversationId: conversationIdStr, unmute: true });
                         setIsMuted(false);
                     },
@@ -219,6 +225,7 @@ const ContactProfileScreen = () => {
 
     // ── Share Contact Card ──
     const handleShareContact = async () => {
+        hapticTap("medium");
         try {
             await Share.share({
                 title: `Contact - ${displayName}`,
@@ -480,6 +487,7 @@ const ContactProfileScreen = () => {
                         <TouchableOpacity
                             style={styles.toolRow}
                             onPress={() => {
+                                hapticTap("medium");
                                 router.push({
                                     pathname: "/(main)/sharedMedia",
                                     params: { conversationId: conversationIdStr, name: displayName },
@@ -496,7 +504,10 @@ const ContactProfileScreen = () => {
 
                         <TouchableOpacity
                             style={styles.toolRow}
-                            onPress={() => router.push("/(main)/starredMessages")}
+                            onPress={() => {
+                                hapticTap("medium");
+                                router.push("/(main)/starredMessages");
+                            }}
                             activeOpacity={0.7}
                         >
                             <Icons.Star size={18} color="#f59e0b" weight="fill" />
@@ -524,6 +535,7 @@ const ContactProfileScreen = () => {
                         <TouchableOpacity
                             style={styles.dangerRow}
                             onPress={() => {
+                                hapticTap("warning");
                                 BubblyAlert.alert(
                                     "Clear Chat",
                                     "Are you sure you want to clear message history from this conversation?",
@@ -533,10 +545,13 @@ const ContactProfileScreen = () => {
                                             text: "Clear & Hide",
                                             style: "destructive",
                                             onPress: async () => {
+                                                hapticTap("heavy");
                                                 if (conversationIdStr) {
                                                     deleteConversation({ conversationId: conversationIdStr });
                                                     await AsyncStorage.removeItem(`@bubbly_draft_${conversationIdStr}`).catch(() => {});
                                                     await AsyncStorage.removeItem(`@bubbly_outbox_${conversationIdStr}`).catch(() => {});
+                                                    await AsyncStorage.removeItem(`@bubbly_disappearing_${conversationIdStr}`).catch(() => {});
+                                                    await AsyncStorage.removeItem(`@bubbly_custom_wallpaper_${conversationIdStr}`).catch(() => {});
                                                 }
                                                 if (router.canDismiss?.()) router.dismissAll();
                                                 router.replace("/(main)/home");

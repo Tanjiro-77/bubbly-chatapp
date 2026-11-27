@@ -71,13 +71,17 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     }
   };
 
-  // Auto-progress 5-second timer
+  useEffect(() => {
+    setProgress(0);
+    setShowViewers(false);
+  }, [safeIndex, storyGroup?.user?.id, currentStory?._id]);
+
+  // Auto-progress 5-second timer without resetting elapsed progress on pause/resume
   useEffect(() => {
     if (!storyGroup || stories.length === 0 || !currentStory) return;
-    setProgress(0);
     if (timerRef.current) clearInterval(timerRef.current);
 
-    if (isPaused) return;
+    if (isPaused || showViewers) return;
 
     const interval = 50; // update every 50ms
     const step = 100 / (5000 / interval);
@@ -89,7 +93,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [safeIndex, isPaused, storyGroup?.user?.id, stories.length, currentStory?._id]);
+  }, [safeIndex, isPaused, showViewers, storyGroup?.user?.id, stories.length, currentStory?._id]);
 
   useEffect(() => {
     if (!storyGroup || stories.length === 0) return;
@@ -231,7 +235,13 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
         </div>
 
         {/* Bottom Bar: Reactions & Reply / Viewers */}
-        <div className="relative z-30 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+        <div
+          className="relative z-30 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
           {isMe ? (
             <div className="flex items-center justify-between text-white text-xs">
               <button
@@ -271,6 +281,8 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 <input
                   type="text"
                   value={replyText}
+                  onFocus={() => setIsPaused(true)}
+                  onBlur={() => setIsPaused(false)}
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder={`Reply to ${storyGroup.user.name}...`}
                   className="flex-1 py-2.5 px-4 rounded-full bg-white/15 border border-white/20 text-white placeholder:text-white/60 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
@@ -286,6 +298,56 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Viewers Drawer Overlay */}
+        {isMe && showViewers && (
+          <div
+            className="absolute inset-x-0 bottom-0 z-40 max-h-[55%] bg-zinc-950/95 backdrop-blur-xl border-t border-white/15 rounded-t-3xl p-4 flex flex-col text-white"
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-sm">
+                  Story Viewers ({currentStory.viewers?.length || 0})
+                </span>
+              </div>
+              <button
+                onClick={() => setShowViewers(false)}
+                className="p-1.5 rounded-full hover:bg-white/15 transition"
+                title="Close Viewers"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-2 space-y-2">
+              {!currentStory.viewers || currentStory.viewers.length === 0 ? (
+                <p className="text-center text-xs text-white/50 py-8">
+                  No viewers yet.
+                </p>
+              ) : (
+                currentStory.viewers.map((v, idx) => (
+                  <div key={`${v.userId}-${idx}`} className="flex items-center justify-between px-1 py-1.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar src={v.avatar} name={v.name || "Viewer"} size="xs" />
+                      <span className="text-xs font-semibold truncate">
+                        {v.name || "Viewed"}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-white/50 shrink-0">
+                      {v.viewedAt
+                        ? formatDistanceToNow(new Date(v.viewedAt), { addSuffix: true })
+                        : ""}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

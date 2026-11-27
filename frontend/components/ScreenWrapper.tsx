@@ -2,13 +2,12 @@ import {
     ImageBackground,
     Platform,
     StatusBar,
-    StyleSheet,
     View,
     useWindowDimensions,
-} from 'react-native'
-import React from 'react'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ScreenWrapperProps } from "../types"
+} from 'react-native';
+import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScreenWrapperProps } from "../types";
 import { colors } from "../constants/theme";
 
 const isLightBackground = (bg?: string): boolean => {
@@ -59,37 +58,46 @@ const ScreenWrapper = ({
         paddingBottom = Math.max(insets.bottom, height * 0.015);
     }
 
+    const innerContent = (
+        <View
+            style={[
+                {
+                    paddingTop,
+                    paddingBottom,
+                    flex: 1,
+                },
+                style,
+            ]}
+        >
+            <StatusBar
+                barStyle={barStyle}
+                backgroundColor="transparent"
+                translucent
+            />
+            {children}
+        </View>
+    );
+
+    if (!showPattern) {
+        return (
+            <View style={{ flex: 1, backgroundColor: outerBackground }}>
+                {innerContent}
+            </View>
+        );
+    }
+
     return (
         <ImageBackground
             style={{
                 flex: 1,
                 backgroundColor: outerBackground,
             }}
-            imageStyle={{ opacity: showPattern ? bgOpacity : 0 }}
+            imageStyle={{ opacity: bgOpacity }}
             source={require('../assets/images/bgPattern.png')}
         >
-            <View
-                style={[
-                    {
-                        paddingTop,
-                        paddingBottom,
-                        flex: 1
-                    },
-                    style
-                ]}
-            >
-                <StatusBar
-                    barStyle={barStyle}
-                    backgroundColor="transparent"
-                    translucent
-                />
-
-                {children}
-            </View>
+            {innerContent}
         </ImageBackground>
-    )
-}
+    );
+};
 
 export default ScreenWrapper;
-
-const styles = StyleSheet.create({})

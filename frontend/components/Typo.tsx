@@ -1,8 +1,8 @@
-import { StyleSheet, Text, TextStyle, View } from 'react-native'
-import React from 'react'
-import { colors } from "../constants/theme"
-import { TypoProps } from "../types"
-import { verticalScale } from "../utils/styling"
+import { Text, TextStyle } from 'react-native';
+import React, { useMemo } from 'react';
+import { colors } from "../constants/theme";
+import { TypoProps } from "../types";
+import { verticalScale } from "../utils/styling";
 
 const Typo = ({
     size = 16,
@@ -10,20 +10,19 @@ const Typo = ({
     fontWeight = '400',
     children,
     style,
-    textProps = {}
+    textProps = {},
 }: TypoProps) => {
-
-    const textStyle: TextStyle = {
+    const textStyle = useMemo<TextStyle>(() => ({
         fontSize: verticalScale(size),
         color,
-        fontWeight
-    }
+        fontWeight,
+    }), [size, color, fontWeight]);
 
     return (
         <Text maxFontSizeMultiplier={1.3} style={[textStyle, style]} {...textProps}>
             {children}
         </Text>
-    )
-}
+    );
+};
 
-export default Typo
+export default React.memo(Typo);

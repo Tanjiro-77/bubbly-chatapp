@@ -4,10 +4,12 @@ import {
     isValidExpoPushToken,
     formatMessageNotificationBody,
     sendExpoPushNotifications,
+    resolveCallRingtonePushConfig,
 } from "../services/pushNotificationService";
 import {
     registerPushToken,
     unregisterPushToken,
+    updateCallRingtone,
     updateNotificationPreference,
 } from "../controllers/notification.controller";
 import User from "../modals/User";
@@ -25,6 +27,7 @@ describe("Push Notification Service & Controller", () => {
         assert.equal(formatMessageNotificationBody({ type: "text", content: "Hello!" }), "Hello!");
         assert.equal(formatMessageNotificationBody({ type: "image", content: "" }), "📷 Photo");
         assert.equal(formatMessageNotificationBody({ type: "image", content: "Look at this" }), "📷 Look at this");
+        assert.equal(formatMessageNotificationBody({ type: "image", attachmentMeta: { mimeType: "image/gif" }, content: "" }), "🎞️ GIF");
         assert.equal(formatMessageNotificationBody({ type: "video", content: "" }), "🎥 Video");
         assert.equal(formatMessageNotificationBody({ type: "voice", voiceDuration: 15 }), "🎤 Voice message (0:15)");
         assert.equal(formatMessageNotificationBody({ type: "file", attachmentMeta: { name: "invoice.pdf" } }), "📎 invoice.pdf");
@@ -114,5 +117,72 @@ describe("Push Notification Service & Controller", () => {
     test("sendExpoPushNotifications filters invalid tokens safely", async () => {
         const res = await sendExpoPushNotifications([{ to: "bad-token", body: "hi" }]);
         assert.deepEqual(res, { sent: 0, failed: 0 });
+    });
+
+    test("resolveCallRingtonePushConfig maps all 4 ringtones and falls back safely", () => {
+        assert.deepEqual(resolveCallRingtonePushConfig("incoming_call"), {
+            ringtoneId: "incoming_call",
+            channelId: "calls_ringtone_1",
+            sound: "incoming_call.mp3",
+        });
+        assert.deepEqual(resolveCallRingtonePushConfig("incoming_call_2"), {
+            ringtoneId: "incoming_call_2",
+            channelId: "calls_ringtone_2",
+            sound: "incoming_call_2.mp3",
+        });
+        assert.deepEqual(resolveCallRingtonePushConfig("incoming_call_3"), {
+            ringtoneId: "incoming_call_3",
+            channelId: "calls_ringtone_3",
+            sound: "incoming_call_3.mp3",
+        });
+        assert.deepEqual(resolveCallRingtonePushConfig("incoming_call_4"), {
+            ringtoneId: "incoming_call_4",
+            channelId: "calls_ringtone_4",
+            sound: "incoming_call_4.mp3",
+        });
+        assert.deepEqual(resolveCallRingtonePushConfig("unknown"), {
+            ringtoneId: "incoming_call",
+            channelId: "calls_ringtone_1",
+            sound: "incoming_call.mp3",
+        });
+    });
+
+    test("updateCallRingtone validates ringtone IDs and saves valid selections", async () => {
+        let statusCode = 200;
+        let responseJson: any = null;
+        const mockRes: any = {
+            status(code: number) {
+                statusCode = code;
+                return this;
+            },
+            json(data: any) {
+                responseJson = data;
+            },
+        };
+
+        await updateCallRingtone({ userId: "user_1", body: { callRingtone: "bad_tone" } } as any, mockRes);
+        assert.equal(statusCode, 400);
+        assert.equal(responseJson.success, false);
+
+        const originalUpdate = User.findByIdAndUpdate;
+        let capturedUpdate: any = null;
+        (User as any).findByIdAndUpdate = async (_id: string, update: any) => {
+            capturedUpdate = update;
+            return {};
+        };
+
+        try {
+            statusCode = 200;
+            await updateCallRingtone(
+                { userId: "user_1", body: { callRingtone: "incoming_call_3" } } as any,
+                mockRes
+            );
+            assert.equal(statusCode, 200);
+            assert.equal(responseJson.success, true);
+            assert.equal(responseJson.callRingtone, "incoming_call_3");
+            assert.deepEqual(capturedUpdate, { callRingtone: "incoming_call_3" });
+        } finally {
+            (User as any).findByIdAndUpdate = originalUpdate;
+        }
     });
 });

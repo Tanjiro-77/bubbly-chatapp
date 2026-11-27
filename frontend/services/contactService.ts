@@ -113,12 +113,13 @@ export const syncContactsWithBackend = async (
  */
 export const updateUserPhoneNumber = async (
     phoneNumber: string,
-    token: string
-): Promise<{ success: boolean; phoneNumber: string; token?: string; msg?: string }> => {
+    token: string,
+    email?: string
+): Promise<{ success: boolean; phoneNumber: string; email?: string; token?: string; msg?: string }> => {
     try {
         const response = await axios.put(
             `${API_URL}/api/user/phone`,
-            { phoneNumber },
+            { phoneNumber, ...(email ? { email } : {}) },
             {
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -128,7 +129,7 @@ export const updateUserPhoneNumber = async (
         return response.data;
     } catch (error: any) {
         console.error("updateUserPhoneNumber error:", error?.response?.data || error.message);
-        throw new Error(error?.response?.data?.msg || "Failed to update phone number");
+        throw new Error(error?.response?.data?.msg || "Failed to update contact details");
     }
 };
 

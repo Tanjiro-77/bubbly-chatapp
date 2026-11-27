@@ -82,9 +82,9 @@ export async function connectSocket(): Promise<Socket> {
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionAttempts: Infinity,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            timeout: 15000,
+            reconnectionDelay: 450,
+            reconnectionDelayMax: 3000,
+            timeout: 10000,
         });
         socket = created;
 
@@ -109,7 +109,7 @@ export async function connectSocket(): Promise<Socket> {
             }
             const timeoutId = setTimeout(() => {
                 resolve(false);
-            }, 6000);
+            }, 3500);
 
             created.once("connect", () => {
                 clearTimeout(timeoutId);
@@ -135,6 +135,12 @@ export async function connectSocket(): Promise<Socket> {
 
 export function getSocket(): Socket | null {
     return socket;
+}
+
+export function updateSocketAuth(token: string): void {
+    if (socket) {
+        socket.auth = { token };
+    }
 }
 
 export function disconnectSocket(): void {

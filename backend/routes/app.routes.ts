@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { searchAll, translateText } from "../controllers/search.controller";
 import {
   acceptCallHttp,
+  endCallHttp,
   generateAgoraToken,
   getCallHistory,
   getCallStatus,
@@ -14,6 +15,7 @@ import { syncContacts, updatePhoneNumber, findUserByPhone } from "../controllers
 import {
   registerPushToken,
   unregisterPushToken,
+  updateCallRingtone,
   updateNotificationPreference,
 } from "../controllers/notification.controller";
 
@@ -57,11 +59,13 @@ router.get("/call/pending", authMiddleware, getPendingIncomingCall);
 router.get("/call/:callId/status", authMiddleware, getCallStatus);
 router.post("/call/:callId/accept", authMiddleware, acceptCallHttp);
 router.post("/call/:callId/reject", authMiddleware, rejectCallHttp);
+router.post("/call/:callId/end", authMiddleware, endCallHttp);
 
 // ── Push notification routes ──
 router.post("/user/push-token", authMiddleware, registerPushToken);
 router.delete("/user/push-token", authMiddleware, unregisterPushToken);
 router.put("/user/notifications", authMiddleware, updateNotificationPreference);
+router.put("/user/call-ringtone", authMiddleware, updateCallRingtone);
 
 // ── Contact & Phone routes ──
 router.post("/contacts/sync", authMiddleware, syncContacts);

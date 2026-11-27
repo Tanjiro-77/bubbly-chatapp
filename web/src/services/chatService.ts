@@ -1,6 +1,18 @@
 import axios from "axios";
 import { API_URL } from "../constants";
 
+const RICH_CARD_MARKER_RE = /\n?\[BUBBLY_(?:GAME|COUNTDOWN|CHECKLIST)\][\s\S]*$/;
+
+export const formatRichContentSummary = (content?: string | null): string => {
+  if (!content) return "";
+  return content.replace(RICH_CARD_MARKER_RE, "").trim();
+};
+
+export const isRichCardMessage = (content?: string | null): boolean => {
+  if (!content) return false;
+  return /\[BUBBLY_(?:GAME|COUNTDOWN|CHECKLIST)\]/.test(content);
+};
+
 export const translateMessage = async (
   text: string,
   targetLang: string = "es"

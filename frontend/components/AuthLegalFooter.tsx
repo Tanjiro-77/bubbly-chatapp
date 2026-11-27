@@ -5,6 +5,7 @@ import * as Icons from "phosphor-react-native";
 import Typo from "./Typo";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
+import { hapticTap } from "../utils/haptics";
 
 interface AuthLegalFooterProps {
     variant?: "light" | "dark";
@@ -35,7 +36,10 @@ const AuthLegalFooter: React.FC<AuthLegalFooterProps> = ({
             </Typo>
             <View style={styles.linksRow}>
                 <Pressable
-                    onPress={() => router.push("/(legal)/privacyPolicy" as any)}
+                    onPress={() => {
+                        hapticTap("medium");
+                        router.push("/(legal)/privacyPolicy" as any);
+                    }}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     style={({ pressed }) => [
                         styles.linkChip,
@@ -50,7 +54,10 @@ const AuthLegalFooter: React.FC<AuthLegalFooterProps> = ({
                 </Pressable>
 
                 <Pressable
-                    onPress={() => router.push("/(legal)/security" as any)}
+                    onPress={() => {
+                        hapticTap("medium");
+                        router.push("/(legal)/security" as any);
+                    }}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     style={({ pressed }) => [
                         styles.linkChip,
