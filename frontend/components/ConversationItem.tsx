@@ -83,6 +83,9 @@ const ConversationItem = ({
     onLongPress,
     nickname,
     folderTag,
+    isSelectionMode = false,
+    isSelected = false,
+    onToggleSelect,
 }: ConversationListItemProps & { searchQuery?: string; nickname?: string; folderTag?: ChatFolderTag }) => {
 
     const { user: currentUser } = useAuth();
@@ -160,12 +163,37 @@ const ConversationItem = ({
                 style={[
                     styles.conversationItem,
                     hasUnread && styles.conversationItemUnread,
+                    isSelected && { backgroundColor: "rgba(245, 158, 11, 0.14)" },
                 ]}
-                onPress={openConversation}
+                onPress={() => {
+                    if (isSelectionMode) {
+                        hapticTap("light");
+                        onToggleSelect?.(item._id);
+                        return;
+                    }
+                    openConversation();
+                }}
                 onLongPress={handleLongPress}
                 delayLongPress={300}
                 activeOpacity={0.7}
             >
+                {isSelectionMode && (
+                    <View
+                        style={{
+                            width: scale(22),
+                            height: scale(22),
+                            borderRadius: radius.full,
+                            borderWidth: 2,
+                            borderColor: isSelected ? colors.primaryDark : colors.neutral400,
+                            backgroundColor: isSelected ? colors.primary : colors.white,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                        }}
+                    >
+                        {isSelected && <Icons.Check size={12} color={colors.black} weight="bold" />}
+                    </View>
+                )}
                 {/* ── Avatar with Live Online Indicator ── */}
                 <View style={styles.avatarWrap}>
                     <Avatar uri={avatar} size={52} isGroup={item.type === 'group'} />
@@ -348,7 +376,9 @@ export default React.memo(ConversationItem, (prev, next) => {
         prev.draftText === next.draftText &&
         prev.onLongPress === next.onLongPress &&
         prev.nickname === next.nickname &&
-        prev.folderTag === next.folderTag
+        prev.folderTag === next.folderTag &&
+        prev.isSelectionMode === next.isSelectionMode &&
+        prev.isSelected === next.isSelected
     );
 });
 

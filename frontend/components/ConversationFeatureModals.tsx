@@ -6,11 +6,12 @@
  * and Message Reminder Alarms.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     FlatList,
     KeyboardAvoidingView,
     Modal,
+    PanResponder,
     Platform,
     ScrollView,
     StyleSheet,
@@ -22,6 +23,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Icons from "phosphor-react-native";
+import * as Clipboard from "expo-clipboard";
+import Svg, { Path } from "react-native-svg";
 import moment from "moment";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
@@ -30,11 +33,19 @@ import Avatar from "./Avatar";
 import { ChecklistProps, ConversationProps, MessageProps } from "../types";
 import {
     BubblyCountdownPayload,
+    BubblyDoodlePayload,
+    BubblyDoodleStroke,
+    BubblyEventPayload,
     BubblyGameKind,
     BubblyGamePayload,
+    BubblySplitPayload,
+    BubblyWyrPayload,
     ChatInsightsSummary,
     computeChatInsights,
+    DailyActivityStats,
+    getChatScratchpad,
     QuickReplyTemplate,
+    saveChatScratchpad,
 } from "../utils/featureStorage";
 import { hapticTap } from "../utils/haptics";
 import { SavedMessageReminder } from "../services/reminderService";
@@ -538,7 +549,24 @@ export const ChatInsightsModal = ({
         () => computeChatInsights(messages, currentUserId),
         [messages, currentUserId]
     );
+    const { avgWords, longestLen } = useMemo(() => {
+        let wordSum = 0;
+        let textCount = 0;
+        let maxLen = 0;
+        for (const m of messages) {
+            if (m.isDeleted || m.type === "system" || !m.content) continue;
+            const len = m.content.trim().length;
+            if (len > maxLen) maxLen = len;
+            wordSum += m.content.trim().split(/\s+/).filter(Boolean).length;
+            textCount++;
+        }
+        return {
+            avgWords: textCount > 0 ? (wordSum / textCount).toFixed(1) : "0",
+            longestLen: maxLen,
+        };
+    }, [messages]);
     const myPct = stats.totalMessages > 0 ? Math.round((stats.sentByMe / stats.totalMessages) * 100) : 50;
+    const [copiedSummary, setCopiedSummary] = useState(false);
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -559,7 +587,7 @@ export const ChatInsightsModal = ({
                                 </TouchableOpacity>
                             </View>
 
-                            <View style={modalStyles.body}>
+                            <ScrollView contentContainerStyle={modalStyles.body}>
                                 <View style={modalStyles.statGrid}>
                                     {[
                                         { label: "Messages", val: String(stats.totalMessages), icon: "💬" },
@@ -568,6 +596,9 @@ export const ChatInsightsModal = ({
                                         { label: "Peak Hour", val: stats.peakHourLabel, icon: "⏰" },
                                         { label: "Active Days", val: String(stats.activeDays), icon: "📅" },
                                         { label: "Polls & Lists", val: String(stats.pollCount + stats.checklistCount), icon: "✅" },
+                                        { label: "Avg Words", val: avgWords, icon: "✍️" },
+                                        { label: "Longest Msg", val: `${longestLen} ch`, icon: "📏" },
+                                        { label: "Your Share", val: `${myPct}%`, icon: "⚖️" },
                                     ].map((box) => (
                                         <View key={box.label} style={modalStyles.statTile}>
                                             <Typo size={18}>{box.icon}</Typo>
@@ -602,7 +633,23 @@ export const ChatInsightsModal = ({
                                         </View>
                                     </View>
                                 )}
-                            </View>
+
+                                <TouchableOpacity
+                                    style={modalStyles.primaryBtn}
+                                    activeOpacity={0.8}
+                                    onPress={async () => {
+                                        const summary = `📊 Bubbly Chat Insights (${chatName})\n• Messages: ${stats.totalMessages} (You: ${stats.sentByMe}, Them: ${stats.received})\n• Voice Notes: ${stats.voiceCount} (${Math.round(stats.voiceSeconds)}s)\n• Media/Docs: ${stats.mediaCount}\n• Peak Hour: ${stats.peakHourLabel} · Active Days: ${stats.activeDays}`;
+                                        await Clipboard.setStringAsync(summary).catch(() => {});
+                                        hapticTap("success");
+                                        setCopiedSummary(true);
+                                        setTimeout(() => setCopiedSummary(false), 2000);
+                                    }}
+                                >
+                                    <Typo size={14} fontWeight="800" color={colors.black}>
+                                        {copiedSummary ? "✓ Summary Copied!" : "Copy Stats Summary"}
+                                    </Typo>
+                                </TouchableOpacity>
+                            </ScrollView>
                         </View>
                     </TouchableWithoutFeedback>
                 </View>
@@ -611,7 +658,326 @@ export const ChatInsightsModal = ({
     );
 };
 
-// ── 6. Unified Quick Jump Command Modal (Home) ────────────────────────────────
+// ── 12. Smart Event / Meetup Creator Modal ────────────────────────────────────
+export const EventCreatorModal = ({
+    visible,
+    onCreate,
+    onClose,
+}: {
+    visible: boolean;
+    onCreate: (event: BubblyEventPayload) => void;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    const [title, setTitle] = useState("");
+    const [emoji, setEmoji] = useState("📅");
+    const [location, setLocation] = useState("");
+    const [note, setNote] = useState("");
+    const [slotIdx, setSlotIdx] = useState(0);
+
+    const TIME_SLOTS = useMemo(() => {
+        const now = new Date();
+        const in1h = new Date(now.getTime() + 60 * 60 * 1000);
+        const tonight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0, 0);
+        const tmrMorning = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 10, 0, 0);
+        const weekend = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3, 18, 0, 0);
+        return [
+            { label: "In 1 Hour", date: in1h },
+            { label: tonight > now ? "Tonight 7:00 PM" : "Tomorrow 7:00 PM", date: tonight > now ? tonight : new Date(tonight.getTime() + 86400000) },
+            { label: "Tomorrow 10:00 AM", date: tmrMorning },
+            { label: moment(weekend).format("ddd, MMM D · 6 PM"), date: weekend },
+        ];
+    }, [visible]);
+
+    const handleSubmit = () => {
+        const chosen = TIME_SLOTS[slotIdx] || TIME_SLOTS[0];
+        hapticTap("celebration");
+        onCreate({
+            id: `evt_${Date.now()}`,
+            title: title.trim() || "Bubbly Hangout",
+            emoji,
+            whenIso: chosen.date.toISOString(),
+            whenLabel: chosen.label,
+            location: location.trim() || undefined,
+            note: note.trim() || undefined,
+        });
+        setTitle("");
+        setLocation("");
+        setNote("");
+    };
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>📅 Share Event Invite</Typo>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
+                                <View style={{ flexDirection: "row", gap: 8 }}>
+                                    {["📅", "☕", "🍕", "🎬", "📞", "🎉"].map((e) => (
+                                        <TouchableOpacity
+                                            key={e}
+                                            onPress={() => { hapticTap("light"); setEmoji(e); }}
+                                            style={[modalStyles.emojiBtn, emoji === e && modalStyles.emojiBtnActive]}
+                                        >
+                                            <Typo size={19}>{e}</Typo>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Event title (e.g. Coffee Catch-up, Sync Call)"
+                                    placeholderTextColor={colors.neutral400}
+                                    value={title}
+                                    onChangeText={setTitle}
+                                    maxLength={70}
+                                />
+                                <Typo size={12} fontWeight="700" color={colors.neutral600} style={{ marginTop: 6 }}>When</Typo>
+                                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                    {TIME_SLOTS.map((s, idx) => {
+                                        const active = slotIdx === idx;
+                                        return (
+                                            <TouchableOpacity
+                                                key={s.label}
+                                                onPress={() => { hapticTap("light"); setSlotIdx(idx); }}
+                                                style={[
+                                                    modalStyles.emojiStatPill,
+                                                    active && { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+                                                ]}
+                                            >
+                                                <Typo size={12} fontWeight={active ? "800" : "600"} color={active ? colors.primaryDark : colors.neutral700}>
+                                                    {s.label}
+                                                </Typo>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Location or meeting link (optional)"
+                                    placeholderTextColor={colors.neutral400}
+                                    value={location}
+                                    onChangeText={setLocation}
+                                    maxLength={80}
+                                />
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Short note (optional)"
+                                    placeholderTextColor={colors.neutral400}
+                                    value={note}
+                                    onChangeText={setNote}
+                                    maxLength={120}
+                                />
+                                <TouchableOpacity style={modalStyles.primaryBtn} onPress={handleSubmit} activeOpacity={0.8}>
+                                    <Typo size={15} fontWeight="800" color={colors.black}>Send Event Card</Typo>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── 13. Would You Rather / This or That Modal ─────────────────────────────────
+const WYR_PRESETS = [
+    { optionA: "Coffee forever ☕", optionB: "Tea forever 🍵" },
+    { optionA: "Night owl 🌙", optionB: "Early bird ☀️" },
+    { optionA: "Beach vacation 🏖️", optionB: "Mountain cabin 🏔️" },
+    { optionA: "Pizza tonight 🍕", optionB: "Tacos tonight 🌮" },
+];
+
+export const WouldYouRatherModal = ({
+    visible,
+    onCreate,
+    onClose,
+}: {
+    visible: boolean;
+    onCreate: (wyr: BubblyWyrPayload) => void;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    const [optA, setOptA] = useState("");
+    const [optB, setOptB] = useState("");
+
+    const sendCard = (a: string, b: string) => {
+        hapticTap("celebration");
+        onCreate({
+            id: `wyr_${Date.now()}`,
+            optionA: a.trim(),
+            optionB: b.trim(),
+        });
+        setOptA("");
+        setOptB("");
+    };
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>⚖️ This or That</Typo>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
+                                <Typo size={12} fontWeight="700" color={colors.neutral500}>Quick Icebreakers</Typo>
+                                {WYR_PRESETS.map((p) => (
+                                    <TouchableOpacity
+                                        key={p.optionA}
+                                        style={modalStyles.tplCard}
+                                        onPress={() => sendCard(p.optionA, p.optionB)}
+                                        activeOpacity={0.75}
+                                    >
+                                        <Typo size={13} fontWeight="700" color={colors.neutral900} style={{ flex: 1 }}>
+                                            {p.optionA}  vs  {p.optionB}
+                                        </Typo>
+                                        <Icons.PaperPlaneTilt size={15} color={colors.primaryDark} weight="fill" />
+                                    </TouchableOpacity>
+                                ))}
+                                <Typo size={12} fontWeight="700" color={colors.neutral500} style={{ marginTop: 8 }}>Or Create Custom</Typo>
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Option A..."
+                                    placeholderTextColor={colors.neutral400}
+                                    value={optA}
+                                    onChangeText={setOptA}
+                                    maxLength={60}
+                                />
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Option B..."
+                                    placeholderTextColor={colors.neutral400}
+                                    value={optB}
+                                    onChangeText={setOptB}
+                                    maxLength={60}
+                                />
+                                <TouchableOpacity
+                                    style={[modalStyles.primaryBtn, (!optA.trim() || !optB.trim()) && { opacity: 0.45 }]}
+                                    disabled={!optA.trim() || !optB.trim()}
+                                    onPress={() => sendCard(optA, optB)}
+                                >
+                                    <Typo size={15} fontWeight="800" color={colors.black}>Send This or That</Typo>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── 14. Fancy Unicode Font Styler Modal ───────────────────────────────────────
+function toUnicodeRange(text: string, upperStart: number, lowerStart: number, digitStart?: number): string {
+    return Array.from(text)
+        .map((ch) => {
+            const code = ch.charCodeAt(0);
+            if (code >= 65 && code <= 90) return String.fromCodePoint(upperStart + (code - 65));
+            if (code >= 97 && code <= 122) return String.fromCodePoint(lowerStart + (code - 97));
+            if (digitStart !== undefined && code >= 48 && code <= 57) return String.fromCodePoint(digitStart + (code - 48));
+            return ch;
+        })
+        .join("");
+}
+
+const FANCY_TRANSFORMS: { id: string; label: string; transform: (s: string) => string }[] = [
+    { id: "bold", label: "𝐒𝐞𝐫𝐢𝐟 𝐁𝐨𝐥𝐝", transform: (s) => toUnicodeRange(s, 0x1d400, 0x1d41a, 0x1d7ce) },
+    { id: "italic", label: "𝑆𝑒𝑟𝑖𝑓 𝐼𝑡𝑎𝑙𝑖𝑐", transform: (s) => toUnicodeRange(s, 0x1d434, 0x1d44e) },
+    { id: "mono", label: "𝙼𝚘𝚗𝚘𝚜𝚙𝚊𝚌𝚎", transform: (s) => toUnicodeRange(s, 0x1d670, 0x1d68a, 0x1d7f6) },
+    { id: "bubble", label: "Ⓑⓤⓑⓑⓛⓔ", transform: (s) => toUnicodeRange(s, 0x24b6, 0x24d0) },
+    { id: "spaced", label: "Ｓｐａｃｅｄ", transform: (s) => s.split("").join(" ") },
+];
+
+export const FancyTextModal = ({
+    visible,
+    initialText,
+    onApply,
+    onClose,
+}: {
+    visible: boolean;
+    initialText: string;
+    onApply: (styledText: string) => void;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    const [text, setText] = useState(initialText || "");
+
+    useEffect(() => {
+        if (visible) setText(initialText || "Hello Bubbly");
+    }, [visible, initialText]);
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>✨ Fancy Text Styler</Typo>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Type text to stylize..."
+                                    placeholderTextColor={colors.neutral400}
+                                    value={text}
+                                    onChangeText={setText}
+                                    maxLength={180}
+                                />
+                                {FANCY_TRANSFORMS.map((f) => {
+                                    const preview = f.transform(text || "Hello Bubbly");
+                                    return (
+                                        <TouchableOpacity
+                                            key={f.id}
+                                            style={modalStyles.tplCard}
+                                            activeOpacity={0.75}
+                                            onPress={() => {
+                                                hapticTap("success");
+                                                onApply(preview);
+                                            }}
+                                        >
+                                            <View style={{ flex: 1, minWidth: 0 }}>
+                                                <Typo size={10.5} fontWeight="700" color={colors.primaryDark}>{f.label}</Typo>
+                                                <Typo size={14} color={colors.neutral900} textProps={{ numberOfLines: 2 }}>{preview}</Typo>
+                                            </View>
+                                            <Icons.Check size={16} color={colors.primaryDark} weight="bold" />
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
 export const QuickJumpModal = ({
     visible,
     conversations,
@@ -834,6 +1200,636 @@ export const RemindersListModal = ({
                                     </TouchableOpacity>
                                 )}
                             />
+                        </View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── 8. Split Bill Creator Modal ───────────────────────────────────────────────
+export const SplitBillModal = ({
+    visible,
+    defaultParticipants,
+    currentUserName,
+    onCreate,
+    onClose,
+}: {
+    visible: boolean;
+    defaultParticipants: string[];
+    currentUserName?: string;
+    onCreate: (split: BubblySplitPayload) => void;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    const [title, setTitle] = useState("");
+    const [amountStr, setAmountStr] = useState("");
+    const [currency, setCurrency] = useState<"$" | "₹" | "€" | "£">("$");
+    const [members, setMembers] = useState<string[]>([]);
+    const [newMember, setNewMember] = useState("");
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        if (visible) {
+            const initial = Array.from(
+                new Set(
+                    [currentUserName || "You", ...defaultParticipants]
+                        .map((s) => (s || "").trim())
+                        .filter(Boolean)
+                )
+            ).slice(0, 8);
+            setMembers(initial.length >= 2 ? initial : [currentUserName || "You", "Friend"]);
+            setError("");
+        }
+    }, [visible, defaultParticipants, currentUserName]);
+
+    const parsedAmount = parseFloat(amountStr.replace(/[^0-9.]/g, "")) || 0;
+    const perPerson = members.length > 0 ? parsedAmount / members.length : 0;
+
+    const handleAddMember = () => {
+        const clean = newMember.trim().slice(0, 24);
+        if (!clean) return;
+        hapticTap("light");
+        setMembers((prev) => Array.from(new Set([...prev, clean])).slice(0, 10));
+        setNewMember("");
+    };
+
+    const handleSubmit = () => {
+        if (parsedAmount <= 0) {
+            hapticTap("error");
+            setError("Enter a valid bill amount greater than 0");
+            return;
+        }
+        if (members.length < 2) {
+            hapticTap("error");
+            setError("Add at least 2 people to split with");
+            return;
+        }
+        hapticTap("success");
+        onCreate({
+            id: `split_${Date.now()}`,
+            title: title.trim() || "Shared Expense",
+            currency,
+            totalAmount: Number(parsedAmount.toFixed(2)),
+            participants: members.map((name, idx) => ({
+                id: `p_${idx}_${name.toLowerCase().replace(/\W+/g, "")}`,
+                name,
+                paid: idx === 0, // creator defaults to paid their own share
+            })),
+            createdBy: currentUserName || "You",
+        });
+        setTitle("");
+        setAmountStr("");
+        setError("");
+    };
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>💸 Split Bill</Typo>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
+                                <Typo size={12} fontWeight="700" color={colors.neutral600}>Expense Title</Typo>
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="e.g. Dinner, Cab Ride, Movie Tickets"
+                                    placeholderTextColor={colors.neutral400}
+                                    value={title}
+                                    onChangeText={(v) => { setTitle(v); setError(""); }}
+                                    maxLength={60}
+                                />
+
+                                <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginTop: 6 }}>
+                                    {(["$", "₹", "€", "£"] as const).map((c) => {
+                                        const active = currency === c;
+                                        return (
+                                            <TouchableOpacity
+                                                key={c}
+                                                onPress={() => { hapticTap("light"); setCurrency(c); }}
+                                                style={[modalStyles.emojiBtn, active && modalStyles.emojiBtnActive]}
+                                            >
+                                                <Typo size={16} fontWeight="800" color={active ? colors.primaryDark : colors.neutral700}>{c}</Typo>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                    <TextInput
+                                        style={[modalStyles.input, { flex: 1, marginTop: 0 }]}
+                                        placeholder="Total amount (e.g. 48.50)"
+                                        placeholderTextColor={colors.neutral400}
+                                        value={amountStr}
+                                        onChangeText={(v) => { setAmountStr(v); setError(""); }}
+                                        keyboardType="decimal-pad"
+                                        maxLength={12}
+                                    />
+                                </View>
+
+                                <Typo size={12} fontWeight="700" color={colors.neutral600} style={{ marginTop: 8 }}>
+                                    Participants ({members.length}) {parsedAmount > 0 && members.length > 0 ? `· ${currency}${perPerson.toFixed(2)} each` : ""}
+                                </Typo>
+                                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                    {members.map((m, idx) => (
+                                        <TouchableOpacity
+                                            key={`${m}_${idx}`}
+                                            onPress={() => {
+                                                if (members.length <= 2) return;
+                                                hapticTap("light");
+                                                setMembers(members.filter((_, i) => i !== idx));
+                                            }}
+                                            style={modalStyles.emojiStatPill}
+                                        >
+                                            <Typo size={12.5} fontWeight="700" color={colors.neutral800}>{m}</Typo>
+                                            {members.length > 2 && <Icons.X size={11} color={colors.neutral400} weight="bold" />}
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                <View style={modalStyles.itemRow}>
+                                    <TextInput
+                                        style={[modalStyles.input, { flex: 1, marginTop: 0 }]}
+                                        placeholder="Add person name..."
+                                        placeholderTextColor={colors.neutral400}
+                                        value={newMember}
+                                        onChangeText={setNewMember}
+                                        onSubmitEditing={handleAddMember}
+                                        maxLength={24}
+                                    />
+                                    <TouchableOpacity
+                                        onPress={handleAddMember}
+                                        style={[modalStyles.addBtn, { marginTop: 0, paddingHorizontal: 14 }]}
+                                    >
+                                        <Icons.Plus size={15} color={colors.primaryDark} weight="bold" />
+                                    </TouchableOpacity>
+                                </View>
+
+                                {!!error && <Typo size={12} color={colors.rose} fontWeight="600">{error}</Typo>}
+
+                                <TouchableOpacity style={modalStyles.primaryBtn} onPress={handleSubmit} activeOpacity={0.8}>
+                                    <Typo size={15} fontWeight="800" color={colors.black}>Send Split Bill Card</Typo>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── 9. Finger-Drawing Sketch / Doodle Pad Modal ───────────────────────────────
+const DOODLE_COLORS = ["#f59e0b", "#ef4444", "#10b981", "#0284c7", "#8b5cf6", "#1c1917"];
+
+export const DoodlePadModal = ({
+    visible,
+    onSend,
+    onClose,
+}: {
+    visible: boolean;
+    onSend: (payload: BubblyDoodlePayload) => void;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    const [strokes, setStrokes] = useState<BubblyDoodleStroke[]>([]);
+    const [activePath, setActivePath] = useState<string>("");
+    const [inkColor, setInkColor] = useState<string>(DOODLE_COLORS[0]);
+    const [strokeWidth, setStrokeWidth] = useState<number>(4);
+    const [darkBg, setDarkBg] = useState<boolean>(false);
+    const [caption, setCaption] = useState<string>("");
+    const [canvasLayout, setCanvasLayout] = useState({ width: 260, height: 170 });
+
+    const currentPointsRef = useRef<{ x: number; y: number }[]>([]);
+    const inkRef = useRef(inkColor);
+    inkRef.current = inkColor;
+    const widthRef = useRef(strokeWidth);
+    widthRef.current = strokeWidth;
+    const layoutRef = useRef(canvasLayout);
+    layoutRef.current = canvasLayout;
+
+    const toViewBox = (lx: number, ly: number) => {
+        const w = Math.max(1, layoutRef.current.width);
+        const h = Math.max(1, layoutRef.current.height);
+        const vx = Math.round(Math.max(0, Math.min(260, (lx / w) * 260)));
+        const vy = Math.round(Math.max(0, Math.min(170, (ly / h) * 170)));
+        return { x: vx, y: vy };
+    };
+
+    const buildPath = (pts: { x: number; y: number }[]) => {
+        if (pts.length === 0) return "";
+        if (pts.length === 1) return `M${pts[0].x} ${pts[0].y} L${pts[0].x + 1} ${pts[0].y}`;
+        return pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
+    };
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: () => true,
+            onPanResponderGrant: (evt) => {
+                const { locationX, locationY } = evt.nativeEvent;
+                const pt = toViewBox(locationX, locationY);
+                currentPointsRef.current = [pt];
+                setActivePath(buildPath([pt]));
+            },
+            onPanResponderMove: (evt) => {
+                const { locationX, locationY } = evt.nativeEvent;
+                const pt = toViewBox(locationX, locationY);
+                const pts = currentPointsRef.current;
+                const last = pts[pts.length - 1];
+                if (!last || Math.abs(pt.x - last.x) + Math.abs(pt.y - last.y) >= 4) {
+                    const nextPts = [...pts, pt];
+                    currentPointsRef.current = nextPts;
+                    setActivePath(buildPath(nextPts));
+                }
+            },
+            onPanResponderRelease: () => {
+                const d = buildPath(currentPointsRef.current);
+                if (d) {
+                    setStrokes((prev) => [
+                        ...prev.slice(-24),
+                        { d, color: inkRef.current, width: widthRef.current },
+                    ]);
+                }
+                currentPointsRef.current = [];
+                setActivePath("");
+            },
+            onPanResponderTerminate: () => {
+                currentPointsRef.current = [];
+                setActivePath("");
+            },
+        })
+    ).current;
+
+    const handleSend = () => {
+        if (strokes.length === 0) {
+            hapticTap("error");
+            return;
+        }
+        hapticTap("celebration");
+        onSend({ strokes, darkBg, caption: caption.trim() || undefined });
+        setStrokes([]);
+        setCaption("");
+    };
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <Typo size={17} fontWeight="800" color={colors.neutral900}>🎨 Sketch & Doodle Pad</Typo>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <View style={modalStyles.body}>
+                                <View
+                                    onLayout={(e) => {
+                                        const { width, height } = e.nativeEvent.layout;
+                                        if (width > 0 && height > 0) setCanvasLayout({ width, height });
+                                    }}
+                                    {...panResponder.panHandlers}
+                                    style={{
+                                        width: "100%",
+                                        height: verticalScale(200),
+                                        borderRadius: radius._20,
+                                        backgroundColor: darkBg ? "#1c1917" : "#fffdf7",
+                                        borderWidth: 1.5,
+                                        borderColor: colors.neutral200,
+                                        overflow: "hidden",
+                                    }}
+                                >
+                                    <Svg width="100%" height="100%" viewBox="0 0 260 170">
+                                        {strokes.map((s, idx) => (
+                                            <Path
+                                                key={idx}
+                                                d={s.d}
+                                                stroke={s.color}
+                                                strokeWidth={s.width}
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                fill="none"
+                                            />
+                                        ))}
+                                        {!!activePath && (
+                                            <Path
+                                                d={activePath}
+                                                stroke={inkColor}
+                                                strokeWidth={strokeWidth}
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                fill="none"
+                                            />
+                                        )}
+                                    </Svg>
+                                </View>
+
+                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
+                                    <View style={{ flexDirection: "row", gap: 6 }}>
+                                        {DOODLE_COLORS.map((c) => {
+                                            const active = inkColor === c;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={c}
+                                                    onPress={() => { hapticTap("light"); setInkColor(c); }}
+                                                    style={{
+                                                        width: scale(26),
+                                                        height: scale(26),
+                                                        borderRadius: radius.full,
+                                                        backgroundColor: c,
+                                                        borderWidth: active ? 2.5 : 1,
+                                                        borderColor: active ? colors.neutral900 : colors.neutral200,
+                                                    }}
+                                                />
+                                            );
+                                        })}
+                                    </View>
+                                    <View style={{ flexDirection: "row", gap: 6 }}>
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                hapticTap("light");
+                                                setDarkBg((p) => !p);
+                                                if (!darkBg && inkColor === "#1c1917") setInkColor("#ffffff");
+                                            }}
+                                            style={modalStyles.closeBtn}
+                                        >
+                                            <Icons.Moon size={14} color={darkBg ? colors.primaryDark : colors.neutral600} weight="fill" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => { hapticTap("light"); setStrokes((p) => p.slice(0, -1)); }}
+                                            style={modalStyles.closeBtn}
+                                        >
+                                            <Icons.ArrowCounterClockwise size={14} color={colors.neutral700} weight="bold" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => { hapticTap("warning"); setStrokes([]); }}
+                                            style={modalStyles.removeBtn}
+                                        >
+                                            <Icons.Trash size={14} color={colors.rose} weight="bold" />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                                    {[
+                                        { label: "Thin", w: 2.5 },
+                                        { label: "Medium", w: 4.5 },
+                                        { label: "Bold", w: 7.5 },
+                                    ].map((sz) => (
+                                        <TouchableOpacity
+                                            key={sz.label}
+                                            onPress={() => { hapticTap("light"); setStrokeWidth(sz.w); }}
+                                            style={[
+                                                modalStyles.emojiStatPill,
+                                                strokeWidth === sz.w && { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+                                            ]}
+                                        >
+                                            <Typo size={11.5} fontWeight="700" color={strokeWidth === sz.w ? colors.primaryDark : colors.neutral700}>
+                                                {sz.label}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                <TextInput
+                                    style={modalStyles.input}
+                                    placeholder="Optional sketch caption..."
+                                    placeholderTextColor={colors.neutral400}
+                                    value={caption}
+                                    onChangeText={setCaption}
+                                    maxLength={60}
+                                />
+
+                                <TouchableOpacity
+                                    style={[modalStyles.primaryBtn, strokes.length === 0 && { opacity: 0.45 }]}
+                                    onPress={handleSend}
+                                    disabled={strokes.length === 0}
+                                    activeOpacity={0.8}
+                                >
+                                    <Typo size={15} fontWeight="800" color={colors.black}>Send Sketch</Typo>
+                                </TouchableOpacity>
+                            </View>
+                        </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── 10. Per-Conversation Private Scratchpad Modal ─────────────────────────────
+export const ChatScratchpadModal = ({
+    visible,
+    conversationId,
+    chatName,
+    onClose,
+}: {
+    visible: boolean;
+    conversationId: string;
+    chatName: string;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    const [note, setNote] = useState("");
+    const [savedHint, setSavedHint] = useState(false);
+
+    useEffect(() => {
+        if (visible && conversationId) {
+            getChatScratchpad(conversationId).then(setNote);
+            setSavedHint(false);
+        }
+    }, [visible, conversationId]);
+
+    const handleSave = async () => {
+        await saveChatScratchpad(conversationId, note);
+        hapticTap("success");
+        setSavedHint(true);
+        setTimeout(() => setSavedHint(false), 1800);
+    };
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
+                        >
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Typo size={17} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                        📝 Private Scratchpad
+                                    </Typo>
+                                    <Typo size={11.5} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
+                                        Only visible to you · {chatName}
+                                    </Typo>
+                                </View>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <View style={modalStyles.body}>
+                                <TextInput
+                                    style={[modalStyles.input, { minHeight: verticalScale(150), textAlignVertical: "top" }]}
+                                    placeholder="Jot down action items, dates, links, or gift ideas for this chat..."
+                                    placeholderTextColor={colors.neutral400}
+                                    value={note}
+                                    onChangeText={setNote}
+                                    multiline
+                                    maxLength={4000}
+                                />
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                    <Typo size={11} color={savedHint ? "#16a34a" : colors.neutral400} fontWeight="600">
+                                        {savedHint ? "✓ Saved privately on device" : `${note.length}/4000 characters`}
+                                    </Typo>
+                                    <View style={{ flexDirection: "row", gap: 8 }}>
+                                        <TouchableOpacity
+                                            onPress={async () => {
+                                                if (!note.trim()) return;
+                                                await Clipboard.setStringAsync(note).catch(() => {});
+                                                hapticTap("medium");
+                                            }}
+                                            style={modalStyles.emojiStatPill}
+                                        >
+                                            <Icons.Copy size={13} color={colors.neutral700} weight="bold" />
+                                            <Typo size={11.5} fontWeight="700" color={colors.neutral700}>Copy</Typo>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={async () => {
+                                                hapticTap("warning");
+                                                setNote("");
+                                                await saveChatScratchpad(conversationId, "");
+                                            }}
+                                            style={[modalStyles.emojiStatPill, { borderColor: "#fecaca", backgroundColor: "#fef2f2" }]}
+                                        >
+                                            <Typo size={11.5} fontWeight="700" color={colors.rose}>Clear</Typo>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                                <TouchableOpacity style={modalStyles.primaryBtn} onPress={handleSave} activeOpacity={0.8}>
+                                    <Typo size={15} fontWeight="800" color={colors.black}>Save Scratchpad</Typo>
+                                </TouchableOpacity>
+                            </View>
+                        </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+};
+
+// ── 11. Daily Activity & Streak Digest Modal (Home) ───────────────────────────
+export const DailyDigestModal = ({
+    visible,
+    activity,
+    unreadDirect,
+    unreadGroups,
+    unreadConversations,
+    currentUserId,
+    nicknames,
+    onSelectConversation,
+    onClose,
+}: {
+    visible: boolean;
+    activity: DailyActivityStats;
+    unreadDirect: number;
+    unreadGroups: number;
+    unreadConversations: ConversationProps[];
+    currentUserId?: string;
+    nicknames: Record<string, string>;
+    onSelectConversation: (c: ConversationProps) => void;
+    onClose: () => void;
+}) => {
+    const insets = useSafeAreaInsets();
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={onClose}>
+                <View style={modalStyles.overlay}>
+                    <TouchableWithoutFeedback>
+                        <View style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8, maxHeight: "82%" }]}>
+                            <View style={modalStyles.handle} />
+                            <View style={modalStyles.header}>
+                                <View>
+                                    <Typo size={17} fontWeight="800" color={colors.neutral900}>🔥 Today on Bubbly</Typo>
+                                    <Typo size={11.5} color={colors.neutral500}>Your daily messaging pulse & unread digest</Typo>
+                                </View>
+                                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                                    <Icons.X size={16} color={colors.neutral600} weight="bold" />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView contentContainerStyle={modalStyles.body}>
+                                <View style={modalStyles.statGrid}>
+                                    {[
+                                        { label: "Day Streak", val: `${activity.streakDays}d`, icon: "🔥" },
+                                        { label: "Sent Today", val: String(activity.messagesSentToday), icon: "💬" },
+                                        { label: "Chats Active", val: String(activity.activeConvIdsToday.length), icon: "⚡" },
+                                        { label: "All-Time Sent", val: String(activity.totalSentAllTime), icon: "🚀" },
+                                        { label: "Unread Direct", val: String(unreadDirect), icon: "📩" },
+                                        { label: "Unread Groups", val: String(unreadGroups), icon: "👥" },
+                                    ].map((box) => (
+                                        <View key={box.label} style={modalStyles.statTile}>
+                                            <Typo size={18}>{box.icon}</Typo>
+                                            <Typo size={15} fontWeight="800" color={colors.neutral900}>{box.val}</Typo>
+                                            <Typo size={10.5} color={colors.neutral500}>{box.label}</Typo>
+                                        </View>
+                                    ))}
+                                </View>
+
+                                <Typo size={12} fontWeight="800" color={colors.neutral500} style={{ marginTop: 10 }}>
+                                    UNREAD CONVERSATIONS ({unreadConversations.length})
+                                </Typo>
+                                {unreadConversations.length === 0 ? (
+                                    <View style={[modalStyles.ratioCard, { alignItems: "center", paddingVertical: 18 }]}>
+                                        <Typo size={13.5} fontWeight="700" color="#16a34a">🎉 Inbox Zero! All caught up.</Typo>
+                                    </View>
+                                ) : (
+                                    unreadConversations.slice(0, 6).map((c) => {
+                                        const other = c.type === "direct" ? c.participants?.find((p) => p._id !== currentUserId) : null;
+                                        const baseName = (c.type === "group" ? c.name : other?.name) || "Chat";
+                                        const display = nicknames[c._id] || (other?._id ? nicknames[other._id] : "") || baseName;
+                                        const av = c.type === "direct" ? other?.avatar || c.avatar : c.avatar;
+                                        return (
+                                            <TouchableOpacity
+                                                key={c._id}
+                                                style={modalStyles.tplCard}
+                                                onPress={() => {
+                                                    hapticTap("medium");
+                                                    onClose();
+                                                    onSelectConversation(c);
+                                                }}
+                                                activeOpacity={0.75}
+                                            >
+                                                <Avatar size={34} uri={av} isGroup={c.type === "group"} />
+                                                <View style={{ flex: 1, minWidth: 0 }}>
+                                                    <Typo size={13.5} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                                        {display}
+                                                    </Typo>
+                                                    <Typo size={11.5} color={colors.neutral500} textProps={{ numberOfLines: 1 }}>
+                                                        {c.unreadCount || 0} unread message{(c.unreadCount || 0) === 1 ? "" : "s"}
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={14} color={colors.neutral400} />
+                                            </TouchableOpacity>
+                                        );
+                                    })
+                                )}
+                            </ScrollView>
                         </View>
                     </TouchableWithoutFeedback>
                 </View>

@@ -28,15 +28,27 @@ import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pin
 import { getFileIcon, formatFileSize } from "../services/imageService"
 import { translateMessage } from "../services/chatService"
 import FormattedText from "./FormattedText"
-import { ChecklistCardBubble, CountdownCardBubble, GameCardBubble } from "./RichChatFeatures"
+import { ChecklistCardBubble, CountdownCardBubble, DoodleCardBubble, EventCardBubble, GameCardBubble, SplitBillCardBubble, WyrCardBubble } from "./RichChatFeatures"
 import {
     BubbleCornerStyle,
     ChatFontScale,
+    DEFAULT_FAVORITE_REACTIONS,
+    EventRsvpChoice,
     formatRichPreviewText,
+    getFavoriteReactions,
     getLocalChecklistOverrides,
+    getLocalEventRsvp,
     getLocalSilentIds,
+    getLocalSplitOverrides,
+    getLocalWyrPick,
+    getVoiceSpeedPref,
     parseBubblyCard,
+    saveVoiceSpeedPref,
+    setLocalEventRsvp,
+    setLocalWyrPick,
+    subscribeFeatureUpdates,
     toggleLocalChecklistOverride,
+    toggleLocalSplitPaid,
 } from "../utils/featureStorage"
 import { hapticTap } from "../utils/haptics"
 import { formatTime12h } from "../utils/chatCache"
@@ -417,14 +429,36 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
     const dot2 = useSharedValue(1);
     const dot3 = useSharedValue(1);
 
+    useEffect(() => {
+        getVoiceSpeedPref().then((saved) => {
+            setPlaybackSpeed(saved);
+            try {
+                if ((player as any).setPlaybackRate) (player as any).setPlaybackRate(saved);
+                else if ('playbackRate' in player) (player as any).playbackRate = saved;
+            } catch {}
+        });
+    }, []);
+
     const handleToggleSpeed = () => {
         const nextSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1;
         setPlaybackSpeed(nextSpeed);
+        saveVoiceSpeedPref(nextSpeed);
         try {
             if ((player as any).setPlaybackRate) {
                 (player as any).setPlaybackRate(nextSpeed);
             } else if ('playbackRate' in player) {
                 (player as any).playbackRate = nextSpeed;
+            }
+        } catch {}
+    };
+
+    const handleSeekDelta = async (deltaSec: number) => {
+        try {
+            hapticTap("light");
+            const clamped = Math.max(0, Math.min(totalDuration || 0, currentTime + deltaSec));
+            setCurrentTime(clamped);
+            if (player && (player as any).seekTo) {
+                await (player as any).seekTo(clamped);
             }
         } catch {}
     };
@@ -541,6 +575,12 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
                         {isPlaying || currentTime > 0 ? `${formatDuration(currentTime)} / ${formatDuration(totalDuration)}` : formatDuration(totalDuration)}
                     </Typo>
                     <View style={voiceStyles.metaActions}>
+                        <TouchableOpacity onPress={() => handleSeekDelta(-5)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                            <Typo size={9} fontWeight="700" color={colors.neutral800}>-5s</Typo>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleSeekDelta(5)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                            <Typo size={9} fontWeight="700" color={colors.neutral800}>+5s</Typo>
+                        </TouchableOpacity>
                         <TouchableOpacity onPress={handleToggleSpeed} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
                             <Typo size={9} fontWeight="700" color={colors.neutral800}>{playbackSpeed}x</Typo>
                         </TouchableOpacity>
@@ -2061,8 +2101,19 @@ const MessageItem = ({
     const [isTranslating, setIsTranslating] = useState(false);
     const [showOriginal, setShowOriginal] = useState(false);
     const [checklistOverrides, setChecklistOverrides] = useState<Record<string, boolean>>({});
+    const [splitOverrides, setSplitOverrides] = useState<Record<string, boolean>>({});
+    const [eventRsvp, setEventRsvp] = useState<EventRsvpChoice | null>(null);
+    const [wyrPick, setWyrPick] = useState<"A" | "B" | null>(null);
+    const [favoriteReactions, setFavoriteReactions] = useState<string[]>(DEFAULT_FAVORITE_REACTIONS);
     const [isLocalSilent, setIsLocalSilent] = useState(false);
     const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        getFavoriteReactions().then(setFavoriteReactions);
+        return subscribeFeatureUpdates(() => {
+            getFavoriteReactions().then(setFavoriteReactions);
+        });
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -2098,6 +2149,30 @@ const MessageItem = ({
             if (Object.keys(ov).length > 0) setChecklistOverrides(ov);
         });
     }, [item.id, isChecklistMessage, isNotesToSelf, item.type, item.checklist]);
+
+    useEffect(() => {
+        if (parsedRichCard?.kind !== "split") return;
+        getLocalSplitOverrides(item.id).then((ov) => {
+            if (Object.keys(ov).length > 0) setSplitOverrides(ov);
+        });
+    }, [item.id, parsedRichCard?.kind]);
+
+    useEffect(() => {
+        if (parsedRichCard?.kind === "event") {
+            getLocalEventRsvp(item.id).then(setEventRsvp);
+        } else if (parsedRichCard?.kind === "wyr") {
+            getLocalWyrPick(item.id).then(setWyrPick);
+        }
+    }, [item.id, parsedRichCard?.kind]);
+
+    const handleSplitToggle = (participantId: string) => {
+        if (parsedRichCard?.kind !== "split") return;
+        const target = parsedRichCard.data.participants.find((p) => p.id === participantId);
+        const currentVal = splitOverrides[participantId] !== undefined ? splitOverrides[participantId] : !!target?.paid;
+        const nextVal = !currentVal;
+        setSplitOverrides((prev) => ({ ...prev, [participantId]: nextVal }));
+        toggleLocalSplitPaid(item.id, participantId, nextVal);
+    };
 
     useEffect(() => {
         if (item.isSilent) return;
@@ -2172,6 +2247,14 @@ const MessageItem = ({
         const match = item.content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/i);
         return match ? match[0] : null;
     }, [item.content, isVoiceMessage, isFileMessage, isCallMessage]);
+
+    const detectedCodeSnippet = useMemo(() => {
+        if (!item.content || isVoiceMessage || isFileMessage || isCallMessage || parsedRichCard) return null;
+        const fenced = item.content.match(/```(?:[a-zA-Z0-9_-]+)?\n?([\s\S]*?)```/);
+        if (fenced && fenced[1]?.trim()) return fenced[1].trim();
+        const inline = item.content.match(/`([^`\n]+)`/);
+        return inline && inline[1]?.trim() ? inline[1].trim() : null;
+    }, [item.content, isVoiceMessage, isFileMessage, isCallMessage, parsedRichCard]);
 
     // ── Swipe-to-reply & Double-tap quick heart react ──
     const swipeX = useRef(new RNAnimated.Value(0)).current;
@@ -2717,6 +2800,44 @@ const MessageItem = ({
                                 />
                             ) : parsedRichCard?.kind === "countdown" ? (
                                 <CountdownCardBubble countdown={parsedRichCard.data} />
+                            ) : parsedRichCard?.kind === "split" ? (
+                                <SplitBillCardBubble
+                                    split={parsedRichCard.data}
+                                    overrides={splitOverrides}
+                                    onTogglePaid={handleSplitToggle}
+                                />
+                            ) : parsedRichCard?.kind === "doodle" ? (
+                                <DoodleCardBubble doodle={parsedRichCard.data} />
+                            ) : parsedRichCard?.kind === "event" ? (
+                                <EventCardBubble
+                                    event={parsedRichCard.data}
+                                    rsvp={eventRsvp}
+                                    onSelectRsvp={(choice) => {
+                                        setEventRsvp(choice);
+                                        setLocalEventRsvp(item.id, choice);
+                                    }}
+                                    onRemindMe={async () => {
+                                        const targetMs = new Date(parsedRichCard.data.whenIso).getTime();
+                                        const delayMs = Math.max(60000, targetMs - Date.now() - 15 * 60 * 1000);
+                                        const r = await scheduleMessageReminder({
+                                            messageId: item.id,
+                                            conversationId: item.conversationId,
+                                            senderName: item.sender?.name || "Event",
+                                            preview: `📅 ${parsedRichCard.data.title} (${parsedRichCard.data.whenLabel})`,
+                                            delayMs,
+                                        });
+                                        BubblyAlert.alert(r.success ? "Reminder Set ⏰" : "Error", r.success ? `Reminder scheduled for ${parsedRichCard.data.title}` : (r.msg || "Failed"));
+                                    }}
+                                />
+                            ) : parsedRichCard?.kind === "wyr" ? (
+                                <WyrCardBubble
+                                    wyr={parsedRichCard.data}
+                                    picked={wyrPick}
+                                    onPick={(choice) => {
+                                        setWyrPick(choice);
+                                        setLocalWyrPick(item.id, choice);
+                                    }}
+                                />
                             ) : item.content ? (
                                 <FormattedText
                                     content={item.content}
@@ -2748,6 +2869,60 @@ const MessageItem = ({
                             {/* ── Link Preview Card ── */}
                             {detectedUrl && (
                                 <LinkPreviewCard url={detectedUrl} />
+                            )}
+
+                            {/* ── Smart Action Chips (Copy Code / Copy Link) ── */}
+                            {(detectedCodeSnippet || detectedUrl) && (
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                                    {detectedCodeSnippet && (
+                                        <TouchableOpacity
+                                            activeOpacity={0.75}
+                                            onPress={async () => {
+                                                hapticTap("medium");
+                                                await Clipboard.setStringAsync(detectedCodeSnippet).catch(() => {});
+                                                setShowToast(true);
+                                                if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+                                                pendingTimerRef.current = setTimeout(() => setShowToast(false), 1800);
+                                            }}
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                gap: 4,
+                                                backgroundColor: 'rgba(0,0,0,0.06)',
+                                                paddingHorizontal: 8,
+                                                paddingVertical: 3,
+                                                borderRadius: radius.full,
+                                            }}
+                                        >
+                                            <Icons.Code size={11} color={colors.neutral700} weight="bold" />
+                                            <Typo size={10.5} fontWeight="700" color={colors.neutral700}>Copy Code</Typo>
+                                        </TouchableOpacity>
+                                    )}
+                                    {detectedUrl && (
+                                        <TouchableOpacity
+                                            activeOpacity={0.75}
+                                            onPress={async () => {
+                                                hapticTap("medium");
+                                                await Clipboard.setStringAsync(detectedUrl).catch(() => {});
+                                                setShowToast(true);
+                                                if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+                                                pendingTimerRef.current = setTimeout(() => setShowToast(false), 1800);
+                                            }}
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                gap: 4,
+                                                backgroundColor: 'rgba(0,0,0,0.06)',
+                                                paddingHorizontal: 8,
+                                                paddingVertical: 3,
+                                                borderRadius: radius.full,
+                                            }}
+                                        >
+                                            <Icons.LinkSimple size={11} color={colors.neutral700} weight="bold" />
+                                            <Typo size={10.5} fontWeight="700" color={colors.neutral700}>Copy Link</Typo>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             )}
 
                             {/* ── Time + edited ── */}
@@ -2854,7 +3029,7 @@ const MessageItem = ({
                                     {/* ── Quick Reactions ── */}
                                     <View style={styles.quickReactWrap}>
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickReactScroll}>
-                                            {EMOJI_CATEGORIES[0].emojis.map(emoji => {
+                                            {[...favoriteReactions, ...EMOJI_CATEGORIES[0].emojis.filter(e => !favoriteReactions.includes(e))].map(emoji => {
                                                 const isSelected = currentUserReaction === emoji;
                                                 return (
                                                     <TouchableOpacity key={emoji} onPress={() => handleQuickEmoji(emoji)} activeOpacity={0.65} style={[styles.quickEmojiBtn, isSelected && styles.quickEmojiBtnActive]}>

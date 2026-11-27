@@ -53,26 +53,40 @@ import {
     MessageProps, ReplyToProps, ResponseProps,
     TypingPayload, UserStatusPayload, SelectedFileProps, ChecklistProps,
 } from "../../types"
-import { ComposerFormatBar, QuickReplyBar } from "../../components/RichChatFeatures"
+import { ComposerFormatBar, EmptyChatStarters, QuickReplyBar } from "../../components/RichChatFeatures"
 import {
     ChatInsightsModal,
+    ChatScratchpadModal,
     ChecklistCreatorModal,
     CountdownCreatorModal,
+    DoodlePadModal,
+    EventCreatorModal,
+    FancyTextModal,
     GamePickerModal,
     QuickRepliesManagerModal,
     rollBubblyGame,
+    SplitBillModal,
+    WouldYouRatherModal,
 } from "../../components/ConversationFeatureModals"
 import { GifPickerModal, GifSelection } from "../../components/GifPickerModal"
 import {
     ACCENT_SWATCHES,
     BubblyCountdownPayload,
+    BubblyDoodlePayload,
+    BubblyEventPayload,
     BubblyGameKind,
     BubblyGamePayload,
+    BubblySplitPayload,
+    BubblyWyrPayload,
     ChatAppearanceConfig,
     DEFAULT_APPEARANCE,
     encodeChecklistFallback,
     encodeCountdownCard,
+    encodeDoodleCard,
+    encodeEventCard,
     encodeGameCard,
+    encodeSplitCard,
+    encodeWyrCard,
     formatRichPreviewText,
     getChatAppearance,
     getFocusMode,
@@ -81,7 +95,9 @@ import {
     getPrivacyShield,
     getQuickReplies,
     markLocalSilentMessage,
+    parseBubblyCard,
     QuickReplyTemplate,
+    recordMessageSentActivity,
     saveQuickReplies,
     subscribeFeatureUpdates,
 } from "../../utils/featureStorage"
@@ -726,10 +742,14 @@ const pinnedBannerStyles = StyleSheet.create({
     },
 });
 
-// ── In-Chat Search Bar (Feature 4) ──
+// ── In-Chat Search Bar (Feature 4 + Smart Type Filter Chips) ──
+type SearchFilterKind = "all" | "media" | "links" | "voice" | "cards";
+
 const ChatSearchBar = ({
     query,
     onChangeQuery,
+    filterKind,
+    onChangeFilterKind,
     matchCount,
     currentIndex,
     onPrev,
@@ -738,51 +758,98 @@ const ChatSearchBar = ({
 }: {
     query: string;
     onChangeQuery: (text: string) => void;
+    filterKind: SearchFilterKind;
+    onChangeFilterKind: (kind: SearchFilterKind) => void;
     matchCount: number;
     currentIndex: number;
     onPrev: () => void;
     onNext: () => void;
     onClose: () => void;
 }) => (
-    <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)} style={searchBarStyles.container}>
-        <Icons.MagnifyingGlass size={verticalScale(16)} color={colors.neutral500} />
-        <TextInput
-            value={query}
-            onChangeText={onChangeQuery}
-            placeholder="Search in chat..."
-            placeholderTextColor={colors.neutral400}
-            style={searchBarStyles.input}
-            autoFocus
-        />
-        {query.trim().length > 0 && (
-            <View style={searchBarStyles.navRow}>
-                <Typo size={12} color={colors.neutral500} fontWeight="500">
-                    {matchCount > 0 ? `${currentIndex + 1} of ${matchCount}` : "0 matches"}
-                </Typo>
-                <TouchableOpacity onPress={onPrev} disabled={matchCount === 0} style={searchBarStyles.navBtn}>
-                    <Icons.CaretUp size={verticalScale(15)} color={matchCount > 0 ? colors.neutral800 : colors.neutral300} weight="bold" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={onNext} disabled={matchCount === 0} style={searchBarStyles.navBtn}>
-                    <Icons.CaretDown size={verticalScale(15)} color={matchCount > 0 ? colors.neutral800 : colors.neutral300} weight="bold" />
-                </TouchableOpacity>
-            </View>
-        )}
-        <TouchableOpacity onPress={onClose} style={searchBarStyles.closeBtn}>
-            <Icons.X size={verticalScale(15)} color={colors.neutral600} weight="bold" />
-        </TouchableOpacity>
+    <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)} style={searchBarStyles.wrapper}>
+        <View style={searchBarStyles.container}>
+            <Icons.MagnifyingGlass size={verticalScale(16)} color={colors.neutral500} />
+            <TextInput
+                value={query}
+                onChangeText={onChangeQuery}
+                placeholder="Search text or filter by type..."
+                placeholderTextColor={colors.neutral400}
+                style={searchBarStyles.input}
+                autoFocus
+            />
+            {(query.trim().length > 0 || filterKind !== "all") && (
+                <View style={searchBarStyles.navRow}>
+                    <Typo size={12} color={colors.neutral500} fontWeight="500">
+                        {matchCount > 0 ? `${currentIndex + 1} of ${matchCount}` : "0 matches"}
+                    </Typo>
+                    <TouchableOpacity onPress={onPrev} disabled={matchCount === 0} style={searchBarStyles.navBtn}>
+                        <Icons.CaretUp size={verticalScale(15)} color={matchCount > 0 ? colors.neutral800 : colors.neutral300} weight="bold" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={onNext} disabled={matchCount === 0} style={searchBarStyles.navBtn}>
+                        <Icons.CaretDown size={verticalScale(15)} color={matchCount > 0 ? colors.neutral800 : colors.neutral300} weight="bold" />
+                    </TouchableOpacity>
+                </View>
+            )}
+            <TouchableOpacity onPress={onClose} style={searchBarStyles.closeBtn}>
+                <Icons.X size={verticalScale(15)} color={colors.neutral600} weight="bold" />
+            </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={searchBarStyles.chipScroll}>
+            {([
+                { key: "all" as const, label: "All" },
+                { key: "media" as const, label: "🖼️ Media" },
+                { key: "links" as const, label: "🔗 Links" },
+                { key: "voice" as const, label: "🎤 Voice" },
+                { key: "cards" as const, label: "✨ Cards & Polls" },
+            ]).map((chip) => {
+                const active = filterKind === chip.key;
+                return (
+                    <TouchableOpacity
+                        key={chip.key}
+                        onPress={() => { hapticTap("light"); onChangeFilterKind(chip.key); }}
+                        activeOpacity={0.75}
+                        style={[searchBarStyles.filterChip, active && searchBarStyles.filterChipActive]}
+                    >
+                        <Typo size={11} fontWeight={active ? "800" : "600"} color={active ? colors.primaryDark : colors.neutral600}>
+                            {chip.label}
+                        </Typo>
+                    </TouchableOpacity>
+                );
+            })}
+        </ScrollView>
     </Animated.View>
 );
 
 const searchBarStyles = StyleSheet.create({
+    wrapper: {
+        backgroundColor: colors.white,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.neutral200,
+    },
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.white,
         paddingHorizontal: spacingX._15,
-        paddingVertical: spacingY._8,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.neutral200,
+        paddingTop: spacingY._8,
+        paddingBottom: spacingY._6,
         gap: spacingX._10,
+    },
+    chipScroll: {
+        paddingHorizontal: spacingX._15,
+        paddingBottom: spacingY._8,
+        gap: scale(6),
+    },
+    filterChip: {
+        paddingHorizontal: scale(10),
+        paddingVertical: verticalScale(4),
+        borderRadius: radius.full,
+        backgroundColor: colors.neutral100,
+        borderWidth: 1,
+        borderColor: colors.neutral200,
+    },
+    filterChipActive: {
+        backgroundColor: colors.primaryLight,
+        borderColor: colors.primary,
     },
     input: {
         flex: 1,
@@ -1195,7 +1262,7 @@ const groupInfoStyles = StyleSheet.create({
 
 // ── Attachment Options ──
 const AttachmentOptions = ({
-    onPickImage, onPickGif, onPickFile, onCreatePoll, onSchedule, onCreateChecklist, onOpenGames, onCreateCountdown, onClose,
+    onPickImage, onPickGif, onPickFile, onCreatePoll, onSchedule, onCreateChecklist, onOpenGames, onCreateCountdown, onSplitBill, onOpenDoodle, onCreateEvent, onOpenWyr, onClose,
 }: {
     onPickImage: () => void;
     onPickGif: () => void;
@@ -1205,6 +1272,10 @@ const AttachmentOptions = ({
     onCreateChecklist: () => void;
     onOpenGames: () => void;
     onCreateCountdown: () => void;
+    onSplitBill: () => void;
+    onOpenDoodle: () => void;
+    onCreateEvent: () => void;
+    onOpenWyr: () => void;
     onClose: () => void;
 }) => (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={attachStyles.container}>
@@ -1270,6 +1341,34 @@ const AttachmentOptions = ({
                     <Icons.HourglassMedium size={verticalScale(20)} color="#e11d48" weight="fill" />
                 </View>
                 <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Timer</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onSplitBill(); }} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#ecfdf5' }]}>
+                    <Icons.Receipt size={verticalScale(20)} color="#059669" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Split Bill</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onOpenDoodle(); }} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#fefce8' }]}>
+                    <Icons.PaintBrush size={verticalScale(20)} color="#ca8a04" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Doodle</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onCreateEvent(); }} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#e0f2fe' }]}>
+                    <Icons.CalendarCheck size={verticalScale(20)} color="#0284c7" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>Event</Typo>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={attachStyles.option} onPress={() => { hapticTap("medium"); onOpenWyr(); }} activeOpacity={0.7}>
+                <View style={[attachStyles.iconWrap, { backgroundColor: '#fae8ff' }]}>
+                    <Icons.Scales size={verticalScale(20)} color="#a21caf" weight="fill" />
+                </View>
+                <Typo size={11} fontWeight="600" color={colors.neutral700} textProps={{ numberOfLines: 1 }}>This/That</Typo>
             </TouchableOpacity>
         </View>
     </Animated.View>
@@ -1434,6 +1533,13 @@ const Conversation = () => {
     const [showQuickRepliesMgr, setShowQuickRepliesMgr] = useState(false);
     const [showInsightsModal, setShowInsightsModal] = useState(false);
     const [showGifModal, setShowGifModal] = useState(false);
+    const [showSplitModal, setShowSplitModal] = useState(false);
+    const [showDoodleModal, setShowDoodleModal] = useState(false);
+    const [showScratchpadModal, setShowScratchpadModal] = useState(false);
+    const [showEventModal, setShowEventModal] = useState(false);
+    const [showWyrModal, setShowWyrModal] = useState(false);
+    const [showFancyTextModal, setShowFancyTextModal] = useState(false);
+    const [searchFilterKind, setSearchFilterKind] = useState<SearchFilterKind>("all");
     const [selectedMsgIds, setSelectedMsgIds] = useState<string[]>([]);
     const [outboxCount, setOutboxCount] = useState(0);
     const [contactCustomStatus, setContactCustomStatus] = useState<{ emoji?: string; text?: string } | null>(null);
@@ -1520,6 +1626,7 @@ const Conversation = () => {
             pendingJumpIdRef.current = null;
             setIsSearching(false);
             setSearchQuery('');
+            setSearchFilterKind('all');
             setScheduledMessages([]);
             setSelectedMsgIds([]);
             setIsSilentSend(false);
@@ -2622,6 +2729,8 @@ const Conversation = () => {
                 AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
                 return updated;
             });
+            recordMessageSentActivity(conversationId as string);
+            recordMessageSentActivity(conversationId as string);
             setIsSilentSend(false);
             return;
         }
@@ -2651,6 +2760,7 @@ const Conversation = () => {
             isSilent: isSilentSend,
             clientId,
         });
+        recordMessageSentActivity(conversationId as string);
         setIsSilentSend(false);
     }, [currentUser, conversationId, isNotesToSelf, isSilentSend]);
 
@@ -2671,6 +2781,26 @@ const Conversation = () => {
     const handleSendCountdown = useCallback((payload: BubblyCountdownPayload) => {
         setShowCountdownModal(false);
         sendRichTextPayload(encodeCountdownCard(payload));
+    }, [sendRichTextPayload]);
+
+    const handleSendSplitBill = useCallback((payload: BubblySplitPayload) => {
+        setShowSplitModal(false);
+        sendRichTextPayload(encodeSplitCard(payload));
+    }, [sendRichTextPayload]);
+
+    const handleSendDoodle = useCallback((payload: BubblyDoodlePayload) => {
+        setShowDoodleModal(false);
+        sendRichTextPayload(encodeDoodleCard(payload));
+    }, [sendRichTextPayload]);
+
+    const handleSendEvent = useCallback((payload: BubblyEventPayload) => {
+        setShowEventModal(false);
+        sendRichTextPayload(encodeEventCard(payload));
+    }, [sendRichTextPayload]);
+
+    const handleSendWyr = useCallback((payload: BubblyWyrPayload) => {
+        setShowWyrModal(false);
+        sendRichTextPayload(encodeWyrCard(payload));
     }, [sendRichTextPayload]);
 
     const handleToggleChecklistLocal = useCallback((messageId: string, itemId: string) => {
@@ -2695,10 +2825,33 @@ const Conversation = () => {
         });
     }, [conversationId, isNotesToSelf]);
 
-    const handleApplyFormat = useCallback((fmt: "bold" | "italic" | "strike" | "code" | "quote") => {
+    const handleApplyFormat = useCallback((fmt: "bold" | "italic" | "strike" | "code" | "spoiler" | "quote" | "bullet" | "stamp") => {
         const { start, end } = composerSelectionRef.current;
         const hasSelection = end > start && end <= message.length;
 
+        if (fmt === "stamp") {
+            const stamp = moment().format("MMM D, h:mm A");
+            if (hasSelection) {
+                setMessage(`${message.slice(0, start)}${stamp}${message.slice(end)}`);
+            } else if (!message.trim()) {
+                setMessage(`📅 ${stamp} — `);
+            } else {
+                setMessage(`${message}${message.endsWith(" ") ? "" : " "}${stamp}`);
+            }
+            return;
+        }
+        if (fmt === "bullet") {
+            if (hasSelection) {
+                const selected = message.slice(start, end);
+                const bulleted = selected.split('\n').map(l => (l.startsWith('• ') ? l : `• ${l}`)).join('\n');
+                setMessage(`${message.slice(0, start)}${bulleted}${message.slice(end)}`);
+            } else if (!message.trim()) {
+                setMessage("• ");
+            } else {
+                setMessage(`${message}\n• `);
+            }
+            return;
+        }
         if (fmt === "quote") {
             if (hasSelection) {
                 const selected = message.slice(start, end);
@@ -2709,16 +2862,17 @@ const Conversation = () => {
             setMessage(message.startsWith("> ") ? message.slice(2) : `> ${message}`);
             return;
         }
-        const wrap = fmt === "bold" ? "*" : fmt === "italic" ? "_" : fmt === "strike" ? "~" : "`";
+        const wrap = fmt === "bold" ? "*" : fmt === "italic" ? "_" : fmt === "strike" ? "~" : fmt === "spoiler" ? "||" : "`";
+        const placeholder = fmt === "spoiler" ? "secret" : "text";
         if (hasSelection) {
             const selected = message.slice(start, end);
             setMessage(`${message.slice(0, start)}${wrap}${selected}${wrap}${message.slice(end)}`);
             return;
         }
         if (!message.trim()) {
-            setMessage(`${wrap}text${wrap}`);
+            setMessage(`${wrap}${placeholder}${wrap}`);
         } else if (message.endsWith(" ")) {
-            setMessage(`${message}${wrap}text${wrap}`);
+            setMessage(`${message}${wrap}${placeholder}${wrap}`);
         } else {
             setMessage(`${wrap}${message}${wrap}`);
         }
@@ -3004,6 +3158,7 @@ const Conversation = () => {
                 AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
                 return updated;
             });
+            recordMessageSentActivity(conversationId as string);
             setReplyTo(null);
             setIsSilentSend(false);
             return;
@@ -3017,6 +3172,7 @@ const Conversation = () => {
             const uploadResult = await uploadAudioToCloudinary(uri, "voice-messages");
             if (!uploadResult.success || !uploadResult.data) { BubblyAlert.alert("Error", "Could not upload voice message"); return; }
             newMessage({ conversationId, sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }, content: "", attachement: null, replyTo: replyTo?.id || null, voiceUrl: uploadResult.data, voiceDuration: duration, isSilent: isSilentSend });
+            recordMessageSentActivity(conversationId as string);
             setReplyTo(null);
             setIsSilentSend(false);
         } catch { BubblyAlert.alert("Error", "Failed to send voice message"); }
@@ -3078,6 +3234,7 @@ const Conversation = () => {
                 AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
                 return updated;
             });
+            recordMessageSentActivity(conversationId as string);
             setReplyTo(null);
             setIsSilentSend(false);
             return;
@@ -3144,6 +3301,7 @@ const Conversation = () => {
                 isSilent: currentSilent,
                 clientId,
             });
+            recordMessageSentActivity(conversationId as string);
         } catch {
             BubblyAlert.alert("GIF Error", "Failed to send GIF.");
         } finally {
@@ -3238,6 +3396,7 @@ const Conversation = () => {
                 AsyncStorage.setItem(`@bubbly_notes_${conversationId}`, JSON.stringify(updated)).catch(() => {});
                 return updated;
             });
+            recordMessageSentActivity(conversationId as string);
             if (draftSaveTimerRef.current) {
                 clearTimeout(draftSaveTimerRef.current);
                 draftSaveTimerRef.current = null;
@@ -3361,6 +3520,7 @@ const Conversation = () => {
                 isSilent: currentSilent,
                 clientId,
             });
+            recordMessageSentActivity(conversationId as string);
             return;
         }
 
@@ -3400,6 +3560,7 @@ const Conversation = () => {
                 isSilent: isSilentSend,
                 isViewOnce: selectedFile?.isImage ? isViewOnce : false,
             });
+            recordMessageSentActivity(conversationId as string);
             if (draftSaveTimerRef.current) {
                 clearTimeout(draftSaveTimerRef.current);
                 draftSaveTimerRef.current = null;
@@ -3670,6 +3831,10 @@ const Conversation = () => {
                 onPress: () => setShowInsightsModal(true),
             },
             {
+                text: "Chat Scratchpad 📝",
+                onPress: () => setShowScratchpadModal(true),
+            },
+            {
                 text: "Quick Reply Templates ⚡",
                 onPress: () => setShowQuickRepliesMgr(true),
             },
@@ -3750,16 +3915,29 @@ const Conversation = () => {
     };
 
     const searchMatches = useMemo(() => {
-        if (!searchQuery.trim()) return [];
-        const q = searchQuery.toLowerCase();
+        const q = searchQuery.toLowerCase().trim();
+        if (!q && searchFilterKind === "all") return [];
         const matches: number[] = [];
         messagesWithSeparators.forEach((item, index) => {
-            if (item.type === 'message' && item.message.content?.toLowerCase().includes(q)) {
-                matches.push(index);
+            if (item.type !== 'message') return;
+            const msg = item.message;
+            if (msg.isDeleted) return;
+            if (searchFilterKind === "media") {
+                if (!msg.attachement && !msg.attachmentMeta) return;
+            } else if (searchFilterKind === "links") {
+                if (!msg.content || !/(https?:\/\/[^\s]+|www\.[^\s]+)/i.test(msg.content)) return;
+            } else if (searchFilterKind === "voice") {
+                if (!msg.voiceUrl && msg.type !== "voice") return;
+            } else if (searchFilterKind === "cards") {
+                if (msg.type !== "poll" && msg.type !== "checklist" && !parseBubblyCard(msg.content)) return;
             }
+            if (q && !(msg.content || "").toLowerCase().includes(q) && !(msg.attachmentMeta?.name || "").toLowerCase().includes(q)) {
+                return;
+            }
+            matches.push(index);
         });
         return matches;
-    }, [messagesWithSeparators, searchQuery]);
+    }, [messagesWithSeparators, searchQuery, searchFilterKind]);
 
     const handleSearchPrev = () => {
         if (searchMatches.length === 0) return;
@@ -4043,11 +4221,13 @@ const Conversation = () => {
                         <ChatSearchBar
                             query={searchQuery}
                             onChangeQuery={(q) => { setSearchQuery(q); setActiveSearchIndex(0); }}
+                            filterKind={searchFilterKind}
+                            onChangeFilterKind={(kind) => { setSearchFilterKind(kind); setActiveSearchIndex(0); }}
                             matchCount={searchMatches.length}
                             currentIndex={activeSearchIndex}
                             onPrev={handleSearchPrev}
                             onNext={handleSearchNext}
-                            onClose={() => { setIsSearching(false); setSearchQuery(''); }}
+                            onClose={() => { setIsSearching(false); setSearchQuery(''); setSearchFilterKind('all'); }}
                         />
                     )}
 
@@ -4099,6 +4279,13 @@ const Conversation = () => {
                                     </View>
                                     <Typo size={14} fontWeight="600" color={colors.neutral500}>No messages yet</Typo>
                                     <Typo size={12} color={colors.neutral400} style={{ textAlign: 'center' }}>Say hello to start the conversation!</Typo>
+                                    <EmptyChatStarters
+                                        isNotesToSelf={isNotesToSelf}
+                                        contactName={conversationName}
+                                        onPickText={(txt) => setMessage(txt)}
+                                        onOpenGame={!isNotesToSelf ? () => setShowGameModal(true) : undefined}
+                                        onOpenChecklist={!isNotesToSelf ? () => setShowChecklistModal(true) : undefined}
+                                    />
                                 </View>
                             )
                         }
@@ -4186,7 +4373,25 @@ const Conversation = () => {
                                 isSilent={isSilentSend}
                                 onToggleSilent={() => setIsSilentSend(p => !p)}
                                 onOpenQuickReplies={() => setShowQuickRepliesMgr(true)}
+                                onOpenFancyText={() => setShowFancyTextModal(true)}
                             />
+                        )}
+                        {message.trim().length >= 60 && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+                                <Typo size={10.5} fontWeight="600" color={message.length > 3500 ? colors.rose : colors.neutral400}>
+                                    {message.length} chars · {message.trim().split(/\s+/).filter(Boolean).length} words
+                                </Typo>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        hapticTap("light");
+                                        setMessage("");
+                                        if (conversationId) AsyncStorage.removeItem(`@bubbly_draft_${conversationId}`).catch(() => {});
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Typo size={10.5} fontWeight="700" color={colors.neutral500}>Clear draft</Typo>
+                                </TouchableOpacity>
+                            </View>
                         )}
                         {replyTo && <ReplyPreviewBar replyTo={replyTo} onCancel={handleCancelReply} />}
                         {isSilentSend && (
@@ -4219,6 +4424,10 @@ const Conversation = () => {
                                 onCreateChecklist={() => { setShowAttachOptions(false); setShowChecklistModal(true); }}
                                 onOpenGames={() => { setShowAttachOptions(false); setShowGameModal(true); }}
                                 onCreateCountdown={() => { setShowAttachOptions(false); setShowCountdownModal(true); }}
+                                onSplitBill={() => { setShowAttachOptions(false); setShowSplitModal(true); }}
+                                onOpenDoodle={() => { setShowAttachOptions(false); setShowDoodleModal(true); }}
+                                onCreateEvent={() => { setShowAttachOptions(false); setShowEventModal(true); }}
+                                onOpenWyr={() => { setShowAttachOptions(false); setShowWyrModal(true); }}
                                 onClose={() => setShowAttachOptions(false)}
                             />
                         )}
@@ -4604,6 +4813,49 @@ const Conversation = () => {
                 visible={showGifModal}
                 onSelectGif={handleSendGif}
                 onClose={() => setShowGifModal(false)}
+            />
+
+            <SplitBillModal
+                visible={showSplitModal}
+                defaultParticipants={participants.map((p: any) => p.name).filter(Boolean)}
+                currentUserName={currentUser?.name || "You"}
+                onCreate={handleSendSplitBill}
+                onClose={() => setShowSplitModal(false)}
+            />
+
+            <DoodlePadModal
+                visible={showDoodleModal}
+                onSend={handleSendDoodle}
+                onClose={() => setShowDoodleModal(false)}
+            />
+
+            <ChatScratchpadModal
+                visible={showScratchpadModal}
+                conversationId={String(conversationId || "default")}
+                chatName={conversationName || "Chat"}
+                onClose={() => setShowScratchpadModal(false)}
+            />
+
+            <EventCreatorModal
+                visible={showEventModal}
+                onCreate={handleSendEvent}
+                onClose={() => setShowEventModal(false)}
+            />
+
+            <WouldYouRatherModal
+                visible={showWyrModal}
+                onCreate={handleSendWyr}
+                onClose={() => setShowWyrModal(false)}
+            />
+
+            <FancyTextModal
+                visible={showFancyTextModal}
+                initialText={message}
+                onApply={(styled) => {
+                    setShowFancyTextModal(false);
+                    setMessage(styled);
+                }}
+                onClose={() => setShowFancyTextModal(false)}
             />
         </ScreenWrapper>
     );

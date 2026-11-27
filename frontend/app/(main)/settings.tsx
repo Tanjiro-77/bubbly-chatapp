@@ -15,9 +15,11 @@ import {
     Switch,
     Platform,
     Linking,
+    Share,
     AppState,
     AppStateStatus,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { BubblyAlert } from "../../components/BubblyAlert";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
@@ -55,14 +57,26 @@ import {
     ChatAppearanceConfig,
     ChatFontScale,
     DEFAULT_APPEARANCE,
+    DEFAULT_FAVORITE_REACTIONS,
     DEFAULT_PRIVACY_SHIELD,
+    DEFAULT_QUIET_HOURS,
+    exportLocalPreferencesSnapshot,
+    formatHour12,
     getChatAppearance,
+    getFavoriteReactions,
     getFocusMode,
     getPrivacyShield,
+    getQuietHours,
+    isWithinQuietHours,
     notifyFeatureListeners,
     PrivacyShieldConfig,
+    QuietHoursConfig,
+    REACTION_PALETTE,
+    resetLocalCustomizations,
     saveChatAppearance,
+    saveFavoriteReactions,
     savePrivacyShield,
+    saveQuietHours,
     setFocusMode,
 } from "../../utils/featureStorage";
 import { cancelMessageReminder, getActiveReminders, SavedMessageReminder } from "../../services/reminderService";
@@ -280,6 +294,8 @@ export default function SettingsScreen() {
     const [loadingPrefs, setLoadingPrefs] = useState(true);
     const [appearance, setAppearance] = useState<ChatAppearanceConfig>(DEFAULT_APPEARANCE);
     const [privacyShield, setPrivacyShield] = useState<PrivacyShieldConfig>(DEFAULT_PRIVACY_SHIELD);
+    const [quietHours, setQuietHours] = useState<QuietHoursConfig>(DEFAULT_QUIET_HOURS);
+    const [favoriteReactions, setFavoriteReactions] = useState<string[]>(DEFAULT_FAVORITE_REACTIONS);
     const [focusEnabled, setFocusEnabled] = useState(false);
     const [reminders, setReminders] = useState<SavedMessageReminder[]>([]);
     const [showReminders, setShowReminders] = useState(false);
@@ -303,7 +319,7 @@ export default function SettingsScreen() {
     useEffect(() => {
         (async () => {
             try {
-                const [notif, sound, lock, appCfg, shieldCfg, focusCfg, remList, hapStrength, toneId] = await Promise.all([
+                const [notif, sound, lock, appCfg, shieldCfg, focusCfg, remList, hapStrength, toneId, qhCfg, favReacts] = await Promise.all([
                     AsyncStorage.getItem(NOTIF_KEY),
                     AsyncStorage.getItem(SOUND_KEY),
                     AsyncStorage.getItem(APP_LOCK_KEY),
@@ -313,6 +329,8 @@ export default function SettingsScreen() {
                     getActiveReminders(),
                     initHapticStrength(),
                     initIncomingRingtone(),
+                    getQuietHours(),
+                    getFavoriteReactions(),
                 ]);
                 if (notif !== null) setNotificationsEnabled(notif === "true");
                 if (sound !== null) setSoundEnabled(sound === "true");
@@ -323,6 +341,8 @@ export default function SettingsScreen() {
                 setPrivacyShield(shieldCfg);
                 setFocusEnabled(focusCfg.enabled);
                 setReminders(remList);
+                setQuietHours(qhCfg);
+                setFavoriteReactions(favReacts);
             } catch (_) {
             } finally {
                 setLoadingPrefs(false);
@@ -839,6 +859,69 @@ export default function SettingsScreen() {
                             />
                         }
                     />
+                    <View style={[styles.row, styles.rowBorder, { flexDirection: "column", alignItems: "stretch", gap: verticalScale(10) }]}>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <View style={styles.rowLeft}>
+                                <View style={[styles.iconBadge, { backgroundColor: "#e0e7ff" }]}>
+                                    <MaterialIcons name="nights-stay" size={19} color="#4f46e5" />
+                                </View>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Typo size={14.5} fontWeight="500" color={colors.neutral800}>
+                                        Scheduled Quiet Hours
+                                    </Typo>
+                                    <Typo size={11.5} color={colors.neutral400} style={{ marginTop: verticalScale(2) }}>
+                                        {quietHours.enabled
+                                            ? `${formatHour12(quietHours.startHour)} – ${formatHour12(quietHours.endHour)}${isWithinQuietHours(quietHours) ? " · Active now" : ""}`
+                                            : "Auto-silence in-app alerts overnight"}
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Switch
+                                value={quietHours.enabled}
+                                onValueChange={async (val) => {
+                                    hapticTap("medium");
+                                    const next = await saveQuietHours({ ...quietHours, enabled: val });
+                                    setQuietHours(next);
+                                }}
+                                trackColor={{ false: colors.neutral300, true: "#4f46e5" }}
+                                thumbColor={colors.white}
+                            />
+                        </View>
+                        {quietHours.enabled && (
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                {[
+                                    { label: "9 PM – 6 AM", start: 21, end: 6 },
+                                    { label: "10 PM – 7 AM", start: 22, end: 7 },
+                                    { label: "11 PM – 8 AM", start: 23, end: 8 },
+                                    { label: "12 AM – 8 AM", start: 0, end: 8 },
+                                ].map((win) => {
+                                    const active = quietHours.startHour === win.start && quietHours.endHour === win.end;
+                                    return (
+                                        <TouchableOpacity
+                                            key={win.label}
+                                            onPress={async () => {
+                                                hapticTap("light");
+                                                const next = await saveQuietHours({ ...quietHours, startHour: win.start, endHour: win.end });
+                                                setQuietHours(next);
+                                            }}
+                                            style={{
+                                                paddingHorizontal: scale(10),
+                                                paddingVertical: verticalScale(6),
+                                                borderRadius: radius.full,
+                                                backgroundColor: active ? "#e0e7ff" : colors.neutral100,
+                                                borderWidth: 1,
+                                                borderColor: active ? "#4f46e5" : colors.neutral200,
+                                            }}
+                                        >
+                                            <Typo size={11.5} fontWeight={active ? "800" : "600"} color={active ? "#4338ca" : colors.neutral700}>
+                                                {win.label}
+                                            </Typo>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        )}
+                    </View>
                     <Row
                         icon="alarm"
                         iconColor="#0284c7"
@@ -1013,6 +1096,76 @@ export default function SettingsScreen() {
                                             }}
                                         >
                                             {active && <MaterialIcons name="check" size={16} color="#ffffff" />}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* Custom Quick-Reaction Presets (Top 6) */}
+                        <View style={{ gap: 8, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.neutral200 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                <Typo size={12} fontWeight="700" color={colors.neutral600}>
+                                    Quick-Reaction Bar (6 Favorites)
+                                </Typo>
+                                <TouchableOpacity
+                                    onPress={async () => {
+                                        hapticTap("light");
+                                        const reset = await saveFavoriteReactions(DEFAULT_FAVORITE_REACTIONS);
+                                        setFavoriteReactions(reset);
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Typo size={11.5} fontWeight="700" color={colors.primaryDark}>Reset</Typo>
+                                </TouchableOpacity>
+                            </View>
+                            <View style={{ flexDirection: "row", gap: 6 }}>
+                                {favoriteReactions.map((emoji) => (
+                                    <View
+                                        key={`fav_${emoji}`}
+                                        style={{
+                                            flex: 1,
+                                            height: verticalScale(38),
+                                            borderRadius: radius._12,
+                                            backgroundColor: colors.primaryLight,
+                                            borderWidth: 1.5,
+                                            borderColor: colors.primary,
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                        }}
+                                    >
+                                        <Typo size={20}>{emoji}</Typo>
+                                    </View>
+                                ))}
+                            </View>
+                            <Typo size={11} color={colors.neutral400}>Tap any emoji below to add it to the front of your quick bar:</Typo>
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                {REACTION_PALETTE.map((emoji) => {
+                                    const active = favoriteReactions.includes(emoji);
+                                    return (
+                                        <TouchableOpacity
+                                            key={`pal_${emoji}`}
+                                            activeOpacity={0.7}
+                                            onPress={async () => {
+                                                hapticTap("medium");
+                                                const nextList = active
+                                                    ? [emoji, ...favoriteReactions.filter((e) => e !== emoji)]
+                                                    : [emoji, ...favoriteReactions].slice(0, 6);
+                                                const saved = await saveFavoriteReactions(nextList);
+                                                setFavoriteReactions(saved);
+                                            }}
+                                            style={{
+                                                width: scale(34),
+                                                height: scale(34),
+                                                borderRadius: radius._10,
+                                                backgroundColor: active ? colors.primaryLight : colors.neutral100,
+                                                borderWidth: 1,
+                                                borderColor: active ? colors.primary : colors.neutral200,
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                            }}
+                                        >
+                                            <Typo size={18}>{emoji}</Typo>
                                         </TouchableOpacity>
                                     );
                                 })}
@@ -1205,6 +1358,55 @@ export default function SettingsScreen() {
                         iconColor={colors.neutral700}
                         label="About Bubbly"
                         onPress={() => router.push("/(main)/about")}
+                    />
+                    <Row
+                        icon="download"
+                        iconColor="#0284c7"
+                        iconBg="#e0f2fe"
+                        label="Export Preferences Backup"
+                        subtitle="Share or copy themes, snippets, tags & notes JSON"
+                        onPress={async () => {
+                            try {
+                                const json = await exportLocalPreferencesSnapshot();
+                                await Share.share({
+                                    title: "Bubbly Preferences Backup",
+                                    message: json,
+                                });
+                            } catch {
+                                const json = await exportLocalPreferencesSnapshot();
+                                await Clipboard.setStringAsync(json).catch(() => {});
+                                BubblyAlert.alert("Copied", "Preferences JSON copied to clipboard.");
+                            }
+                        }}
+                    />
+                    <Row
+                        icon="restart-alt"
+                        iconColor={colors.rose}
+                        iconBg={colors.rose + "1F"}
+                        label="Reset Customizations"
+                        subtitle="Restore default bubble theme, reactions & quiet hours"
+                        onPress={() => {
+                            BubblyAlert.alert(
+                                "Reset Customizations",
+                                "Restore default bubble appearance, quick reactions, quiet hours, and quick replies?",
+                                [
+                                    { text: "Cancel", style: "cancel" },
+                                    {
+                                        text: "Reset",
+                                        style: "destructive",
+                                        onPress: async () => {
+                                            await resetLocalCustomizations();
+                                            setAppearance(DEFAULT_APPEARANCE);
+                                            setPrivacyShield(DEFAULT_PRIVACY_SHIELD);
+                                            setQuietHours(DEFAULT_QUIET_HOURS);
+                                            setFavoriteReactions(DEFAULT_FAVORITE_REACTIONS);
+                                            hapticTap("success");
+                                            BubblyAlert.alert("Restored", "All local customizations reset to defaults.");
+                                        },
+                                    },
+                                ]
+                            );
+                        }}
                         isLast
                     />
                 </SectionCard>

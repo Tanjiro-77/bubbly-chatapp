@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from '../../components/BubblyAlert';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Icons from 'phosphor-react-native';
@@ -69,7 +70,21 @@ const GRADIENT_PRESETS: GradientPreset[] = [
         colors: ['#92400e', '#451a03'],
         textColor: '#ffffff',
     },
+    {
+        id: 'aurora',
+        name: 'Aurora Glow',
+        colors: ['#06b6d4', '#3b82f6', '#7c3aed'],
+        textColor: '#ffffff',
+    },
+    {
+        id: 'peach',
+        name: 'Peach Sunset',
+        colors: ['#fb7185', '#f59e0b'],
+        textColor: '#ffffff',
+    },
 ];
+
+const STORY_DRAFT_KEY = '@bubbly_story_draft_v1';
 
 const CreateStory = () => {
     const router = useRouter();
@@ -83,17 +98,50 @@ const CreateStory = () => {
     const [loading, setLoading] = useState(false);
     const [textAlign, setTextAlign] = useState<'center' | 'left' | 'right'>('center');
     const [fontStyle, setFontStyle] = useState<'classic' | 'serif' | 'mono' | 'neon'>('classic');
+    const [fontSizeMode, setFontSizeMode] = useState<'small' | 'medium' | 'large'>('medium');
     const [selectedSticker, setSelectedSticker] = useState<string>('');
     const pendingCleanupRef = useRef<(() => void) | null>(null);
     const isMountedRef = useRef(true);
 
     useEffect(() => {
+        AsyncStorage.getItem(STORY_DRAFT_KEY).then((raw) => {
+            if (!raw || !isMountedRef.current) return;
+            try {
+                const parsed = JSON.parse(raw);
+                if (typeof parsed.text === 'string') setText(parsed.text);
+                if (parsed.gradientId) {
+                    const g = GRADIENT_PRESETS.find((p) => p.id === parsed.gradientId);
+                    if (g) setSelectedGradient(g);
+                }
+                if (parsed.fontStyle) setFontStyle(parsed.fontStyle);
+                if (parsed.fontSizeMode) setFontSizeMode(parsed.fontSizeMode);
+                if (parsed.selectedSticker) setSelectedSticker(parsed.selectedSticker);
+            } catch {}
+        }).catch(() => {});
         return () => {
             isMountedRef.current = false;
             pendingCleanupRef.current?.();
             pendingCleanupRef.current = null;
         };
     }, []);
+
+    useEffect(() => {
+        if (storyType !== 'text') return;
+        const timer = setTimeout(() => {
+            if (!text.trim()) {
+                AsyncStorage.removeItem(STORY_DRAFT_KEY).catch(() => {});
+            } else {
+                AsyncStorage.setItem(STORY_DRAFT_KEY, JSON.stringify({
+                    text,
+                    gradientId: selectedGradient.id,
+                    fontStyle,
+                    fontSizeMode,
+                    selectedSticker,
+                })).catch(() => {});
+            }
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [text, selectedGradient.id, fontStyle, fontSizeMode, selectedSticker, storyType]);
 
     const STORY_STICKERS = ["", "📍 On The Go", "🔥 Daily Vibe", "🎧 Now Playing", "💯 Mood", "☕ Chill"];
     const STORY_FONTS: { id: 'classic' | 'serif' | 'mono' | 'neon'; label: string }[] = [
@@ -195,6 +243,7 @@ const CreateStory = () => {
             });
 
             if (isMountedRef.current) {
+                AsyncStorage.removeItem(STORY_DRAFT_KEY).catch(() => {});
                 hapticTap('celebration');
                 router.back();
             }
@@ -335,6 +384,7 @@ const CreateStory = () => {
                                     {
                                         color: selectedGradient.textColor,
                                         textAlign: textAlign,
+                                        fontSize: verticalScale(fontSizeMode === 'small' ? 20 : fontSizeMode === 'large' ? 30 : 24),
                                         fontFamily: fontStyle === 'mono' ? 'monospace' : fontStyle === 'serif' ? 'serif' : undefined,
                                         fontStyle: fontStyle === 'serif' ? 'italic' : 'normal',
                                         textShadowColor: fontStyle === 'neon' ? '#fde047' : 'transparent',
@@ -492,6 +542,31 @@ const CreateStory = () => {
                                             }}
                                         >
                                             {f.label}
+                                        </Typo>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+
+                        {/* Text Size */}
+                        <View style={styles.sectionHeaderRow}>
+                            <Typo size={13} fontWeight="700" color={colors.neutral700}>Text Size</Typo>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {([
+                                { id: 'small' as const, label: 'Small' },
+                                { id: 'medium' as const, label: 'Medium' },
+                                { id: 'large' as const, label: 'Large' },
+                            ]).map((sz) => {
+                                const act = fontSizeMode === sz.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={sz.id}
+                                        onPress={() => { hapticTap('light'); setFontSizeMode(sz.id); }}
+                                        style={[styles.gradientPill, { flex: 1, justifyContent: 'center' }, act && styles.gradientPillActive]}
+                                    >
+                                        <Typo size={12} fontWeight={act ? '800' : '600'} color={act ? colors.primaryDark : colors.neutral600}>
+                                            {sz.label}
                                         </Typo>
                                     </TouchableOpacity>
                                 );

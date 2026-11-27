@@ -46,6 +46,8 @@ import {
     formatRichPreviewText,
     getFocusMode,
     getPrivacyShield,
+    getQuietHours,
+    isWithinQuietHours,
 } from "../utils/featureStorage";
 import { hapticTap } from "../utils/haptics";
 import {
@@ -255,14 +257,15 @@ export const RealtimeNotifier = () => {
             if (activeConvId && msg.conversationId?.toString() === activeConvId.toString()) return;
 
             try {
-                const [enabledPref, soundPref, focus, privacy] = await Promise.all([
+                const [enabledPref, soundPref, focus, privacy, quietHours] = await Promise.all([
                     AsyncStorage.getItem("bubbly_notifications_enabled"),
                     AsyncStorage.getItem("bubbly_sound_enabled"),
                     getFocusMode(),
                     getPrivacyShield(),
+                    getQuietHours(),
                 ]);
 
-                if (enabledPref === "false" || focus.enabled) return;
+                if (enabledPref === "false" || focus.enabled || isWithinQuietHours(quietHours)) return;
 
                 const senderName = privacy.hideNotificationPreview
                     ? "Bubbly"

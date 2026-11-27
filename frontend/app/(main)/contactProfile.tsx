@@ -45,6 +45,7 @@ import {
     setContactNote,
     setEntityNickname,
 } from "../../utils/featureStorage";
+import { ChatScratchpadModal } from "../../components/ConversationFeatureModals";
 
 const ContactProfileScreen = () => {
     const router = useRouter();
@@ -62,6 +63,7 @@ const ContactProfileScreen = () => {
     const [nicknameInput, setNicknameInput] = useState("");
     const [noteInput, setNoteInput] = useState("");
     const [folderTag, setFolderTag] = useState<ChatFolderTag | null>(null);
+    const [showScratchpad, setShowScratchpad] = useState(false);
 
     const entityKey = conversationIdStr || userIdStr;
 
@@ -440,7 +442,33 @@ const ContactProfileScreen = () => {
                         >
                             <Typo size={13} fontWeight="800" color={colors.black}>Save Nickname & Note</Typo>
                         </TouchableOpacity>
+
+                        {!!conversationIdStr && (
+                            <TouchableOpacity
+                                style={{
+                                    backgroundColor: colors.neutral100,
+                                    borderRadius: radius.full,
+                                    paddingVertical: verticalScale(9),
+                                    alignItems: "center",
+                                    borderWidth: 1,
+                                    borderColor: colors.neutral200,
+                                }}
+                                onPress={() => {
+                                    hapticTap("medium");
+                                    setShowScratchpad(true);
+                                }}
+                            >
+                                <Typo size={13} fontWeight="700" color={colors.neutral800}>📝 Open Private Chat Scratchpad</Typo>
+                            </TouchableOpacity>
+                        )}
                     </View>
+
+                    <ChatScratchpadModal
+                        visible={showScratchpad}
+                        conversationId={conversationIdStr || entityKey}
+                        chatName={displayName}
+                        onClose={() => setShowScratchpad(false)}
+                    />
 
                     {/* ── About & Bio Section ── */}
                     <View style={styles.card}>

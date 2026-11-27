@@ -178,6 +178,9 @@ export type ConversationListItemProps = {
   typingUser?: string | null;
   draftText?: string | null;
   onLongPress?: (item: ConversationProps) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 };
 
 export type ConversationProps = {

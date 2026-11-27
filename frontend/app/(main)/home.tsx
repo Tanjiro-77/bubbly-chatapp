@@ -28,19 +28,28 @@ import {
     isSocketConnected,
     onSocketConnectionChange,
 } from "../../socket/socketEvents";
-import { QuickJumpModal, RemindersListModal } from "../../components/ConversationFeatureModals";
+import { DailyDigestModal, QuickJumpModal, RemindersListModal } from "../../components/ConversationFeatureModals";
 import { cancelMessageReminder, getActiveReminders, SavedMessageReminder } from "../../services/reminderService";
 import {
     CHAT_FOLDER_META,
     ChatFolderTag,
     CustomStatusState,
+    DailyActivityStats,
+    DEFAULT_QUIET_HOURS,
     FocusModeState,
     formatRemainingFocus,
     getChatTagsMap,
+    getDailyActivityStats,
     getFocusMode,
+    getHomeSortOrder,
     getLocalArchivedIds,
     getMyCustomStatus,
     getNicknamesMap,
+    getQuietHours,
+    HomeSortOrder,
+    isWithinQuietHours,
+    QuietHoursConfig,
+    saveHomeSortOrder,
     setChatTag,
     setFocusMode,
     setLocalArchivedId,
@@ -110,14 +119,26 @@ const Home = () => {
     const [focusMode, setFocusModeState] = useState<FocusModeState>({ enabled: false, until: null, label: "" });
     const [myStatus, setMyStatus] = useState<CustomStatusState>({ emoji: "", text: "", expiresAt: null });
     const [reminders, setReminders] = useState<SavedMessageReminder[]>([]);
+    const [dailyActivity, setDailyActivity] = useState<DailyActivityStats>({
+        streakDays: 0,
+        lastActiveDate: "",
+        messagesSentToday: 0,
+        totalSentAllTime: 0,
+        activeConvIdsToday: [],
+    });
+    const [quietHours, setQuietHours] = useState<QuietHoursConfig>(DEFAULT_QUIET_HOURS);
     const [showQuickJump, setShowQuickJump] = useState(false);
     const [showRemindersModal, setShowRemindersModal] = useState(false);
+    const [showDigestModal, setShowDigestModal] = useState(false);
+    const [sortOrder, setSortOrder] = useState<HomeSortOrder>("latest");
+    const [selectedConvIds, setSelectedConvIds] = useState<string[]>([]);
+    const isHomeSelectMode = selectedConvIds.length > 0;
 
     const lockedStorageKey = currentUser?.id ? `@bubbly_locked_chats_${currentUser.id}` : '@bubbly_locked_chats';
 
     const loadDraftsAndLocked = useCallback(async () => {
         try {
-            const [storedLocked, allKeys, tags, nicks, arch, focus, status, rems] = await Promise.all([
+            const [storedLocked, allKeys, tags, nicks, arch, focus, status, rems, activity, qh, savedSort] = await Promise.all([
                 AsyncStorage.getItem(lockedStorageKey),
                 AsyncStorage.getAllKeys(),
                 getChatTagsMap(),
@@ -126,6 +147,9 @@ const Home = () => {
                 getFocusMode(),
                 getMyCustomStatus(),
                 getActiveReminders(),
+                getDailyActivityStats(),
+                getQuietHours(),
+                getHomeSortOrder(),
             ]);
 
             if (storedLocked) {
@@ -142,6 +166,9 @@ const Home = () => {
             setFocusModeState(focus);
             setMyStatus(status);
             setReminders(rems);
+            setDailyActivity(activity);
+            setQuietHours(qh);
+            setSortOrder(savedSort);
 
             const draftKeys = allKeys.filter(k => k.startsWith('@bubbly_draft_'));
             if (draftKeys.length > 0) {
@@ -429,20 +456,42 @@ const Home = () => {
         return activeList;
     }, [activeList, archivedConversations, filterCategory, chatTagsMap]);
 
-    // ── Search Filtering ──
+    // ── Search Filtering & Sort Order ──
     const filteredList = useMemo(() => {
-        if (!searchQuery.trim()) return categorizedList;
         const q = searchQuery.toLowerCase().trim();
-        return categorizedList.filter((item: ConversationProps) => {
-            const nameMatch = item.name?.toLowerCase().includes(q);
-            const convNickMatch = (nicknamesMap[item._id] || "").toLowerCase().includes(q);
-            const messageMatch = item.lastMessage?.content?.toLowerCase().includes(q);
-            const participantMatch = item.participants?.some(
-                (p: any) => p.name?.toLowerCase().includes(q) || (nicknamesMap[p._id] || "").toLowerCase().includes(q)
-            );
-            return nameMatch || convNickMatch || messageMatch || participantMatch;
-        });
-    }, [searchQuery, categorizedList, nicknamesMap]);
+        const base = !q
+            ? [...categorizedList]
+            : categorizedList.filter((item: ConversationProps) => {
+                  const nameMatch = item.name?.toLowerCase().includes(q);
+                  const convNickMatch = (nicknamesMap[item._id] || "").toLowerCase().includes(q);
+                  const messageMatch = item.lastMessage?.content?.toLowerCase().includes(q);
+                  const participantMatch = item.participants?.some(
+                      (p: any) => p.name?.toLowerCase().includes(q) || (nicknamesMap[p._id] || "").toLowerCase().includes(q)
+                  );
+                  return nameMatch || convNickMatch || messageMatch || participantMatch;
+              });
+
+        if (sortOrder === "unread") {
+            base.sort((a, b) => {
+                const au = (a.unreadCount || 0) > 0 ? 1 : 0;
+                const bu = (b.unreadCount || 0) > 0 ? 1 : 0;
+                if (au !== bu) return bu - au;
+                return 0;
+            });
+        } else if (sortOrder === "alpha") {
+            const getTitle = (c: ConversationProps) => {
+                const other = c.type === "direct" ? c.participants?.find((p: any) => p._id !== currentUser?.id) : null;
+                return (
+                    nicknamesMap[c._id] ||
+                    (other?._id ? nicknamesMap[other._id] : "") ||
+                    (c.type === "direct" ? other?.name : c.name) ||
+                    ""
+                ).toLowerCase();
+            };
+            base.sort((a, b) => getTitle(a).localeCompare(getTitle(b)));
+        }
+        return base;
+    }, [searchQuery, categorizedList, nicknamesMap, sortOrder, currentUser?.id]);
 
     const totalUnreadDirect = useMemo(
         () => directConversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
@@ -628,6 +677,14 @@ const Home = () => {
         }, 90);
     };
 
+    const handleToggleConvSelect = useCallback((convId: string) => {
+        setSelectedConvIds((prev) =>
+            prev.includes(convId) ? prev.filter((id) => id !== convId) : [...prev, convId]
+        );
+    }, []);
+
+    const selectedConvSet = useMemo(() => new Set(selectedConvIds), [selectedConvIds]);
+
     const renderConversationItem = useCallback(({ item, index }: { item: ConversationProps; index: number }) => {
         const other = item.type === 'direct'
             ? item.participants?.find((p: any) => p._id !== currentUser?.id)
@@ -650,9 +707,12 @@ const Home = () => {
                 onLongPress={handleLongPress}
                 nickname={nickname}
                 folderTag={folderTag}
+                isSelectionMode={isHomeSelectMode}
+                isSelected={selectedConvSet.has(item._id)}
+                onToggleSelect={handleToggleConvSelect}
             />
         );
-    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap, handleLongPress, nicknamesMap, chatTagsMap]);
+    }, [currentUser?.id, onlineUsers, router, filteredList.length, searchQuery, typingMap, draftMap, handleLongPress, nicknamesMap, chatTagsMap, isHomeSelectMode, selectedConvSet, handleToggleConvSelect]);
 
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.4}>
@@ -774,41 +834,70 @@ const Home = () => {
                         </View>
                     </View>
 
-                    {/* Focus / Reminders Live Banner */}
-                    {(focusMode.enabled || reminders.length > 0) && (
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: scale(6) }}>
-                            {focusMode.enabled && (
-                                <TouchableOpacity
-                                    onPress={handleToggleFocusMenu}
-                                    style={{
-                                        flexDirection: 'row', alignItems: 'center', gap: 5,
-                                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                                        borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.45)',
-                                        borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
-                                    }}
-                                >
-                                    <Typo size={11} fontWeight="700" color={colors.primaryLight} textProps={{ numberOfLines: 1 }}>
-                                        🌙 {focusMode.label} · {formatRemainingFocus(focusMode.until)}
-                                    </Typo>
-                                </TouchableOpacity>
-                            )}
-                            {reminders.length > 0 && (
-                                <TouchableOpacity
-                                    onPress={() => setShowRemindersModal(true)}
-                                    style={{
-                                        flexDirection: 'row', alignItems: 'center', gap: 5,
-                                        backgroundColor: 'rgba(255,255,255,0.12)',
-                                        borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-                                        borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
-                                    }}
-                                >
-                                    <Typo size={11} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>
-                                        ⏰ {reminders.length} Reminder{reminders.length > 1 ? "s" : ""}
-                                    </Typo>
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                    )}
+                    {/* Focus / Quiet Hours / Streak / Reminders Live Banner */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: scale(6) }}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                hapticTap("medium");
+                                setShowDigestModal(true);
+                            }}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: 5,
+                                backgroundColor: 'rgba(255,255,255,0.12)',
+                                borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+                                borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
+                            }}
+                        >
+                            <Typo size={11} fontWeight="700" color={colors.primaryLight} textProps={{ numberOfLines: 1 }}>
+                                🔥 {dailyActivity.streakDays}d Streak · {dailyActivity.messagesSentToday} sent today
+                            </Typo>
+                        </TouchableOpacity>
+                        {focusMode.enabled && (
+                            <TouchableOpacity
+                                onPress={handleToggleFocusMenu}
+                                style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                    borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.45)',
+                                    borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
+                                }}
+                            >
+                                <Typo size={11} fontWeight="700" color={colors.primaryLight} textProps={{ numberOfLines: 1 }}>
+                                    🌙 {focusMode.label} · {formatRemainingFocus(focusMode.until)}
+                                </Typo>
+                            </TouchableOpacity>
+                        )}
+                        {isWithinQuietHours(quietHours) && (
+                            <TouchableOpacity
+                                onPress={() => router.push("/(main)/settings")}
+                                style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                                    backgroundColor: 'rgba(99, 102, 241, 0.24)',
+                                    borderWidth: 1, borderColor: 'rgba(129, 140, 248, 0.5)',
+                                    borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
+                                }}
+                            >
+                                <Typo size={11} fontWeight="700" color="#e0e7ff" textProps={{ numberOfLines: 1 }}>
+                                    🔕 Quiet Hours Active
+                                </Typo>
+                            </TouchableOpacity>
+                        )}
+                        {reminders.length > 0 && (
+                            <TouchableOpacity
+                                onPress={() => setShowRemindersModal(true)}
+                                style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                                    backgroundColor: 'rgba(255,255,255,0.12)',
+                                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+                                    borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4,
+                                }}
+                            >
+                                <Typo size={11} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                    ⏰ {reminders.length} Reminder{reminders.length > 1 ? "s" : ""}
+                                </Typo>
+                            </TouchableOpacity>
+                        )}
+                    </View>
 
                     {/* Quick Actions Pill Bar */}
                     <View style={styles.headerQuickRow}>
@@ -1173,27 +1262,122 @@ const Home = () => {
                         </View>
                     </View>
 
-                    {/* ── Results Count ── */}
-                    <View style={styles.countRow}>
-                        {searchQuery.trim() ? (
-                            <Typo size={12} color={colors.neutral400} fontWeight="500">
-                                {filteredList.length === 0
-                                    ? "No results"
-                                    : `${filteredList.length} result${filteredList.length === 1 ? "" : "s"} for "${searchQuery}"`}
-                            </Typo>
-                        ) : (
-                            filteredList.length > 0 && (
+                    {/* ── Results Count + Sort Order Pill ── */}
+                    <View style={[styles.countRow, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                        <View style={{ flex: 1 }}>
+                            {searchQuery.trim() ? (
                                 <Typo size={12} color={colors.neutral400} fontWeight="500">
-                                    {filteredList.length}{" "}
-                                    {filterCategory === "archived"
-                                        ? (filteredList.length === 1 ? "archived chat" : "archived chats")
-                                        : selectedTab === 0
-                                            ? filteredList.length === 1 ? "conversation" : "conversations"
-                                            : filteredList.length === 1 ? "group" : "groups"}
+                                    {filteredList.length === 0
+                                        ? "No results"
+                                        : `${filteredList.length} result${filteredList.length === 1 ? "" : "s"} for "${searchQuery}"`}
                                 </Typo>
-                            )
-                        )}
+                            ) : (
+                                filteredList.length > 0 && (
+                                    <Typo size={12} color={colors.neutral400} fontWeight="500">
+                                        {filteredList.length}{" "}
+                                        {filterCategory === "archived"
+                                            ? (filteredList.length === 1 ? "archived chat" : "archived chats")
+                                            : selectedTab === 0
+                                                ? filteredList.length === 1 ? "conversation" : "conversations"
+                                                : filteredList.length === 1 ? "group" : "groups"}
+                                    </Typo>
+                                )
+                            )}
+                        </View>
+                        <TouchableOpacity
+                            onPress={async () => {
+                                hapticTap("light");
+                                const next: HomeSortOrder = sortOrder === "latest" ? "unread" : sortOrder === "unread" ? "alpha" : "latest";
+                                setSortOrder(next);
+                                await saveHomeSortOrder(next);
+                            }}
+                            activeOpacity={0.75}
+                            style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 4,
+                                backgroundColor: sortOrder === "latest" ? colors.neutral100 : colors.primaryLight,
+                                paddingHorizontal: scale(10),
+                                paddingVertical: verticalScale(4),
+                                borderRadius: radius.full,
+                                borderWidth: 1,
+                                borderColor: sortOrder === "latest" ? colors.neutral200 : colors.primary,
+                            }}
+                        >
+                            <Icons.ArrowsDownUp size={12} color={sortOrder === "latest" ? colors.neutral600 : colors.primaryDark} weight="bold" />
+                            <Typo size={11} fontWeight="700" color={sortOrder === "latest" ? colors.neutral600 : colors.primaryDark}>
+                                {sortOrder === "latest" ? "Latest" : sortOrder === "unread" ? "Unread 1st" : "A–Z"}
+                            </Typo>
+                        </TouchableOpacity>
                     </View>
+
+                    {/* ── Batch Multi-Select Toolbar ── */}
+                    {isHomeSelectMode && (
+                        <View style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            backgroundColor: "#1c1917",
+                            marginHorizontal: spacingX._15,
+                            marginBottom: spacingY._8,
+                            paddingHorizontal: spacingX._12,
+                            paddingVertical: verticalScale(8),
+                            borderRadius: radius._15,
+                            gap: 6,
+                        }}>
+                            <Typo size={12.5} fontWeight="800" color={colors.white}>
+                                {selectedConvIds.length} Selected
+                            </Typo>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        hapticTap("medium");
+                                        selectedConvIds.forEach((id) => {
+                                            togglePinConversation({ conversationId: id, pin: true });
+                                        });
+                                        setConversations((prev) => prev.map((c) => selectedConvSet.has(c._id) ? ({ ...c, isPinned: true } as any) : c));
+                                        setSelectedConvIds([]);
+                                    }}
+                                    style={{ backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.full }}
+                                >
+                                    <Typo size={11} fontWeight="700" color={colors.primaryLight}>Pin</Typo>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        hapticTap("medium");
+                                        selectedConvIds.forEach((id) => markAsRead(id));
+                                        setConversations((prev) => prev.map((c) => selectedConvSet.has(c._id) ? { ...c, unreadCount: 0 } : c));
+                                        setSelectedConvIds([]);
+                                    }}
+                                    style={{ backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.full }}
+                                >
+                                    <Typo size={11} fontWeight="700" color={colors.white}>Read</Typo>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={async () => {
+                                        hapticTap("medium");
+                                        let nextArch = localArchivedIds;
+                                        for (const id of selectedConvIds) {
+                                            toggleArchiveConversation({ conversationId: id, archive: true });
+                                            nextArch = await setLocalArchivedId(currentUser?.id, id, true);
+                                        }
+                                        setLocalArchivedIds(nextArch);
+                                        setConversations((prev) => prev.map((c) => selectedConvSet.has(c._id) ? { ...c, isArchived: true } : c));
+                                        setSelectedConvIds([]);
+                                    }}
+                                    style={{ backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.full }}
+                                >
+                                    <Typo size={11} fontWeight="700" color={colors.white}>Archive</Typo>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => { hapticTap("light"); setSelectedConvIds([]); }}
+                                    style={{ backgroundColor: colors.primary, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.full }}
+                                >
+                                    <Typo size={11} fontWeight="800" color={colors.black}>Done</Typo>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
 
                     {/* ── Virtualized Conversations List ── */}
                     <FlatList
@@ -1532,6 +1716,27 @@ const Home = () => {
                                                 <Icons.CaretRight size={16} color={colors.neutral350} />
                                             </TouchableOpacity>
 
+                                            {/* Select Multiple Chats */}
+                                            <TouchableOpacity
+                                                style={styles.sheetOptionRow}
+                                                activeOpacity={0.7}
+                                                onPress={() => {
+                                                    const id = actionConv._id;
+                                                    handleCloseActionModal();
+                                                    setSelectedConvIds([id]);
+                                                }}
+                                            >
+                                                <View style={styles.sheetOptionLeft}>
+                                                    <View style={[styles.sheetOptionIcon, { backgroundColor: colors.primaryLight }]}>
+                                                        <Icons.CheckCircle size={18} color={colors.primaryDark} weight="fill" />
+                                                    </View>
+                                                    <Typo size={14.5} fontWeight="600" color={colors.neutral800}>
+                                                        Select Multiple Chats
+                                                    </Typo>
+                                                </View>
+                                                <Icons.CaretRight size={16} color={colors.neutral350} />
+                                            </TouchableOpacity>
+
                                             {/* Delete Conversation */}
                                             <TouchableOpacity
                                                 style={[styles.sheetOptionRow, { borderBottomWidth: 0 }]}
@@ -1610,6 +1815,32 @@ const Home = () => {
                     });
                 }}
                 onClose={() => setShowRemindersModal(false)}
+            />
+
+            <DailyDigestModal
+                visible={showDigestModal}
+                activity={dailyActivity}
+                unreadDirect={totalUnreadDirect}
+                unreadGroups={totalUnreadGroup}
+                unreadConversations={[...directConversations, ...groupConversations].filter(c => (c.unreadCount || 0) > 0)}
+                currentUserId={currentUser?.id}
+                nicknames={nicknamesMap}
+                onSelectConversation={(c) => {
+                    router.push({
+                        pathname: "/(main)/conversation",
+                        params: {
+                            id: c._id,
+                            name: c.name,
+                            avatar: c.avatar,
+                            type: c.type,
+                            participants: JSON.stringify(c.participants),
+                            admins: JSON.stringify(c.admins || []),
+                            createdBy: c.createdBy ? String(c.createdBy) : "",
+                            disappearingSeconds: String(c.disappearingSeconds || 0),
+                        },
+                    });
+                }}
+                onClose={() => setShowDigestModal(false)}
             />
 
         </ScreenWrapper>

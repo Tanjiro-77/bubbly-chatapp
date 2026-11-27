@@ -20,6 +20,16 @@ const KEYS = {
     PRIVACY_SHIELD: "@bubbly_privacy_shield_v1",
     ARCHIVED_PREFIX: "@bubbly_archived_chats_",
     CHECKLIST_LOCAL_PREFIX: "@bubbly_checklist_state_",
+    SPLIT_LOCAL_PREFIX: "@bubbly_split_state_",
+    CHAT_SCRATCHPAD_PREFIX: "@bubbly_scratchpad_",
+    QUIET_HOURS: "@bubbly_quiet_hours_v1",
+    FAVORITE_REACTIONS: "@bubbly_favorite_reactions_v1",
+    DAILY_ACTIVITY: "@bubbly_daily_activity_v1",
+    EVENT_RSVP_PREFIX: "@bubbly_event_rsvp_",
+    WYR_PICK_PREFIX: "@bubbly_wyr_pick_",
+    HOME_SORT_ORDER: "@bubbly_home_sort_v1",
+    VOICE_SPEED_PREF: "@bubbly_voice_speed_v1",
+    USER_BIO: "@bubbly_user_bio_v1",
     SILENT_LOCAL_IDS: "@bubbly_silent_msg_ids_v1",
 };
 
@@ -68,6 +78,16 @@ let focusModeCache: FocusModeState | null = null;
 let customStatusCache: CustomStatusState | null = null;
 let appearanceCache: ChatAppearanceConfig | null = null;
 let privacyShieldCache: PrivacyShieldConfig | null = null;
+let quietHoursCache: QuietHoursConfig | null = null;
+let favoriteReactionsCache: string[] | null = null;
+let dailyActivityCache: DailyActivityStats | null = null;
+let homeSortCache: HomeSortOrder | null = null;
+let voiceSpeedCache: number | null = null;
+let userBioCache: string | null = null;
+const eventRsvpCache = new Map<string, EventRsvpChoice>();
+const wyrPickCache = new Map<string, "A" | "B">();
+const scratchpadCache = new Map<string, string>();
+const splitOverridesCache = new Map<string, Record<string, boolean>>();
 const archivedCache = new Map<string, string[]>();
 
 export function clearFeatureMemoryCache(): void {
@@ -79,6 +99,16 @@ export function clearFeatureMemoryCache(): void {
     customStatusCache = null;
     appearanceCache = null;
     privacyShieldCache = null;
+    quietHoursCache = null;
+    favoriteReactionsCache = null;
+    dailyActivityCache = null;
+    homeSortCache = null;
+    voiceSpeedCache = null;
+    userBioCache = null;
+    eventRsvpCache.clear();
+    wyrPickCache.clear();
+    scratchpadCache.clear();
+    splitOverridesCache.clear();
     archivedCache.clear();
 }
 
@@ -469,9 +499,58 @@ export interface BubblyCountdownPayload {
     emoji?: string;
 }
 
+export interface BubblySplitParticipant {
+    id: string;
+    name: string;
+    paid: boolean;
+}
+
+export interface BubblySplitPayload {
+    id: string;
+    title: string;
+    currency: "$" | "₹" | "€" | "£";
+    totalAmount: number;
+    participants: BubblySplitParticipant[];
+    createdBy?: string;
+}
+
+export interface BubblyDoodleStroke {
+    d: string;
+    color: string;
+    width: number;
+}
+
+export interface BubblyDoodlePayload {
+    strokes: BubblyDoodleStroke[];
+    darkBg?: boolean;
+    caption?: string;
+}
+
+export type EventRsvpChoice = "going" | "maybe" | "declined";
+
+export interface BubblyEventPayload {
+    id: string;
+    title: string;
+    whenIso: string;
+    whenLabel: string;
+    location?: string;
+    note?: string;
+    emoji?: string;
+}
+
+export interface BubblyWyrPayload {
+    id: string;
+    optionA: string;
+    optionB: string;
+}
+
 const GAME_PREFIX = "[BUBBLY_GAME]";
 const COUNTDOWN_PREFIX = "[BUBBLY_COUNTDOWN]";
 const CHECKLIST_PREFIX = "[BUBBLY_CHECKLIST]";
+const SPLIT_PREFIX = "[BUBBLY_SPLIT]";
+const DOODLE_PREFIX = "[BUBBLY_DOODLE]";
+const EVENT_PREFIX = "[BUBBLY_EVENT]";
+const WYR_PREFIX = "[BUBBLY_WYR]";
 
 export function encodeGameCard(payload: BubblyGamePayload): string {
     return `🎮 ${payload.title}: ${payload.result}\n${GAME_PREFIX}${JSON.stringify(payload)}`;
@@ -485,10 +564,30 @@ export function encodeChecklistFallback(checklist: ChecklistProps): string {
     return `✅ ${checklist.title}\n${CHECKLIST_PREFIX}${JSON.stringify(checklist)}`;
 }
 
+export function encodeSplitCard(payload: BubblySplitPayload): string {
+    return `💸 ${payload.title} (${payload.currency}${payload.totalAmount.toFixed(2)})\n${SPLIT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+export function encodeDoodleCard(payload: BubblyDoodlePayload): string {
+    return `🎨 ${payload.caption?.trim() || "Hand-drawn Sketch"}\n${DOODLE_PREFIX}${JSON.stringify(payload)}`;
+}
+
+export function encodeEventCard(payload: BubblyEventPayload): string {
+    return `📅 ${payload.emoji || "🗓️"} ${payload.title} (${payload.whenLabel})\n${EVENT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+export function encodeWyrCard(payload: BubblyWyrPayload): string {
+    return `⚖️ Would You Rather: ${payload.optionA} OR ${payload.optionB}\n${WYR_PREFIX}${JSON.stringify(payload)}`;
+}
+
 export type ParsedRichCard =
     | { kind: "game"; data: BubblyGamePayload }
     | { kind: "countdown"; data: BubblyCountdownPayload }
     | { kind: "checklist"; data: ChecklistProps }
+    | { kind: "split"; data: BubblySplitPayload }
+    | { kind: "doodle"; data: BubblyDoodlePayload }
+    | { kind: "event"; data: BubblyEventPayload }
+    | { kind: "wyr"; data: BubblyWyrPayload }
     | null;
 
 export function parseBubblyCard(content?: string | null): ParsedRichCard {
@@ -509,6 +608,28 @@ export function parseBubblyCard(content?: string | null): ParsedRichCard {
             const data = JSON.parse(content.slice(clIdx + CHECKLIST_PREFIX.length));
             if (data?.title && Array.isArray(data?.items)) return { kind: "checklist", data };
         }
+        const spIdx = content.indexOf(SPLIT_PREFIX);
+        if (spIdx !== -1) {
+            const data = JSON.parse(content.slice(spIdx + SPLIT_PREFIX.length));
+            if (data?.title && typeof data?.totalAmount === "number" && Array.isArray(data?.participants)) {
+                return { kind: "split", data };
+            }
+        }
+        const ddIdx = content.indexOf(DOODLE_PREFIX);
+        if (ddIdx !== -1) {
+            const data = JSON.parse(content.slice(ddIdx + DOODLE_PREFIX.length));
+            if (Array.isArray(data?.strokes)) return { kind: "doodle", data };
+        }
+        const evIdx = content.indexOf(EVENT_PREFIX);
+        if (evIdx !== -1) {
+            const data = JSON.parse(content.slice(evIdx + EVENT_PREFIX.length));
+            if (data?.title && data?.whenIso) return { kind: "event", data };
+        }
+        const wyrIdx = content.indexOf(WYR_PREFIX);
+        if (wyrIdx !== -1) {
+            const data = JSON.parse(content.slice(wyrIdx + WYR_PREFIX.length));
+            if (data?.optionA && data?.optionB) return { kind: "wyr", data };
+        }
     } catch {}
     return null;
 }
@@ -519,6 +640,10 @@ export function formatRichPreviewText(content?: string | null): string {
     if (parsed.kind === "game") return `🎮 ${parsed.data.title}: ${parsed.data.result}`;
     if (parsed.kind === "countdown") return `⏳ ${parsed.data.emoji || "🎉"} ${parsed.data.title}`;
     if (parsed.kind === "checklist") return `✅ Checklist: ${parsed.data.title}`;
+    if (parsed.kind === "split") return `💸 Split: ${parsed.data.title} (${parsed.data.currency}${parsed.data.totalAmount.toFixed(2)})`;
+    if (parsed.kind === "doodle") return `🎨 ${parsed.data.caption?.trim() || "Sketch Doodle"}`;
+    if (parsed.kind === "event") return `📅 ${parsed.data.title} · ${parsed.data.whenLabel}`;
+    if (parsed.kind === "wyr") return `⚖️ ${parsed.data.optionA} vs ${parsed.data.optionB}`;
     return content || "";
 }
 
@@ -666,4 +791,416 @@ export function computeChatInsights(
         peakHourLabel,
         activeDays: daySet.size,
     };
+}
+
+// ── 12. Split Bill Local Settlement Overrides ─────────────────────────────────
+export async function getLocalSplitOverrides(
+    messageId: string
+): Promise<Record<string, boolean>> {
+    const hit = splitOverridesCache.get(messageId);
+    if (hit) return { ...hit };
+    try {
+        const raw = await AsyncStorage.getItem(`${KEYS.SPLIT_LOCAL_PREFIX}${messageId}`);
+        const parsed = raw ? JSON.parse(raw) : {};
+        const resolved: Record<string, boolean> = parsed && typeof parsed === "object" ? parsed : {};
+        splitOverridesCache.set(messageId, resolved);
+        return { ...resolved };
+    } catch {
+        return {};
+    }
+}
+
+export async function toggleLocalSplitPaid(
+    messageId: string,
+    participantId: string,
+    nextVal: boolean
+): Promise<void> {
+    try {
+        const current = await getLocalSplitOverrides(messageId);
+        current[participantId] = nextVal;
+        splitOverridesCache.set(messageId, current);
+        await AsyncStorage.setItem(`${KEYS.SPLIT_LOCAL_PREFIX}${messageId}`, JSON.stringify(current));
+    } catch {}
+}
+
+// ── 13. Per-Conversation Private Scratchpad ───────────────────────────────────
+export async function getChatScratchpad(conversationId: string): Promise<string> {
+    if (!conversationId) return "";
+    const hit = scratchpadCache.get(conversationId);
+    if (hit !== undefined) return hit;
+    try {
+        const raw = await AsyncStorage.getItem(`${KEYS.CHAT_SCRATCHPAD_PREFIX}${conversationId}`);
+        const text = raw || "";
+        scratchpadCache.set(conversationId, text);
+        return text;
+    } catch {
+        return "";
+    }
+}
+
+export async function saveChatScratchpad(conversationId: string, text: string): Promise<void> {
+    if (!conversationId) return;
+    const cleaned = text.slice(0, 4000);
+    scratchpadCache.set(conversationId, cleaned);
+    try {
+        if (!cleaned.trim()) {
+            await AsyncStorage.removeItem(`${KEYS.CHAT_SCRATCHPAD_PREFIX}${conversationId}`);
+        } else {
+            await AsyncStorage.setItem(`${KEYS.CHAT_SCRATCHPAD_PREFIX}${conversationId}`, cleaned);
+        }
+        notifyListeners();
+    } catch {}
+}
+
+// ── 14. Custom Quick-Reaction Emoji Presets ───────────────────────────────────
+export const DEFAULT_FAVORITE_REACTIONS = ["❤️", "😂", "🔥", "👍", "😍", "🙏"];
+export const REACTION_PALETTE = [
+    "❤️", "😂", "🔥", "👍", "😍", "🙏", "🎉", "💯",
+    "👏", "🥳", "🤯", "😢", "😮", "🤝", "✨", "🚀",
+    "💀", "🫶", "😎", "☕",
+];
+
+export async function getFavoriteReactions(): Promise<string[]> {
+    if (favoriteReactionsCache) return favoriteReactionsCache;
+    try {
+        const raw = await AsyncStorage.getItem(KEYS.FAVORITE_REACTIONS);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (Array.isArray(parsed) && parsed.length === 6) {
+            favoriteReactionsCache = parsed;
+            return parsed;
+        }
+    } catch {}
+    favoriteReactionsCache = [...DEFAULT_FAVORITE_REACTIONS];
+    return favoriteReactionsCache;
+}
+
+export async function saveFavoriteReactions(emojis: string[]): Promise<string[]> {
+    const unique = Array.from(new Set(emojis)).slice(0, 6);
+    while (unique.length < 6) {
+        const fallback = DEFAULT_FAVORITE_REACTIONS.find((e) => !unique.includes(e)) || "✨";
+        unique.push(fallback);
+    }
+    favoriteReactionsCache = unique;
+    try {
+        await AsyncStorage.setItem(KEYS.FAVORITE_REACTIONS, JSON.stringify(unique));
+        notifyListeners();
+    } catch {}
+    return unique;
+}
+
+// ── 15. Scheduled Quiet Hours (Auto Do-Not-Disturb) ───────────────────────────
+export interface QuietHoursConfig {
+    enabled: boolean;
+    startHour: number; // 0..23
+    endHour: number;   // 0..23
+}
+
+export const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
+    enabled: false,
+    startHour: 22,
+    endHour: 7,
+};
+
+export function isWithinQuietHours(cfg: QuietHoursConfig, date: Date = new Date()): boolean {
+    if (!cfg.enabled) return false;
+    const h = date.getHours();
+    if (cfg.startHour === cfg.endHour) return true;
+    if (cfg.startHour < cfg.endHour) {
+        return h >= cfg.startHour && h < cfg.endHour;
+    }
+    return h >= cfg.startHour || h < cfg.endHour;
+}
+
+export function formatHour12(hour: number): string {
+    const h = ((hour % 24) + 24) % 24;
+    const suffix = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:00 ${suffix}`;
+}
+
+export async function getQuietHours(): Promise<QuietHoursConfig> {
+    if (quietHoursCache) return quietHoursCache;
+    try {
+        const raw = await AsyncStorage.getItem(KEYS.QUIET_HOURS);
+        if (!raw) {
+            quietHoursCache = DEFAULT_QUIET_HOURS;
+            return DEFAULT_QUIET_HOURS;
+        }
+        const parsed = { ...DEFAULT_QUIET_HOURS, ...JSON.parse(raw) };
+        quietHoursCache = parsed;
+        return parsed;
+    } catch {
+        return DEFAULT_QUIET_HOURS;
+    }
+}
+
+export async function saveQuietHours(cfg: QuietHoursConfig): Promise<QuietHoursConfig> {
+    quietHoursCache = cfg;
+    try {
+        await AsyncStorage.setItem(KEYS.QUIET_HOURS, JSON.stringify(cfg));
+        notifyListeners();
+    } catch {}
+    return cfg;
+}
+
+// ── 16. Daily Activity & Messaging Streak Tracker ─────────────────────────────
+export interface DailyActivityStats {
+    streakDays: number;
+    lastActiveDate: string; // YYYY-MM-DD local
+    messagesSentToday: number;
+    totalSentAllTime: number;
+    activeConvIdsToday: string[];
+}
+
+function getLocalTodayString(d: Date = new Date()): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+function getLocalYesterdayString(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return getLocalTodayString(d);
+}
+
+const DEFAULT_ACTIVITY: DailyActivityStats = {
+    streakDays: 0,
+    lastActiveDate: "",
+    messagesSentToday: 0,
+    totalSentAllTime: 0,
+    activeConvIdsToday: [],
+};
+
+export async function getDailyActivityStats(): Promise<DailyActivityStats> {
+    const today = getLocalTodayString();
+    const yesterday = getLocalYesterdayString();
+    if (dailyActivityCache) {
+        if (dailyActivityCache.lastActiveDate && dailyActivityCache.lastActiveDate !== today) {
+            const keepStreak = dailyActivityCache.lastActiveDate === yesterday ? dailyActivityCache.streakDays : 0;
+            const rolled: DailyActivityStats = {
+                ...dailyActivityCache,
+                streakDays: keepStreak,
+                messagesSentToday: 0,
+                activeConvIdsToday: [],
+            };
+            dailyActivityCache = rolled;
+            return rolled;
+        }
+        return dailyActivityCache;
+    }
+    try {
+        const raw = await AsyncStorage.getItem(KEYS.DAILY_ACTIVITY);
+        if (!raw) {
+            dailyActivityCache = DEFAULT_ACTIVITY;
+            return DEFAULT_ACTIVITY;
+        }
+        const parsed: DailyActivityStats = { ...DEFAULT_ACTIVITY, ...JSON.parse(raw) };
+        if (parsed.lastActiveDate && parsed.lastActiveDate !== today) {
+            parsed.streakDays = parsed.lastActiveDate === yesterday ? parsed.streakDays : 0;
+            parsed.messagesSentToday = 0;
+            parsed.activeConvIdsToday = [];
+        }
+        dailyActivityCache = parsed;
+        return parsed;
+    } catch {
+        return DEFAULT_ACTIVITY;
+    }
+}
+
+export async function recordMessageSentActivity(conversationId?: string): Promise<DailyActivityStats> {
+    const today = getLocalTodayString();
+    const yesterday = getLocalYesterdayString();
+    const current = await getDailyActivityStats();
+
+    let nextStreak = current.streakDays;
+    if (current.lastActiveDate !== today) {
+        nextStreak = current.lastActiveDate === yesterday ? current.streakDays + 1 : 1;
+    } else if (nextStreak === 0) {
+        nextStreak = 1;
+    }
+
+    const activeSet = new Set(current.lastActiveDate === today ? current.activeConvIdsToday : []);
+    if (conversationId) activeSet.add(conversationId);
+
+    const next: DailyActivityStats = {
+        streakDays: nextStreak,
+        lastActiveDate: today,
+        messagesSentToday: (current.lastActiveDate === today ? current.messagesSentToday : 0) + 1,
+        totalSentAllTime: (current.totalSentAllTime || 0) + 1,
+        activeConvIdsToday: Array.from(activeSet).slice(0, 50),
+    };
+    dailyActivityCache = next;
+    try {
+        await AsyncStorage.setItem(KEYS.DAILY_ACTIVITY, JSON.stringify(next));
+        notifyListeners();
+    } catch {}
+    return next;
+}
+
+// ── 17. Event Card RSVP & Would-You-Rather Local State ────────────────────────
+export async function getLocalEventRsvp(messageId: string): Promise<EventRsvpChoice | null> {
+    const hit = eventRsvpCache.get(messageId);
+    if (hit) return hit;
+    try {
+        const raw = await AsyncStorage.getItem(`${KEYS.EVENT_RSVP_PREFIX}${messageId}`);
+        if (raw === "going" || raw === "maybe" || raw === "declined") {
+            eventRsvpCache.set(messageId, raw);
+            return raw;
+        }
+    } catch {}
+    return null;
+}
+
+export async function setLocalEventRsvp(messageId: string, choice: EventRsvpChoice): Promise<void> {
+    eventRsvpCache.set(messageId, choice);
+    try {
+        await AsyncStorage.setItem(`${KEYS.EVENT_RSVP_PREFIX}${messageId}`, choice);
+    } catch {}
+}
+
+export async function getLocalWyrPick(messageId: string): Promise<"A" | "B" | null> {
+    const hit = wyrPickCache.get(messageId);
+    if (hit) return hit;
+    try {
+        const raw = await AsyncStorage.getItem(`${KEYS.WYR_PICK_PREFIX}${messageId}`);
+        if (raw === "A" || raw === "B") {
+            wyrPickCache.set(messageId, raw);
+            return raw;
+        }
+    } catch {}
+    return null;
+}
+
+export async function setLocalWyrPick(messageId: string, pick: "A" | "B"): Promise<void> {
+    wyrPickCache.set(messageId, pick);
+    try {
+        await AsyncStorage.setItem(`${KEYS.WYR_PICK_PREFIX}${messageId}`, pick);
+    } catch {}
+}
+
+// ── 18. Home Sort Order & Voice Playback Speed Memory ─────────────────────────
+export type HomeSortOrder = "latest" | "unread" | "alpha";
+
+export async function getHomeSortOrder(): Promise<HomeSortOrder> {
+    if (homeSortCache) return homeSortCache;
+    try {
+        const raw = await AsyncStorage.getItem(KEYS.HOME_SORT_ORDER);
+        if (raw === "latest" || raw === "unread" || raw === "alpha") {
+            homeSortCache = raw;
+            return raw;
+        }
+    } catch {}
+    homeSortCache = "latest";
+    return "latest";
+}
+
+export async function saveHomeSortOrder(order: HomeSortOrder): Promise<void> {
+    homeSortCache = order;
+    try {
+        await AsyncStorage.setItem(KEYS.HOME_SORT_ORDER, order);
+        notifyListeners();
+    } catch {}
+}
+
+export async function getVoiceSpeedPref(): Promise<number> {
+    if (voiceSpeedCache) return voiceSpeedCache;
+    try {
+        const raw = await AsyncStorage.getItem(KEYS.VOICE_SPEED_PREF);
+        const num = raw ? parseFloat(raw) : 1;
+        if (num === 1 || num === 1.5 || num === 2) {
+            voiceSpeedCache = num;
+            return num;
+        }
+    } catch {}
+    voiceSpeedCache = 1;
+    return 1;
+}
+
+export async function saveVoiceSpeedPref(speed: number): Promise<void> {
+    voiceSpeedCache = speed;
+    try {
+        await AsyncStorage.setItem(KEYS.VOICE_SPEED_PREF, String(speed));
+    } catch {}
+}
+
+// ── 19. Profile Bio & Preferences Snapshot Export / Reset ─────────────────────
+export async function getMyBio(): Promise<string> {
+    if (userBioCache !== null) return userBioCache;
+    try {
+        const raw = await AsyncStorage.getItem(KEYS.USER_BIO);
+        userBioCache = raw || "";
+        return userBioCache;
+    } catch {
+        return "";
+    }
+}
+
+export async function saveMyBio(bio: string): Promise<string> {
+    const cleaned = bio.trim().slice(0, 180);
+    userBioCache = cleaned;
+    try {
+        await AsyncStorage.setItem(KEYS.USER_BIO, cleaned);
+        notifyListeners();
+    } catch {}
+    return cleaned;
+}
+
+export async function exportLocalPreferencesSnapshot(): Promise<string> {
+    const [
+        quickReplies,
+        nicknames,
+        notes,
+        tags,
+        appearance,
+        privacyShield,
+        quietHours,
+        favoriteReactions,
+        bio,
+        activity,
+    ] = await Promise.all([
+        getQuickReplies(),
+        getNicknamesMap(),
+        getContactNotesMap(),
+        getChatTagsMap(),
+        getChatAppearance(),
+        getPrivacyShield(),
+        getQuietHours(),
+        getFavoriteReactions(),
+        getMyBio(),
+        getDailyActivityStats(),
+    ]);
+
+    return JSON.stringify(
+        {
+            exportedAt: new Date().toISOString(),
+            app: "Bubbly v4.1.5",
+            bio,
+            appearance,
+            privacyShield,
+            quietHours,
+            favoriteReactions,
+            quickReplies,
+            nicknames,
+            contactNotes: notes,
+            chatTags: tags,
+            dailyActivity: activity,
+        },
+        null,
+        2
+    );
+}
+
+export async function resetLocalCustomizations(): Promise<void> {
+    await Promise.all([
+        saveChatAppearance(DEFAULT_APPEARANCE),
+        savePrivacyShield(DEFAULT_PRIVACY_SHIELD),
+        saveQuietHours(DEFAULT_QUIET_HOURS),
+        saveFavoriteReactions(DEFAULT_FAVORITE_REACTIONS),
+        saveQuickReplies(DEFAULT_QUICK_REPLIES),
+        saveHomeSortOrder("latest"),
+        saveVoiceSpeedPref(1),
+    ]);
+    notifyListeners();
 }

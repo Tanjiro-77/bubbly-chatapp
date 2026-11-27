@@ -19,12 +19,15 @@ import Button from "../../components/Button";
 import { useRouter } from "expo-router";
 import { updateProfile, isSocketConnected } from "../../socket/socketEvents";
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import { uploadFileToCloudinary } from "../../services/imageService";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { InviteSheetModal } from "../../components/InviteSheetModal";
 import {
     CustomStatusState,
+    getMyBio,
     getMyCustomStatus,
+    saveMyBio,
     saveMyCustomStatus,
     STATUS_PRESETS,
 } from "../../utils/featureStorage";
@@ -41,6 +44,7 @@ const ProfileModal = () => {
         avatar: null
     });
     const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || "");
+    const [bio, setBio] = useState("");
     const [statusEmoji, setStatusEmoji] = useState((user as any)?.customStatus?.emoji || "");
     const [statusText, setStatusText] = useState((user as any)?.customStatus?.text || "");
 
@@ -51,6 +55,7 @@ const ProfileModal = () => {
                 setStatusText(st.text);
             }
         });
+        getMyBio().then(setBio);
     }, []);
 
     useEffect(() => {
@@ -163,6 +168,7 @@ const ProfileModal = () => {
             expiresAt: null,
         };
         await saveMyCustomStatus(nextStatus);
+        await saveMyBio(bio);
         data.customStatus = { emoji: nextStatus.emoji, text: nextStatus.text };
 
         updateProfile(data);
@@ -381,6 +387,23 @@ const ProfileModal = () => {
                                 })}
                             </ScrollView>
                         </View>
+
+                        {/* Personal Bio */}
+                        <View style={styles.fieldGroup}>
+                            <View style={styles.labelRow}>
+                                <Icons.Quotes size={verticalScale(14)} color={colors.primaryDark} weight="bold" />
+                                <Typo size={12} fontWeight="700" color={colors.neutral600} style={styles.label}>
+                                    ABOUT ME / BIO
+                                </Typo>
+                            </View>
+                            <Input
+                                value={bio}
+                                onChangeText={setBio}
+                                placeholder="A short tagline about yourself..."
+                                maxLength={180}
+                                icon={<Icons.TextAlignLeft size={verticalScale(17)} color={colors.neutral400} weight="bold" />}
+                            />
+                        </View>
                     </Animated.View>
 
                     {/* ── Section: Quick Actions & Settings ── */}
@@ -396,6 +419,50 @@ const ProfileModal = () => {
                         >
                             PREFERENCES & APP
                         </Typo>
+
+                        {/* Copy Profile Card */}
+                        <Pressable
+                            onPress={async () => {
+                                hapticTap("success");
+                                const inviteUrl = user?.id ? `https://bubbly.app/u/${user.id}` : "https://bubbly.app";
+                                const card = [
+                                    `💛 ${userData.name || "Bubbly User"}`,
+                                    statusText ? `${statusEmoji || "💬"} ${statusText}` : "",
+                                    bio.trim() ? `📝 ${bio.trim()}` : "",
+                                    userData.email ? `✉️ ${userData.email}` : "",
+                                    `🔗 ${inviteUrl}`,
+                                ].filter(Boolean).join("\n");
+                                await Clipboard.setStringAsync(card).catch(() => {});
+                                BubblyAlert.alert("Copied ✨", "Your Bubbly profile card was copied to clipboard!");
+                            }}
+                            style={({ pressed }) => [
+                                styles.actionCard,
+                                pressed && { opacity: 0.7, backgroundColor: colors.neutral100 }
+                            ]}
+                        >
+                            <View style={styles.actionLeft}>
+                                <View style={[styles.actionIconWrap, { backgroundColor: '#fef3c7' }]}>
+                                    <Icons.IdentificationCard
+                                        size={verticalScale(18)}
+                                        color={colors.primaryDark}
+                                        weight="fill"
+                                    />
+                                </View>
+                                <View style={styles.actionTextWrap}>
+                                    <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                                        Copy Profile Card
+                                    </Typo>
+                                    <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
+                                        Copy name, bio, status & Bubbly link
+                                    </Typo>
+                                </View>
+                            </View>
+                            <Icons.Copy
+                                size={verticalScale(16)}
+                                color={colors.neutral400}
+                                weight="bold"
+                            />
+                        </Pressable>
 
                         {/* Invite Friends */}
                         <Pressable

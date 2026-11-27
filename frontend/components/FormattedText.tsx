@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, TextStyle, View, Linking, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text, TextStyle, View, Linking } from 'react-native';
 import { colors, radius, spacingX, spacingY } from '../constants/theme';
-import { scale, verticalScale } from '../utils/styling';
+import { verticalScale } from '../utils/styling';
+import { hapticTap } from '../utils/haptics';
 
 interface FormattedTextProps {
     content: string;
@@ -12,9 +13,24 @@ interface FormattedTextProps {
 }
 
 type InlineToken = {
-    type: 'text' | 'bold' | 'italic' | 'strike' | 'code' | 'url' | 'email' | 'phone' | 'mention' | 'highlight';
+    type: 'text' | 'bold' | 'italic' | 'strike' | 'code' | 'spoiler' | 'url' | 'email' | 'phone' | 'mention' | 'highlight';
     value: string;
     url?: string;
+};
+
+const SpoilerText = ({ value }: { value: string }) => {
+    const [revealed, setRevealed] = useState(false);
+    return (
+        <Text
+            onPress={() => {
+                hapticTap('light');
+                setRevealed((prev) => !prev);
+            }}
+            style={revealed ? styles.spoilerRevealed : styles.spoilerMasked}
+        >
+            {revealed ? ` ${value} ` : ` 🙈 ${'•'.repeat(Math.min(Math.max(value.length, 4), 12))} `}
+        </Text>
+    );
 };
 
 /**
@@ -29,7 +45,7 @@ function parseInline(text: string, highlight?: string): InlineToken[] {
     const baseTokens: InlineToken[] = [];
 
     const parseFormatting = (input: string) => {
-        const formatRegex = /(\*[^\s*](?:[^*]*[^\s*])?\*|_[^\s_](?:[^_]*[^\s_])?_|~[^\s~](?:[^~]*[^\s~])?~|`[^`\n]+`)/g;
+        const formatRegex = /(\|\|[^\n|]+?\|\||\*[^\s*](?:[^*]*[^\s*])?\*|_[^\s_](?:[^_]*[^\s_])?_|~[^\s~](?:[^~]*[^\s~])?~|`[^`\n]+`)/g;
         let lastIndex = 0;
         let match: RegExpExecArray | null;
 
@@ -39,7 +55,9 @@ function parseInline(text: string, highlight?: string): InlineToken[] {
             }
 
             const raw = match[0];
-            if (raw.startsWith('*') && raw.endsWith('*')) {
+            if (raw.startsWith('||') && raw.endsWith('||') && raw.length > 4) {
+                baseTokens.push({ type: 'spoiler', value: raw.slice(2, -2) });
+            } else if (raw.startsWith('*') && raw.endsWith('*')) {
                 baseTokens.push({ type: 'bold', value: raw.slice(1, -1) });
             } else if (raw.startsWith('_') && raw.endsWith('_')) {
                 baseTokens.push({ type: 'italic', value: raw.slice(1, -1) });
@@ -142,6 +160,8 @@ const renderTokenList = (
                 return <Text key={index} style={styles.strike}>{token.value}</Text>;
             case 'code':
                 return <Text key={index} style={styles.inlineCode}>{` ${token.value} `}</Text>;
+            case 'spoiler':
+                return <SpoilerText key={index} value={token.value} />;
             case 'url':
                 return (
                     <Text key={index} style={styles.url} onPress={() => token.url && handleOpenUrl(token.url)}>
@@ -262,6 +282,19 @@ const styles = StyleSheet.create({
         borderRadius: radius._5,
         fontSize: verticalScale(13.5),
         paddingHorizontal: spacingX._4,
+    },
+    spoilerMasked: {
+        backgroundColor: colors.neutral800,
+        color: colors.primaryLight,
+        borderRadius: radius._6,
+        fontWeight: '700',
+        fontSize: verticalScale(13),
+    },
+    spoilerRevealed: {
+        backgroundColor: 'rgba(245, 158, 11, 0.18)',
+        color: colors.neutral900,
+        borderRadius: radius._6,
+        fontWeight: '600',
     },
     url: {
         color: '#2563eb',

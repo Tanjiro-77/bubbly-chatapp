@@ -26,19 +26,26 @@ import {
 } from '../../socket/socketEvents';
 import { StoryGroupProps } from '../../types';
 import { getActiveStorySession, getMemoryStories } from '../../utils/chatCache';
+import { DEFAULT_FAVORITE_REACTIONS, getFavoriteReactions, subscribeFeatureUpdates } from '../../utils/featureStorage';
 import { hapticTap } from '../../utils/haptics';
 import moment from 'moment';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORY_DURATION = 5000;
 
-const EMOJIS = ['❤️', '🔥', '😂', '👏', '😍', '😮'];
-
 const StoryViewer = () => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user: currentUser } = useAuth();
     const { groupIndex: groupIndexParam, storiesData } = useLocalSearchParams();
+    const [storyReactions, setStoryReactions] = useState<string[]>(DEFAULT_FAVORITE_REACTIONS);
+
+    useEffect(() => {
+        getFavoriteReactions().then(setStoryReactions);
+        return subscribeFeatureUpdates(() => {
+            getFavoriteReactions().then(setStoryReactions);
+        });
+    }, []);
 
     const allGroups: StoryGroupProps[] = useMemo(() => {
         try {
@@ -445,7 +452,7 @@ const StoryViewer = () => {
                                 exiting={FadeOut.duration(150)}
                                 style={styles.emojiPicker}
                             >
-                                {EMOJIS.map((emoji) => (
+                                {storyReactions.map((emoji) => (
                                     <TouchableOpacity
                                         key={emoji}
                                         onPress={() => handleReact(emoji)}

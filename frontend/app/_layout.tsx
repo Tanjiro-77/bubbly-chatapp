@@ -16,6 +16,12 @@ import { initHapticStrength } from '../utils/haptics';
 import { initIncomingRingtone } from '../services/soundService';
 import { onSocketConnectionChange } from '../socket/socketEvents';
 import {
+    getWarmupSnapshot,
+    startServerWarmup,
+    subscribeWarmupState,
+    WarmupSnapshot,
+} from '../utils/serverWarmup';
+import {
     claimIncomingCallScreen,
     configureNotificationHandler,
     handleNotificationResponse,
@@ -49,6 +55,12 @@ const NavigationGuard = () => {
      *  false   = onboarding has never been completed
      */
     const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+    const [warmup, setWarmup] = useState<WarmupSnapshot>(() => getWarmupSnapshot());
+
+    useEffect(() => {
+        startServerWarmup();
+        return subscribeWarmupState(setWarmup);
+    }, []);
 
     // Check onboarding completion on mount and whenever route/user changes while incomplete
     useEffect(() => {
@@ -63,8 +75,10 @@ const NavigationGuard = () => {
 
     // Route guard — runs when auth state and onboarding state are both determined
     useEffect(() => {
-        // Still loading auth or onboarding state — keep showing splash screen
+        // Hold on splash screen while auth, onboarding, or server wake-up is running
+        const onSplash = !segments[0];
         if (isLoading || onboardingDone === null) return;
+        if (onSplash && warmup.status === "warming") return;
 
         if (!onboardingDone) {
             // First install — show onboarding
@@ -92,7 +106,7 @@ const NavigationGuard = () => {
                 router.replace("/(auth)/welcome");
             }
         }
-    }, [isLoading, onboardingDone, user, segments]);
+    }, [isLoading, onboardingDone, user, segments, warmup.status]);
 
     return null;
 };
