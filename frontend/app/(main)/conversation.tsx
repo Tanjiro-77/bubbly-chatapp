@@ -4538,6 +4538,9 @@ const Conversation = () => {
                                     <Input
                                         value={message}
                                         onChangeText={handleMessageChange}
+                                        onFocus={() => {
+                                            if (showAttachOptions) setShowAttachOptions(false);
+                                        }}
                                         onSelectionChange={(e) => {
                                             composerSelectionRef.current = e.nativeEvent.selection;
                                         }}

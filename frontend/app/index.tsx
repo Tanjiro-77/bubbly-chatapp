@@ -167,7 +167,7 @@ const SplashScreen = () => {
     logoSheen.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.cubic) }),
-        withDelay(1800, withTiming(0, { duration: 0 }))
+        withDelay(1800, withTiming(0, { duration: 1 }))
       ),
       -1,
       false
@@ -230,9 +230,11 @@ const SplashScreen = () => {
     ],
   }));
 
+  const sheenSpan = scale(140);
+
   const sheenAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: interpolate(logoSheen.value, [0, 1], [-scale(140), scale(140)]) },
+      { translateX: interpolate(logoSheen.value, [0, 1], [-sheenSpan, sheenSpan]) },
       { rotate: "24deg" },
     ],
     opacity: interpolate(logoSheen.value, [0, 0.5, 1], [0, 0.32, 0]),

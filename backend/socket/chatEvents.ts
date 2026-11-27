@@ -404,8 +404,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            const PAGE_LIMIT = Math.max(1, Math.min(Number(data.limit) || 30, 50));
-            let page = Math.max(0, Number(data.page) || 0);
+            const PAGE_LIMIT = Math.floor(Math.max(1, Math.min(Number(data.limit) || 30, 50)));
+            let page = Math.floor(Math.max(0, Number(data.page) || 0));
             let skip = page * PAGE_LIMIT;
             const notExpiredFilter = {
                 $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],

@@ -94,7 +94,7 @@ const ConversationItem = ({
     const isDirect = item.type === 'direct';
     let avatar = item.avatar;
     const otherParticipant = isDirect
-        ? item.participants.find(p => p._id !== currentUser?.id)
+        ? (item.participants || []).find(p => p?._id !== currentUser?.id)
         : null;
     if (isDirect && otherParticipant) avatar = otherParticipant?.avatar;
 
