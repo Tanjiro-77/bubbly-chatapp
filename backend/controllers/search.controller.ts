@@ -25,7 +25,9 @@ export async function searchAll(req: AuthRequest, res: Response) {
             return;
         }
 
-        const myConversations = await Conversation.find({ participants: userId }).select("_id type name").lean();
+        const myConversations = await Conversation.find({ participants: userId })
+            .select("_id type name participants")
+            .lean();
         const convIds = myConversations.map((c) => c._id);
         const rx = q ? new RegExp(escapeRegex(q), "i") : null;
 
@@ -35,31 +37,38 @@ export async function searchAll(req: AuthRequest, res: Response) {
         const createdFilter = Object.keys(dateFilter).length ? { createdAt: dateFilter } : {};
 
         const result: any = { users: [], conversations: [], messages: [], media: [], files: [], links: [] };
+        const now = new Date();
+        const notExpired = { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] };
+        const tasks: Promise<void>[] = [];
 
         if ((!type || type === "all" || type === "users") && rx) {
-            // WhatsApp-style privacy: Only search known users (people you share a conversation with)
-            const knownUsers = await Conversation.find({ participants: userId }).select("participants").lean();
+            // Privacy: only search users you share a conversation with (reuse fetched conversations)
             const knownIds = Array.from(new Set(
-                knownUsers.flatMap((c: any) => (c.participants || []).map((p: any) => p.toString()))
+                myConversations.flatMap((c: any) => (c.participants || []).map((p: any) => p.toString()))
             )).filter((id) => id !== userId.toString());
 
             if (knownIds.length > 0) {
-                result.users = await User.find({
-                    _id: { $in: knownIds },
-                    $or: [{ name: rx }, { email: rx }, { phoneNumber: rx }],
-                }).select("name email phoneNumber avatar").limit(12).lean();
+                tasks.push(
+                    User.find({
+                        _id: { $in: knownIds },
+                        $or: [{ name: rx }, { email: rx }, { phoneNumber: rx }],
+                    }).select("name email phoneNumber avatar").limit(12).lean().then((rows) => {
+                        result.users = rows;
+                    })
+                );
             }
         }
 
         if ((!type || type === "all" || type === "conversations") && rx) {
-            result.conversations = await Conversation.find({
-                participants: userId,
-                $or: [{ name: rx }, { description: rx }],
-            }).select("name avatar type participants").limit(12).lean();
+            tasks.push(
+                Conversation.find({
+                    participants: userId,
+                    $or: [{ name: rx }, { description: rx }],
+                }).select("name avatar type participants").limit(12).lean().then((rows) => {
+                    result.conversations = rows;
+                })
+            );
         }
-
-        const now = new Date();
-        const notExpired = { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] };
 
         if (!type || type === "all" || type === "messages") {
             const messageQuery: any = {
@@ -70,23 +79,30 @@ export async function searchAll(req: AuthRequest, res: Response) {
                 ...createdFilter,
             };
             if (rx) messageQuery.content = rx;
-            result.messages = await Message.find(messageQuery)
-                .sort({ createdAt: -1 })
-                .limit(30)
-                .populate("senderId", "name avatar")
-                .populate("conversationId", "name type")
-                .lean();
+            tasks.push(
+                Message.find(messageQuery)
+                    .sort({ createdAt: -1 })
+                    .limit(30)
+                    .populate("senderId", "name avatar")
+                    .populate("conversationId", "name type")
+                    .lean()
+                    .then((rows) => { result.messages = rows; })
+            );
         }
 
         if (!type || type === "all" || type === "media") {
-            result.media = await Message.find({
-                conversationId: { $in: convIds },
-                isDeleted: { $ne: true },
-                isViewOnce: { $ne: true },
-                type: { $in: ["image", "video"] },
-                ...notExpired,
-                ...createdFilter,
-            }).sort({ createdAt: -1 }).limit(24).lean();
+            tasks.push(
+                Message.find({
+                    conversationId: { $in: convIds },
+                    isDeleted: { $ne: true },
+                    isViewOnce: { $ne: true },
+                    type: { $in: ["image", "video"] },
+                    ...notExpired,
+                    ...createdFilter,
+                }).sort({ createdAt: -1 }).limit(24).lean().then((rows) => {
+                    result.media = rows;
+                })
+            );
         }
 
         if (!type || type === "all" || type === "files") {
@@ -99,7 +115,11 @@ export async function searchAll(req: AuthRequest, res: Response) {
                 ...createdFilter,
             };
             if (rx) fileQuery["attachmentMeta.name"] = rx;
-            result.files = await Message.find(fileQuery).sort({ createdAt: -1 }).limit(24).lean();
+            tasks.push(
+                Message.find(fileQuery).sort({ createdAt: -1 }).limit(24).lean().then((rows) => {
+                    result.files = rows;
+                })
+            );
         }
 
         if (!type || type === "all" || type === "links") {
@@ -115,8 +135,14 @@ export async function searchAll(req: AuthRequest, res: Response) {
             } else {
                 linkQuery.$and = [notExpired, { content: urlPattern }];
             }
-            result.links = await Message.find(linkQuery).sort({ createdAt: -1 }).limit(20).lean();
+            tasks.push(
+                Message.find(linkQuery).sort({ createdAt: -1 }).limit(20).lean().then((rows) => {
+                    result.links = rows;
+                })
+            );
         }
+
+        await Promise.all(tasks);
 
         res.json({ success: true, data: result });
     } catch (error) {

@@ -1331,6 +1331,12 @@ const Conversation = () => {
     const [messages, setMessages] = useState<MessageProps[]>(
         () => getMemoryMessages(conversationId) ?? []
     );
+    const [isInitialLoading, setIsInitialLoading] = useState<boolean>(
+        () => !(typeof conversationId === 'string' && conversationId.startsWith('notes_')) &&
+            !(getMemoryMessages(conversationId)?.length)
+    );
+    const hasSyncedMessagesRef = useRef((getMemoryMessages(conversationId)?.length ?? 0) > 0);
+    const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [messageStatuses, setMessageStatuses] = useState<Record<string, "sending" | "sent" | "delivered" | "seen">>({});
     const [replyTo, setReplyTo] = useState<ReplyToProps | null>(null);
     const [typingUser, setTypingUser] = useState<string | null>(null);
@@ -1496,6 +1502,8 @@ const Conversation = () => {
             setGroupAdmins(parseParamArray(stringifiedAdmins));
             setGroupCreatedBy(initialCreatedBy || undefined);
             setMessages(getMemoryMessages(conversationId) ?? []);
+            hasSyncedMessagesRef.current = (getMemoryMessages(conversationId)?.length ?? 0) > 0;
+            setIsInitialLoading(!isNotesToSelf && !(getMemoryMessages(conversationId)?.length));
             setMessageStatuses({});
             setPinnedMessages([]);
             setMessage('');
@@ -1531,11 +1539,23 @@ const Conversation = () => {
         if (!isNotesToSelf) {
             getCachedMessages(conversationId).then((cached) => {
                 if (cached.length > 0 && isMountedRef.current) {
+                    hasSyncedMessagesRef.current = true;
                     setMessages((prev) => (prev.length === 0 ? cached : prev));
+                    setIsInitialLoading(false);
                 }
             }).catch(() => {});
+        } else {
+            setIsInitialLoading(false);
         }
     }, [conversationId, isNotesToSelf]);
+
+    useEffect(() => {
+        if (!conversationId || isNotesToSelf || !hasSyncedMessagesRef.current) return;
+        const timer = setTimeout(() => {
+            setCachedMessages(conversationId, messages);
+        }, 120);
+        return () => clearTimeout(timer);
+    }, [messages, conversationId, isNotesToSelf]);
 
     // ── Scheduled Messages (Feature 3: Backend Worker + Local Notes Fallback) ──
     const [scheduledMessages, setScheduledMessages] = useState<{ id: string; conversationId: string; content: string; sendAt: number; label: string }[]>([]);
@@ -1950,9 +1970,13 @@ const Conversation = () => {
             if (connected) {
                 flushOutbox();
                 flushOfflineScheduled();
+                if (!isNotesToSelf && conversationId) {
+                    getMessages({ conversationId, page: 0, limit: 30 });
+                    markAsRead(conversationId as string);
+                }
             }
         });
-    }, [flushOutbox, flushOfflineScheduled]);
+    }, [flushOutbox, flushOfflineScheduled, conversationId, isNotesToSelf]);
 
     const handleScroll = (event: any) => {
         const offsetY = event.nativeEvent.contentOffset.y;
@@ -2082,7 +2106,7 @@ const Conversation = () => {
                 const resolvedSilent = Boolean(ack.data.isSilent || tempMsg?.isSilent || localSilent);
                 const deduped = prev.filter(m => m.id !== ack.data.id);
                 const updated = deduped.map(m => m.id === ack.clientId ? { ...ack.data, isSilent: resolvedSilent, conversationId: conversationId as string } : m);
-                setCachedMessages(conversationId as string, updated);
+                hasSyncedMessagesRef.current = true;
                 return updated;
             });
             setMessageStatuses(prev => {
@@ -2130,6 +2154,11 @@ const Conversation = () => {
         onChecklistUpdated(checklistUpdatedHandler);
         onMessageAck(messageAckHandler);
 
+        initialLoadTimerRef.current = setTimeout(() => {
+            setIsInitialLoading(false);
+            initialLoadTimerRef.current = null;
+        }, 4500);
+
         getMessages({
             conversationId,
             page: 0,
@@ -2139,6 +2168,10 @@ const Conversation = () => {
         markAsRead(conversationId as string);
 
         return () => {
+            if (initialLoadTimerRef.current) {
+                clearTimeout(initialLoadTimerRef.current);
+                initialLoadTimerRef.current = null;
+            }
             newMessage(newMessageHandler, true);
             getMessages(messagesHandler, true);
             onTyping(typingHandler, true);
@@ -2384,16 +2417,12 @@ const Conversation = () => {
             }
         }
 
+        hasSyncedMessagesRef.current = true;
         setMessages((prev) => {
             if (prev.some((msg) => msg.id === normalizedMessage.id)) {
                 return prev;
             }
-
-            const next = [normalizedMessage, ...prev];
-            if (!isNotesToSelf) {
-                setCachedMessages(conversationId as string, next);
-            }
-            return next;
+            return [normalizedMessage, ...prev];
         });
 
         setTypingUser(null);
@@ -2402,8 +2431,14 @@ const Conversation = () => {
 
     const messagesHandler = (res: ResponseProps) => {
         if ((res as any).conversationId && (res as any).conversationId !== conversationId) return;
+        if (initialLoadTimerRef.current) {
+            clearTimeout(initialLoadTimerRef.current);
+            initialLoadTimerRef.current = null;
+        }
+        setIsInitialLoading(false);
         if (res.success) {
             const incomingPage = res.page ?? 0;
+            hasSyncedMessagesRef.current = true;
             setHasMore(res.hasMore ?? false);
             setIsLoadingMore(false);
             isLoadingMoreRef.current = false;
@@ -2449,15 +2484,11 @@ const Conversation = () => {
                     if (minLoadedPageRef.current > 0) {
                         const existingIds = new Set(prev.map(m => m.id));
                         const newer = pageMessages.filter(m => !existingIds.has(m.id));
-                        const merged = [...newer, ...prev];
-                        setCachedMessages(conversationId as string, merged);
-                        return merged;
+                        return [...newer, ...prev];
                     }
                     const pageIds = new Set(pageMessages.map(m => m.id));
                     const pendingLocal = prev.filter(m => m.id?.startsWith("temp_") && !pageIds.has(m.id));
-                    const merged = [...pendingLocal, ...pageMessages];
-                    setCachedMessages(conversationId as string, pageMessages);
-                    return merged;
+                    return [...pendingLocal, ...pageMessages];
                 });
                 if (minLoadedPageRef.current > 0) {
                     minLoadedPageRef.current = 0;
@@ -2831,7 +2862,7 @@ const Conversation = () => {
                 }
             }, 320);
         }
-        if (!currentUser || !conversationId || isNotesToSelf) return;
+        if (!currentUser || !conversationId || isNotesToSelf || !isSocketConnected()) return;
         if (!isTypingRef.current) {
             isTypingRef.current = true;
             emitTyping({ conversationId: conversationId as string, senderId: currentUser.id as string, senderName: currentUser.name });
@@ -2839,7 +2870,9 @@ const Conversation = () => {
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => {
             isTypingRef.current = false;
-            emitStopTyping({ conversationId: conversationId as string, senderId: currentUser.id as string });
+            if (isSocketConnected()) {
+                emitStopTyping({ conversationId: conversationId as string, senderId: currentUser.id as string });
+            }
         }, 2000);
     }, [conversationId, currentUser, isNotesToSelf]);
 
@@ -3758,6 +3791,8 @@ const Conversation = () => {
         }
     }, [highlightMessageId, messages.length]);
 
+    const selectedIdSet = useMemo(() => new Set(selectedMsgIds), [selectedMsgIds]);
+
     // ── Memoized Message Item Renderer (High Performance) ──
     const renderMessageItem = useCallback(({ item }: { item: MessageListItem }) => {
         if (item.type === 'separator') {
@@ -3783,7 +3818,7 @@ const Conversation = () => {
                 onLocalDelete={handleLocalDelete}
                 onLocalEdit={handleLocalEdit}
                 isSelectionMode={isSelectionMode}
-                isSelected={selectedMsgIds.includes(item.message.id)}
+                isSelected={selectedIdSet.has(item.message.id)}
                 onToggleSelect={handleToggleSelectMsg}
                 onEnterSelectionMode={handleEnterSelectionMode}
                 onToggleChecklistLocal={handleToggleChecklistLocal}
@@ -3804,7 +3839,7 @@ const Conversation = () => {
         handleLocalDelete,
         handleLocalEdit,
         isSelectionMode,
-        selectedMsgIds,
+        selectedIdSet,
         handleToggleSelectMsg,
         handleEnterSelectionMode,
         handleToggleChecklistLocal,
@@ -4050,13 +4085,22 @@ const Conversation = () => {
                         ListFooterComponent={isLoadingMore ? <LoadMoreIndicator /> : null}
                         ListHeaderComponent={typingUser ? <TypingIndicator name={typingUser} isDirect={isDirect as boolean} /> : null}
                         ListEmptyComponent={
-                            <View style={styles.emptyState}>
-                                <View style={styles.emptyIconWrap}>
-                                    <Icons.ChatTeardropDots size={verticalScale(30)} color={colors.neutral300} weight="regular" />
+                            isInitialLoading ? (
+                                <View style={styles.emptyState}>
+                                    <Loading />
+                                    <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._8 }}>
+                                        Loading messages...
+                                    </Typo>
                                 </View>
-                                <Typo size={14} fontWeight="600" color={colors.neutral500}>No messages yet</Typo>
-                                <Typo size={12} color={colors.neutral400} style={{ textAlign: 'center' }}>Say hello to start the conversation!</Typo>
-                            </View>
+                            ) : (
+                                <View style={styles.emptyState}>
+                                    <View style={styles.emptyIconWrap}>
+                                        <Icons.ChatTeardropDots size={verticalScale(30)} color={colors.neutral300} weight="regular" />
+                                    </View>
+                                    <Typo size={14} fontWeight="600" color={colors.neutral500}>No messages yet</Typo>
+                                    <Typo size={12} color={colors.neutral400} style={{ textAlign: 'center' }}>Say hello to start the conversation!</Typo>
+                                </View>
+                            )
                         }
                     />
 

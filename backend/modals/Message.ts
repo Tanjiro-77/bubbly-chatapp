@@ -146,6 +146,8 @@ const messageSchema = new mongoose.Schema({
 });
 
 messageSchema.index({ conversationId: 1, createdAt: -1 });
+messageSchema.index({ conversationId: 1, isDeleted: 1, type: 1, createdAt: -1 });
+messageSchema.index({ conversationId: 1, expiresAt: 1, createdAt: -1 });
 messageSchema.index({ content: "text" });
 messageSchema.index({ "attachmentMeta.mimeType": 1 });
 messageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, partialFilterExpression: { expiresAt: { $type: "date" } } });

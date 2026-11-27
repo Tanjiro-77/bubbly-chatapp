@@ -19,6 +19,15 @@ const memContacts = new Map<string, any[]>();
 const MAX_CACHED_CONVERSATIONS = 80;
 const MAX_CACHED_MESSAGES_PER_CHAT = 40;
 const MAX_CACHED_CONTACTS = 150;
+let activeStorySessionGroups: StoryGroupProps[] | null = null;
+
+export function setActiveStorySession(groups: StoryGroupProps[]): void {
+    activeStorySessionGroups = Array.isArray(groups) ? groups : null;
+}
+
+export function getActiveStorySession(): StoryGroupProps[] | null {
+    return activeStorySessionGroups;
+}
 
 function convKey(userId: string) {
     return `${PREFIX}convs_${userId}`;

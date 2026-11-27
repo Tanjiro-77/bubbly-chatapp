@@ -27,7 +27,7 @@ import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { formatRichPreviewText, getNicknamesMap } from "../../utils/featureStorage";
 import { hapticTap } from "../../utils/haptics";
-import { getConversations } from "../../socket/socketEvents";
+import { getConversations, isSocketConnected, onSocketConnectionChange } from "../../socket/socketEvents";
 import { useAuth } from "../../contexts/authContext";
 import { ConversationProps, ResponseProps } from "../../types";
 
@@ -76,15 +76,23 @@ const VaultScreen = () => {
         };
         init();
 
+        let fetched = false;
         const convHandler = (res: ResponseProps) => {
+            fetched = true;
             if (res.success && Array.isArray(res.data)) {
                 setAllConversations(res.data);
             }
         };
         getConversations(convHandler);
-        getConversations(null);
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && !fetched) getConversations(null);
+        });
+        if (isSocketConnected()) {
+            getConversations(null);
+        }
 
         return () => {
+            unsubConn();
             getConversations(convHandler, true);
         };
     }, [PIN_STORAGE_KEY, LOCKED_CHATS_KEY]);

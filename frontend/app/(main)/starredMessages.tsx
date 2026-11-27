@@ -25,7 +25,7 @@ import BackButton from "../../components/BackButton";
 import Avatar from "../../components/Avatar";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
-import { getStarredMessages, toggleStarMessage, isSocketConnected } from "../../socket/socketEvents";
+import { getStarredMessages, toggleStarMessage, isSocketConnected, onSocketConnectionChange } from "../../socket/socketEvents";
 import { formatRichPreviewText } from "../../utils/featureStorage";
 import { hapticTap } from "../../utils/haptics";
 import moment from "moment";
@@ -102,12 +102,10 @@ const StarredMessagesScreen = () => {
     const [isSearching, setIsSearching] = useState(false);
 
     useEffect(() => {
-        if (!isSocketConnected()) {
-            setLoading(false);
-            return;
-        }
+        let fetched = false;
         const timer = setTimeout(() => setLoading(false), 6000);
         const handler = (res: any) => {
+            fetched = true;
             clearTimeout(timer);
             setLoading(false);
             if (res?.success && Array.isArray(res.data)) {
@@ -116,10 +114,18 @@ const StarredMessagesScreen = () => {
         };
 
         getStarredMessages(handler);
-        getStarredMessages({ page: 1, limit: 50 });
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && !fetched) {
+                getStarredMessages({ page: 1, limit: 50 });
+            }
+        });
+        if (isSocketConnected()) {
+            getStarredMessages({ page: 1, limit: 50 });
+        }
 
         return () => {
             clearTimeout(timer);
+            unsubConn();
             getStarredMessages(handler, true);
         };
     }, []);

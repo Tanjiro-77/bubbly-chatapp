@@ -430,8 +430,9 @@ const CallScreen = () => {
 
     const toggleMute = () => {
         hapticTap("heavy");
-        engineRef.current?.muteLocalAudioStream(!isMuted);
-        setIsMuted(prev => !prev);
+        const next = !isMuted;
+        engineRef.current?.muteLocalAudioStream(next);
+        setIsMuted(next);
     };
 
     const toggleVideo = () => {

@@ -115,25 +115,45 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 socket.emit("addGroupMembers", { success: false, msg: "Group participant limit reached (max 500)" });
                 return;
             }
+            const existingSet = new Set(conversation.participants.map((p) => p.toString()));
+            const unreadSet = new Set((conversation.unreadCounts || []).map((u) => u.userId.toString()));
+            const candidateIds = Array.from(
+                new Set(
+                    ids
+                        .map((id: any) => String(id))
+                        .filter((id) => isValidObjectId(id) && !existingSet.has(id))
+                )
+            );
+
+            const foundUsers = candidateIds.length > 0
+                ? await User.find({ _id: { $in: candidateIds } }).select("_id name").lean()
+                : [];
             const addedUsers: { id: string; name: string }[] = [];
-            for (const id of ids) {
-                if (!isValidObjectId(id)) continue;
-                if (conversation.participants.some((p) => p.toString() === id.toString())) continue;
-                const user = await User.findById(id).select("name").lean();
-                if (!user) continue; // Ensure user exists before adding
-                conversation.participants.push(id as any);
-                conversation.unreadCounts.push({ userId: id as any, count: 0 });
-                addedUsers.push({ id: id.toString(), name: user.name || "a member" });
+            for (const user of foundUsers) {
+                const uid = user._id.toString();
+                conversation.participants.push(uid as any);
+                if (!unreadSet.has(uid)) {
+                    conversation.unreadCounts.push({ userId: uid as any, count: 0 });
+                    unreadSet.add(uid);
+                }
+                addedUsers.push({ id: uid, name: user.name || "a member" });
             }
-            await conversation.save();
-            for (const added of addedUsers) {
-                await createSystemMessage(data.conversationId, userId, "member_added", {
-                    targetId: added.id,
-                    content: `${socket.data.name} added ${added.name}`,
-                });
-                const targetSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === added.id);
-                targetSockets.forEach((s) => s.join(data.conversationId));
-                io.to(userRoom(added.id)).emit("addedToGroup", { conversationId: data.conversationId });
+
+            if (addedUsers.length > 0) {
+                await conversation.save();
+                const addedSet = new Set(addedUsers.map((a) => a.id));
+                for (const s of io.sockets?.sockets?.values?.() || []) {
+                    if (addedSet.has(s.data.userId)) s.join(data.conversationId);
+                }
+                await Promise.all(
+                    addedUsers.map(async (added) => {
+                        await createSystemMessage(data.conversationId, userId, "member_added", {
+                            targetId: added.id,
+                            content: `${socket.data.name} added ${added.name}`,
+                        });
+                        io.to(userRoom(added.id)).emit("addedToGroup", { conversationId: data.conversationId });
+                    })
+                );
             }
             const populated = await Conversation.findById(conversation._id)
                 .populate({ path: "participants", select: "name avatar email" })
@@ -192,8 +212,9 @@ export function registerGroupEvents(io: SocketIOServer, socket: Socket) {
                 .lean();
             emitGroupUpdate(io, populated);
             // Evict removed member's active sockets from the room immediately
-            const targetSockets = Array.from(io.sockets.sockets.values()).filter((s) => s.data.userId === data.targetUserId);
-            targetSockets.forEach((s) => s.leave(data.conversationId));
+            for (const s of io.sockets?.sockets?.values?.() || []) {
+                if (s.data.userId === data.targetUserId) s.leave(data.conversationId);
+            }
             io.to(userRoom(data.targetUserId)).emit("removedFromGroup", { conversationId: data.conversationId });
             socket.emit("removeGroupMember", { success: true, data: populated });
         } catch (error: any) {

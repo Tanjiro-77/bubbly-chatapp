@@ -25,6 +25,7 @@ import {
     replyToStory, isSocketConnected,
 } from '../../socket/socketEvents';
 import { StoryGroupProps } from '../../types';
+import { getActiveStorySession, getMemoryStories } from '../../utils/chatCache';
 import { hapticTap } from '../../utils/haptics';
 import moment from 'moment';
 
@@ -42,13 +43,13 @@ const StoryViewer = () => {
     const allGroups: StoryGroupProps[] = useMemo(() => {
         try {
             const raw = Array.isArray(storiesData) ? storiesData[0] : storiesData;
-            if (!raw || typeof raw !== 'string') return [];
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-    }, [storiesData]);
+            if (raw && typeof raw === 'string') {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch {}
+        return getActiveStorySession() ?? getMemoryStories(currentUser?.id) ?? [];
+    }, [storiesData, currentUser?.id]);
 
     const parsedGroupIdx = parseInt(Array.isArray(groupIndexParam) ? groupIndexParam[0] : (groupIndexParam as string), 10) || 0;
     const [currentGroupIndex, setCurrentGroupIndex] = useState(parsedGroupIdx);

@@ -15,7 +15,7 @@ import { scale, verticalScale } from "../../utils/styling";
 import { hapticTap } from "../../utils/haptics";
 import { getCachedContacts, getMemoryContacts, setCachedContacts } from "../../utils/chatCache";
 import { InviteRecipient, InviteSheetModal } from "../../components/InviteSheetModal";
-import { getContacts, newConversation, isSocketConnected } from "../../socket/socketEvents";
+import { getContacts, newConversation, isSocketConnected, onSocketConnectionChange } from "../../socket/socketEvents";
 import { uploadFileToCloudinary } from "../../services/imageService";
 import { fetchDevicePhoneContacts, syncContactsWithBackend, findUserByPhoneNumber, PhoneContactItem, MatchedContactItem } from "../../services/contactService";
 import * as Icons from 'phosphor-react-native';
@@ -93,6 +93,7 @@ const NewConversationModal = () => {
     }, [syncCacheKey, token]);
 
     useEffect(() => {
+        let receivedContacts = false;
         if (currentUser?.id) {
             getCachedContacts(currentUser.id).then((cached) => {
                 if (cached.length > 0) {
@@ -100,12 +101,24 @@ const NewConversationModal = () => {
                 }
             }).catch(() => {});
         }
-        getContacts(processGetContacts);
+        const handleContactsPayload = (res: any) => {
+            receivedContacts = true;
+            processGetContacts(res);
+        };
+        getContacts(handleContactsPayload);
         newConversation(processNewConversation);
-        getContacts(null);
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && !receivedContacts) {
+                getContacts(null);
+            }
+        });
+        if (isSocketConnected()) {
+            getContacts(null);
+        }
 
         return () => {
-            getContacts(processGetContacts, true);
+            unsubConn();
+            getContacts(handleContactsPayload, true);
             newConversation(processNewConversation, true);
             if (createTimeoutRef.current) {
                 clearTimeout(createTimeoutRef.current);

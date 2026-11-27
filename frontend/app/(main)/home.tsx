@@ -74,7 +74,9 @@ const Home = () => {
     const { user: currentUser } = useAuth();
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState<boolean>(
+        () => !(getMemoryConversations(currentUser?.id)?.length)
+    );
     const [refreshing, setRefreshing] = useState(false);
     const [socketOnline, setSocketOnline] = useState(isSocketConnected());
     const [selectedTab, setSelectedTab] = useState(0); // 0 = direct, 1 = group
@@ -90,6 +92,13 @@ const Home = () => {
     const [lockedChatIds, setLockedChatIds] = useState<string[]>([]);
     const typingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const didInitialMountFetchRef = useRef(false);
+    const conversationsRef = useRef(conversations);
+    conversationsRef.current = conversations;
+    const currentUserIdRef = useRef(currentUser?.id);
+    currentUserIdRef.current = currentUser?.id;
+    const hasLoadedConvsRef = useRef((getMemoryConversations(currentUser?.id)?.length ?? 0) > 0);
+    const initialLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [actionConv, setActionConv] = useState<ConversationProps | null>(null);
     const [actionModalVisible, setActionModalVisible] = useState(false);
@@ -206,10 +215,20 @@ const Home = () => {
         if (currentUser?.id) {
             getCachedConversations(currentUser.id).then((cached) => {
                 if (cached.length > 0) {
+                    hasLoadedConvsRef.current = true;
                     setConversations((prev) => (prev.length === 0 ? cached : prev));
+                    setLoading(false);
+                    if (initialLoadTimerRef.current) {
+                        clearTimeout(initialLoadTimerRef.current);
+                        initialLoadTimerRef.current = null;
+                    }
                 }
             }).catch(() => {});
         }
+        initialLoadTimerRef.current = setTimeout(() => {
+            setLoading(false);
+            initialLoadTimerRef.current = null;
+        }, 4000);
         getConversations(null);
 
         return () => {
@@ -225,9 +244,19 @@ const Home = () => {
             onAddedToGroup(addedToGroupHandler, true);
             onRemovedFromGroup(removedFromGroupHandler, true);
             unsubConnection();
+            if (initialLoadTimerRef.current) clearTimeout(initialLoadTimerRef.current);
+            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
             Object.values(typingTimers.current).forEach(t => clearTimeout(t));
         };
     }, [loadDraftsAndLocked]);
+
+    useEffect(() => {
+        if (!hasLoadedConvsRef.current || !currentUser?.id) return;
+        const timer = setTimeout(() => {
+            setCachedConversations(currentUser.id, conversations);
+        }, 120);
+        return () => clearTimeout(timer);
+    }, [conversations, currentUser?.id]);
 
     const typingHandler = (data: { conversationId: string; senderName?: string; senderId?: string }) => {
         if (data?.conversationId && data.senderId !== currentUser?.id) {
@@ -263,30 +292,32 @@ const Home = () => {
     const newMessageHandler = (res: ResponseProps) => {
         if (res.success && res.data) {
             const conversationId = res.data.conversationId;
-            setConversations((prev) => {
-                const exists = prev.some((item) => item._id == conversationId);
-                if (!exists) {
-                    getConversations(null);
-                    return prev;
-                }
-                const next = prev.map((item) => {
-                    if (item._id == conversationId) {
-                        return { ...item, lastMessage: res.data };
-                    }
-                    return item;
-                });
-                setCachedConversations(currentUser?.id, next);
-                return next;
-            });
+            const exists = conversationsRef.current.some((item) => item._id == conversationId);
+            if (!exists) {
+                getConversations(null);
+                return;
+            }
+            setConversations((prev) =>
+                prev.map((item) => (item._id == conversationId ? { ...item, lastMessage: res.data } : item))
+            );
         }
     };
 
     const processConversations = (res: ResponseProps) => {
+        if (refreshTimerRef.current) {
+            clearTimeout(refreshTimerRef.current);
+            refreshTimerRef.current = null;
+        }
+        if (initialLoadTimerRef.current) {
+            clearTimeout(initialLoadTimerRef.current);
+            initialLoadTimerRef.current = null;
+        }
         setRefreshing(false);
         setLoading(false);
         if (res.success && Array.isArray(res.data)) {
+            hasLoadedConvsRef.current = true;
             setConversations(res.data);
-            setCachedConversations(currentUser?.id, res.data);
+            setCachedConversations(currentUserIdRef.current, res.data);
         }
     };
 
@@ -295,39 +326,35 @@ const Home = () => {
         setRefreshing(true);
         getConversations(null);
         getStories(null);
-        setTimeout(() => setRefreshing(false), 3500);
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = setTimeout(() => {
+            setRefreshing(false);
+            refreshTimerRef.current = null;
+        }, 3500);
     }, []);
 
     const newConversationHandler = (res: ResponseProps) => {
         if (res.success && res.data?._id) {
             setConversations((prev) => {
                 const exists = prev.some((c) => c._id === res.data._id);
-                const next = exists
+                return exists
                     ? prev.map((c) => (c._id === res.data._id ? { ...c, ...res.data } : c))
                     : [res.data, ...prev];
-                setCachedConversations(currentUser?.id, next);
-                return next;
             });
         }
     };
 
     const deleteConversationHandler = (res: any) => {
         if (res?.success && res.data?.conversationId) {
-            setConversations(prev => {
-                const next = prev.filter(c => c._id !== res.data.conversationId);
-                setCachedConversations(currentUser?.id, next);
-                return next;
-            });
+            setConversations(prev => prev.filter(c => c._id !== res.data.conversationId));
         }
     };
 
     const groupUpdatedHandler = (res: any) => {
         if (res?.success && res.data?._id) {
-            setConversations(prev => {
-                const next = prev.map(c => (c._id === res.data._id ? { ...c, ...res.data } : c));
-                setCachedConversations(currentUser?.id, next);
-                return next;
-            });
+            setConversations(prev =>
+                prev.map(c => (c._id === res.data._id ? { ...c, ...res.data } : c))
+            );
         }
     };
 
@@ -1231,6 +1258,9 @@ const Home = () => {
                             loading ? (
                                 <View style={styles.centerState}>
                                     <Loading />
+                                    <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._10 }}>
+                                        Loading conversations...
+                                    </Typo>
                                 </View>
                             ) : searchQuery.trim() ? (
                                 <View style={styles.emptyState}>

@@ -26,7 +26,7 @@ import Typo from "../../components/Typo";
 import BackButton from "../../components/BackButton";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
-import { getMessages, isSocketConnected } from "../../socket/socketEvents";
+import { getMessages, isSocketConnected, onSocketConnectionChange } from "../../socket/socketEvents";
 import { MessageProps, ResponseProps } from "../../types";
 import { hapticTap } from "../../utils/haptics";
 import moment from "moment";
@@ -52,14 +52,16 @@ const SharedMediaScreen = () => {
 
     useEffect(() => {
         const convIdStr = Array.isArray(conversationId) ? conversationId[0] : conversationId;
-        if (!convIdStr || !isSocketConnected()) {
+        if (!convIdStr) {
             setLoading(false);
             return;
         }
 
+        let fetched = false;
         const timer = setTimeout(() => setLoading(false), 6000);
         const handler = (res: ResponseProps) => {
             if ((res as any).conversationId && (res as any).conversationId !== convIdStr) return;
+            fetched = true;
             clearTimeout(timer);
             setLoading(false);
             if (res.success) {
@@ -69,10 +71,18 @@ const SharedMediaScreen = () => {
         };
 
         getMessages(handler);
-        getMessages({ conversationId: convIdStr, page: 0, limit: 50 });
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && !fetched) {
+                getMessages({ conversationId: convIdStr, page: 0, limit: 50 });
+            }
+        });
+        if (isSocketConnected()) {
+            getMessages({ conversationId: convIdStr, page: 0, limit: 50 });
+        }
 
         return () => {
             clearTimeout(timer);
+            unsubConn();
             getMessages(handler, true);
         };
     }, [conversationId]);

@@ -408,7 +408,6 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
     const [currentTime, setCurrentTime] = useState(0);
     const [totalDuration, setTotalDuration] = useState(voiceDuration);
     const [showTranscript, setShowTranscript] = useState(false);
-    const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
     const player = useAudioPlayer(voiceUrl, { updateInterval: 200 });
     const status = useAudioPlayerStatus(player);
     const BARS = [3, 5, 8, 6, 10, 7, 4, 9, 6, 8, 5, 7, 10, 4, 6, 8, 5, 9, 7, 4, 6, 8, 10, 5, 7];
@@ -438,7 +437,7 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
             setCurrentTime(Math.max(0, status.currentTime || 0));
             if (status.duration > 0) setTotalDuration(Math.floor(status.duration));
         }
-        if (status.didJustFinish) { setIsPlaying(false); setCurrentTime(0); clearProgressInterval(); }
+        if (status.didJustFinish) { setIsPlaying(false); setCurrentTime(0); }
     }, [status.playing, status.isLoaded, status.currentTime, status.duration, status.didJustFinish, loadFailed]);
 
     useEffect(() => {
@@ -464,13 +463,8 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
     const dot2Style = useAnimatedStyle(() => ({ transform: [{ scaleY: dot2.value }] }));
     const dot3Style = useAnimatedStyle(() => ({ transform: [{ scaleY: dot3.value }] }));
 
-    const clearProgressInterval = () => {
-        if (progressInterval.current) { clearInterval(progressInterval.current); progressInterval.current = null; }
-    };
-
     useEffect(() => {
         return () => {
-            clearProgressInterval();
             try {
                 if (player && (player as any).playing) {
                     player.pause();
@@ -479,21 +473,9 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
         };
     }, []);
 
-    const startProgressTracking = () => {
-        clearProgressInterval();
-        progressInterval.current = setInterval(() => {
-            if (!player.isLoaded) return;
-            const nextTime = Math.max(0, player.currentTime || 0);
-            setCurrentTime(nextTime);
-            if (!player.playing && player.duration > 0 && nextTime >= player.duration) {
-                setIsPlaying(false); setCurrentTime(0); clearProgressInterval();
-            }
-        }, 200);
-    };
-
     const handlePlayPause = async () => {
         try {
-            if (isPlaying) { player.pause(); setIsPlaying(false); clearProgressInterval(); return; }
+            if (isPlaying) { player.pause(); setIsPlaying(false); return; }
             setIsLoading(!player.isLoaded);
             await setAudioModeAsync({ playsInSilentMode: true });
             if (status.didJustFinish || (totalDuration > 0 && currentTime >= totalDuration - 0.2)) {
@@ -502,10 +484,9 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
             }
             player.play();
             setIsLoading(false); setIsPlaying(true);
-            startProgressTracking();
         } catch (error) {
             console.log("Voice playback error:", error);
-            setIsLoading(false); setIsPlaying(false); clearProgressInterval();
+            setIsLoading(false); setIsPlaying(false);
         }
     };
 
@@ -2083,6 +2064,15 @@ const MessageItem = ({
     const [isLocalSilent, setIsLocalSilent] = useState(false);
     const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    useEffect(() => {
+        return () => {
+            if (pendingTimerRef.current) {
+                clearTimeout(pendingTimerRef.current);
+                pendingTimerRef.current = null;
+            }
+        };
+    }, []);
+
     const parsedRichCard = useMemo(() => parseBubblyCard(item.content), [item.content]);
     const isChecklistMessage = item.type === "checklist" || parsedRichCard?.kind === "checklist";
     const resolvedChecklist = useMemo(() => {
@@ -3129,7 +3119,9 @@ export default React.memo(MessageItem, (prev, next) => {
         prev.bubbleCornerStyle === next.bubbleCornerStyle &&
         prev.chatFontScale === next.chatFontScale &&
         prev.item.checklist === next.item.checklist &&
-        prev.item.isSilent === next.item.isSilent
+        prev.item.isSilent === next.item.isSilent &&
+        prev.item.replyTo?.id === next.item.replyTo?.id &&
+        prev.item.replyTo?.content === next.item.replyTo?.content
     );
 });
 

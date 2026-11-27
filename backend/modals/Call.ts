@@ -31,5 +31,7 @@ const callSchema = new mongoose.Schema({
 
 callSchema.index({ callerId: 1, createdAt: -1 });
 callSchema.index({ calleeId: 1, createdAt: -1 });
+callSchema.index({ calleeId: 1, status: 1, createdAt: -1 });
+callSchema.index({ callerId: 1, status: 1, createdAt: -1 });
 
 export default mongoose.model("Call", callSchema);

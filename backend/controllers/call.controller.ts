@@ -131,24 +131,23 @@ export const getCallHistory = async (req: Request, res: Response) => {
         const page = Number.isInteger(rawPage) && rawPage >= 0 ? rawPage : 0;
         const limit = 20;
 
-        const calls = await Call.find({
-            $or: [{ callerId: userId }, { calleeId: userId }],
-        })
+        const filter = { $or: [{ callerId: userId }, { calleeId: userId }] };
+        const rawCalls = await Call.find(filter)
             .populate("callerId", "name avatar")
             .populate("calleeId", "name avatar")
             .populate("conversationId", "_id")
             .sort({ createdAt: -1 })
             .skip(page * limit)
-            .limit(limit);
+            .limit(limit + 1)
+            .lean();
 
-        const total = await Call.countDocuments({
-            $or: [{ callerId: userId }, { calleeId: userId }],
-        });
+        const hasMore = rawCalls.length > limit;
+        const calls = hasMore ? rawCalls.slice(0, limit) : rawCalls;
 
         return res.status(200).json({
             success: true,
             data: calls,
-            hasMore: (page + 1) * limit < total,
+            hasMore,
             page,
         });
     } catch (error: any) {

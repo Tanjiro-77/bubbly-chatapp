@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/authContext';
 import {
     getStories, onStoryFeedUpdated, onSocketConnectionChange,
 } from '../socket/socketEvents';
-import { getCachedStories, getMemoryStories, setCachedStories } from '../utils/chatCache';
+import { getCachedStories, getMemoryStories, setActiveStorySession, setCachedStories } from '../utils/chatCache';
 import { StoryGroupProps, ResponseProps } from '../types';
 
 const StoryBar = () => {
@@ -65,23 +65,34 @@ const StoryBar = () => {
         };
     }, [currentUser?.id, fetchStories]);
 
-    const openStory = (groupIndex: number) => {
+    const openStory = useCallback((groupIndex: number) => {
         hapticTap("medium");
+        setActiveStorySession(storyGroups);
         router.push({
             pathname: '/(main)/storyViewer',
             params: {
-                groupIndex: groupIndex.toString(),
-                storiesData: JSON.stringify(storyGroups),
+                groupIndex: String(Math.max(0, groupIndex)),
             },
         });
-    };
+    }, [router, storyGroups]);
 
-    const { myStoryGroup, myStoryIndex, otherGroups } = useMemo(() => {
-        const myIdx = storyGroups.findIndex(g => g.user.id === currentUser?.id);
+    const { myStoryGroup, myStoryIndex, otherGroups, indexByUserId } = useMemo(() => {
+        let myIdx = -1;
+        const others: StoryGroupProps[] = [];
+        const indexMap = new Map<string, number>();
+        storyGroups.forEach((g, idx) => {
+            indexMap.set(g.user.id, idx);
+            if (g.user.id === currentUser?.id) {
+                myIdx = idx;
+            } else {
+                others.push(g);
+            }
+        });
         return {
             myStoryGroup: myIdx !== -1 ? storyGroups[myIdx] : undefined,
             myStoryIndex: myIdx,
-            otherGroups: storyGroups.filter(g => g.user.id !== currentUser?.id),
+            otherGroups: others,
+            indexByUserId: indexMap,
         };
     }, [storyGroups, currentUser?.id]);
 
@@ -152,8 +163,8 @@ const StoryBar = () => {
                 </TouchableOpacity>
 
                 {/* ── Other Stories ── */}
-                {otherGroups.map((group, index) => {
-                    const realIndex = storyGroups.findIndex(g => g.user.id === group.user.id);
+                {otherGroups.map((group) => {
+                    const realIndex = indexByUserId.get(group.user.id) ?? 0;
                     return (
                         <TouchableOpacity
                             key={group.user.id}

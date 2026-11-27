@@ -100,6 +100,7 @@ const SplashScreen = () => {
 
   const trackWidth = Math.min(scale(190), width * 0.52);
   const indicatorWidth = scale(74);
+  const shimmerEndX = trackWidth + scale(12);
 
   const shimmerBarStyle = useAnimatedStyle(() => ({
     transform: [
@@ -107,7 +108,7 @@ const SplashScreen = () => {
         translateX: interpolate(
           shimmerProgress.value,
           [0, 1],
-          [-indicatorWidth, trackWidth + scale(12)]
+          [-indicatorWidth, shimmerEndX]
         ),
       },
     ],
@@ -171,34 +172,33 @@ const SplashScreen = () => {
 
           <View style={styles.staticOrbitHalo} />
 
-          <Animated.View
-            entering={FadeInDown.duration(340).springify().damping(16)}
-            style={emblemAnimatedStyle}
-          >
-            <LinearGradient
-              colors={[
-                "rgba(250, 204, 21, 0.55)",
-                "rgba(245, 158, 11, 0.18)",
-                "rgba(255, 255, 255, 0.08)",
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoFrameGradient}
-            >
-              <View style={styles.logoCardInner}>
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.08)", "transparent"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0.9, y: 0.9 }}
-                  style={styles.logoCardGloss}
-                />
-                <Image
-                  source={require("../assets/images/splash-icon.png")}
-                  style={styles.logo}
-                  resizeMode="contain"
-                />
-              </View>
-            </LinearGradient>
+          <Animated.View entering={FadeInDown.duration(340).springify().damping(16)}>
+            <Animated.View style={emblemAnimatedStyle}>
+              <LinearGradient
+                colors={[
+                  "rgba(250, 204, 21, 0.55)",
+                  "rgba(245, 158, 11, 0.18)",
+                  "rgba(255, 255, 255, 0.08)",
+                ]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.logoFrameGradient}
+              >
+                <View style={styles.logoCardInner}>
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.08)", "transparent"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.9, y: 0.9 }}
+                    style={styles.logoCardGloss}
+                  />
+                  <Image
+                    source={require("../assets/images/splash-icon.png")}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                </View>
+              </LinearGradient>
+            </Animated.View>
           </Animated.View>
         </View>
 

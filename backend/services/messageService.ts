@@ -77,11 +77,25 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     if (replyTo && !isValidObjectId(replyTo)) {
         throw new Error("Invalid reply target");
     }
-    // Validate replyTo belongs to same conversation before saving (prevents cross-conversation IDOR)
+    // Validate and hydrate replyTo in one lookup (prevents cross-conversation IDOR & duplicate query)
     let validatedReplyTo: string | null = null;
+    let replyToData: any = null;
     if (replyTo) {
-        const replyCheck = await Message.findById(replyTo).select("conversationId").lean();
-        validatedReplyTo = (replyCheck && replyCheck.conversationId.toString() === conversationId.toString()) ? replyTo : null;
+        const replyMsg = await Message.findById(replyTo)
+            .select("conversationId content senderId voiceUrl type isDeleted")
+            .populate<{ senderId: { _id: string; name: string } }>({ path: "senderId", select: "name" })
+            .lean();
+        if (replyMsg && replyMsg.conversationId.toString() === conversationId.toString()) {
+            validatedReplyTo = replyTo;
+            replyToData = {
+                id: replyMsg._id,
+                content: (replyMsg as any).isDeleted ? "This message was deleted" : replyMsg.content,
+                senderName: (replyMsg.senderId as { _id: string; name: string } | null)?.name || "Unknown",
+                voiceUrl: (replyMsg as any).isDeleted ? null : (replyMsg.voiceUrl || null),
+                type: (replyMsg as any).isDeleted ? "text" : (replyMsg as any).type,
+                isDeleted: (replyMsg as any).isDeleted || false,
+            };
+        }
     }
     if (storyId && !isValidObjectId(storyId)) {
         throw new Error("Invalid story reference");
@@ -181,23 +195,6 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         checklist: sanitizedChecklist,
         expiresAt,
     });
-
-    let replyToData = null;
-    if (validatedReplyTo) {
-        const replyMsg = await Message.findById(validatedReplyTo)
-            .populate<{ senderId: { _id: string; name: string } }>({ path: "senderId", select: "name" })
-            .lean();
-        if (replyMsg) {
-            replyToData = {
-                id: replyMsg._id,
-                content: (replyMsg as any).isDeleted ? "This message was deleted" : replyMsg.content,
-                senderName: (replyMsg.senderId as { _id: string; name: string } | null)?.name || "Unknown",
-                voiceUrl: (replyMsg as any).isDeleted ? null : (replyMsg.voiceUrl || null),
-                type: (replyMsg as any).isDeleted ? "text" : ((replyMsg as any).type),
-                isDeleted: (replyMsg as any).isDeleted || false,
-            };
-        }
-    }
 
     let sender = input.sender;
     if (!sender) {

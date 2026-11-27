@@ -99,6 +99,14 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 if (data.theme.bubbleStyle && allowedBubbleStyles.includes(data.theme.bubbleStyle)) update["theme.bubbleStyle"] = data.theme.bubbleStyle;
             }
             const user = await User.findByIdAndUpdate(userId, { $set: update }, { new: true, runValidators: true }).select("-password");
+            if (user?.privacy) {
+                socket.data.privacy = user.privacy;
+                for (const s of io.sockets?.sockets?.values?.() || []) {
+                    if (s.data?.userId === userId) {
+                        s.data.privacy = user.privacy;
+                    }
+                }
+            }
             socket.emit("updatePrivacy", { success: true, data: { privacy: user?.privacy, theme: user?.theme } });
         } catch (error: any) {
             socket.emit("updatePrivacy", { success: false, msg: error.message || "Failed to update privacy" });
@@ -434,7 +442,9 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 .populate({ path: "userId", select: "name avatar privacy blockedUsers" })
                 .lean();
 
-            const grouped: Record<string, any> = {};
+            const visibleStories: any[] = [];
+            const ownViewerIds = new Set<string>();
+
             for (const story of stories) {
                 const author: any = story.userId;
                 if (!author?._id) continue;
@@ -446,6 +456,25 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 if (authorId !== userId && author.privacy?.storyPrivacy === "contacts" && !directPartnerIds.has(authorId)) {
                     continue;
                 }
+                visibleStories.push(story);
+                if (authorId === userId) {
+                    for (const v of story.viewers || []) {
+                        const vid = (v as any)?.userId?.toString?.();
+                        if (vid) ownViewerIds.add(vid);
+                    }
+                }
+            }
+
+            // Single batched User lookup instead of 1 query per own story (eliminates N+1)
+            const viewerUsers = ownViewerIds.size > 0
+                ? await User.find({ _id: { $in: Array.from(ownViewerIds) } }).select("name avatar").lean()
+                : [];
+            const viewerMap = new Map(viewerUsers.map((u) => [u._id.toString(), u]));
+
+            const grouped: Record<string, any> = {};
+            for (const story of visibleStories) {
+                const author: any = story.userId;
+                const authorId = author._id.toString();
                 if (!grouped[authorId]) {
                     grouped[authorId] = {
                         user: { id: authorId, name: author.name, avatar: author.avatar },
@@ -455,7 +484,16 @@ export function registerAppEvents(io: SocketIOServer, socket: Socket) {
                 }
                 const seen = (story.viewers || []).some((v: any) => v.userId.toString() === userId);
                 const enrichedViewers = authorId === userId
-                    ? await hydrateStoryViewers(story.viewers || [])
+                    ? (story.viewers || []).map((v: any) => {
+                        const vid = v.userId?.toString?.() || String(v.userId || "");
+                        const profile = viewerMap.get(vid);
+                        return {
+                            ...v,
+                            userId: vid,
+                            name: profile?.name || "",
+                            avatar: profile?.avatar || "",
+                        };
+                    })
                     : [];
                 const sanitizedStory = { ...story, viewers: enrichedViewers };
                 grouped[authorId].stories.push({ ...sanitizedStory, seen });

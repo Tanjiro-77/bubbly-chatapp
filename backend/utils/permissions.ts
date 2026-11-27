@@ -25,13 +25,18 @@ export function isGroupAdmin(conversation: any, userId: string) {
 }
 
 export async function areBlocked(userA: string, userB: string): Promise<boolean> {
-    const [a, b] = await Promise.all([
-        User.findById(userA).select("blockedUsers").lean(),
-        User.findById(userB).select("blockedUsers").lean(),
-    ]);
+    const idA = userA?.toString();
+    const idB = userB?.toString();
+    if (!idA || !idB || idA === idB) return false;
+    const users = await User.find({ _id: { $in: [idA, idB] } })
+        .select("_id blockedUsers")
+        .lean();
+    if (users.length < 2) return false;
+    const a = users.find((u) => u._id.toString() === idA);
+    const b = users.find((u) => u._id.toString() === idB);
     if (!a || !b) return false;
-    const aBlocked = (a.blockedUsers || []).some((id: Types.ObjectId) => id.toString() === userB);
-    const bBlocked = (b.blockedUsers || []).some((id: Types.ObjectId) => id.toString() === userA);
+    const aBlocked = (a.blockedUsers || []).some((id: Types.ObjectId) => id.toString() === idB);
+    const bBlocked = (b.blockedUsers || []).some((id: Types.ObjectId) => id.toString() === idA);
     return aBlocked || bBlocked;
 }
 

@@ -1,6 +1,5 @@
 import { Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { AuthRequest } from "./auth";
+import { AuthRequest, extractBearerUser } from "./auth";
 
 /**
  * Optional authentication middleware:
@@ -8,32 +7,10 @@ import { AuthRequest } from "./auth";
  * If not provided or invalid, proceeds without error so unauthenticated crashes/bugs can still be reported.
  */
 export function optionalAuthMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
-    const header = req.headers.authorization;
-    const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
-
-    if (!token) {
-        return next();
+    const result = extractBearerUser(req.headers.authorization);
+    if (result.ok) {
+        req.user = result.user;
+        req.userId = result.user.id;
     }
-
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-        return next();
-    }
-
-    try {
-        const decoded = jwt.verify(token, secret, {
-            algorithms: ["HS256"],
-        }) as {
-            user?: { id?: string; name?: string; email?: string; avatar?: string };
-        };
-
-        if (decoded && typeof decoded === "object" && decoded.user?.id) {
-            req.user = decoded.user as { id: string; name: string; email: string; avatar?: string };
-            req.userId = decoded.user.id;
-        }
-    } catch {
-        // Token was invalid or expired; continue as guest
-    }
-
     next();
 }

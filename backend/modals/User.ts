@@ -85,5 +85,6 @@ const userSchema = new Schema<UserProps>({
 });
 
 userSchema.index({ name: "text", email: "text" });
+userSchema.index({ pushTokens: 1 });
 
 export default model<UserProps>("User", userSchema);

@@ -12,6 +12,8 @@ import { registerUser, googleAuth } from "../controllers/auth.controller";
 import { registerChatEvents } from "../socket/chatEvents";
 import { registerGroupEvents } from "../socket/groupEvents";
 import { registerAppEvents } from "../socket/appEvents";
+import SavedMessage from "../modals/SavedMessage";
+import { areBlocked } from "../utils/permissions";
 
 class MockSocket extends EventEmitter {
     id = "sock_test_1";
@@ -318,5 +320,145 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
         assert.equal(msgDoc.checklist, undefined);
         assert.equal(msgDoc.callMeta, undefined);
         assert.equal(msgDoc.isPinned, false);
+    });
+
+    test("areBlocked batches both user lookups into one query and short-circuits self checks", async () => {
+        const origUserFind = User.find;
+        cleanups.push(() => {
+            (User as any).find = origUserFind;
+        });
+
+        let findCallCount = 0;
+        (User as any).find = () => {
+            findCallCount += 1;
+            return {
+                select: () => ({
+                    lean: async () => [
+                        { _id: "507f1f77bcf86cd799439021", blockedUsers: ["507f1f77bcf86cd799439022"] },
+                        { _id: "507f1f77bcf86cd799439022", blockedUsers: [] },
+                    ],
+                }),
+            };
+        };
+
+        assert.equal(await areBlocked("507f1f77bcf86cd799439021", "507f1f77bcf86cd799439021"), false);
+        assert.equal(findCallCount, 0);
+
+        assert.equal(await areBlocked("507f1f77bcf86cd799439021", "507f1f77bcf86cd799439022"), true);
+        assert.equal(findCallCount, 1);
+    });
+
+    test("getMessages uses limit+1 pagination without countDocuments on normal page fetches", async () => {
+        const origConvFindOne = Conversation.findOne;
+        const origConvFindById = Conversation.findById;
+        const origMsgFind = Message.find;
+        const origMsgCount = Message.countDocuments;
+        const origSavedFind = SavedMessage.find;
+        cleanups.push(() => {
+            (Conversation as any).findOne = origConvFindOne;
+            (Conversation as any).findById = origConvFindById;
+            (Message as any).find = origMsgFind;
+            (Message as any).countDocuments = origMsgCount;
+            (SavedMessage as any).find = origSavedFind;
+        });
+
+        (Conversation as any).findOne = () => ({ select: () => ({ lean: async () => ({ _id: "507f1f77bcf86cd799439013" }) }) });
+        (Conversation as any).findById = () => ({
+            select: () => ({
+                populate: () => ({ lean: async () => ({ pinnedMessages: [] }) }),
+            }),
+        });
+        (Message as any).countDocuments = async () => {
+            throw new Error("countDocuments should not be called without aroundMessageId");
+        };
+        const makeMsg = (i: number) => ({
+            _id: `507f1f77bcf86cd7994390${String(10 + i).padStart(2, "0")}`,
+            conversationId: "507f1f77bcf86cd799439013",
+            senderId: { _id: "507f1f77bcf86cd799439011", name: "Tester", avatar: "" },
+            content: `msg ${i}`,
+            type: "text",
+            createdAt: new Date(),
+        });
+        (Message as any).find = () => ({
+            sort: () => ({
+                skip: () => ({
+                    limit: (n: number) => ({
+                        populate: () => ({
+                            populate: () => ({
+                                lean: async () => {
+                                    assert.equal(n, 3);
+                                    return [makeMsg(1), makeMsg(2), makeMsg(3)];
+                                },
+                            }),
+                        }),
+                    }),
+                }),
+            }),
+        });
+        (SavedMessage as any).find = () => ({ select: () => ({ lean: async () => [] }) });
+
+        const fakeIo: any = { to: () => ({ emit: () => {} }), sockets: { sockets: new Map() } };
+        const sock = new MockSocket();
+        registerChatEvents(fakeIo, sock as any);
+
+        await sock.trigger("getMessages", {
+            conversationId: "507f1f77bcf86cd799439013",
+            page: 0,
+            limit: 2,
+        });
+
+        const res = sock.emitted.find((e) => e.event === "getMessages")?.payload;
+        assert.equal(res?.success, true);
+        assert.equal(res?.data?.length, 2);
+        assert.equal(res?.hasMore, true);
+    });
+
+    test("updatePrivacy syncs socket privacy cache and typing uses room/privacy cache without DB hits", async () => {
+        const origUserFindByIdAndUpdate = User.findByIdAndUpdate;
+        const origConvExists = Conversation.exists;
+        const origUserFindById = User.findById;
+        cleanups.push(() => {
+            (User as any).findByIdAndUpdate = origUserFindByIdAndUpdate;
+            (Conversation as any).exists = origConvExists;
+            (User as any).findById = origUserFindById;
+        });
+
+        (User as any).findByIdAndUpdate = () => ({
+            select: async () => ({
+                privacy: { typingIndicators: false, readReceipts: true },
+                theme: { mode: "light" },
+            }),
+        });
+        (Conversation as any).exists = async () => {
+            throw new Error("Conversation.exists should be skipped when socket is in room");
+        };
+        (User as any).findById = () => {
+            throw new Error("User.findById should be skipped when privacy is cached on socket");
+        };
+
+        const convId = "507f1f77bcf86cd799439013";
+        const sock: any = new MockSocket();
+        sock.rooms = new Set([convId]);
+        sock.to = () => ({
+            emit: (ev: string, payload: any) => sock.emitted.push({ event: `room:${ev}`, payload }),
+        });
+
+        const fakeIo: any = {
+            to: () => ({ emit: () => {} }),
+            sockets: { sockets: new Map([["sock_test_1", sock]]) },
+        };
+
+        registerAppEvents(fakeIo, sock);
+        registerChatEvents(fakeIo, sock);
+
+        await sock.trigger("updatePrivacy", { typingIndicators: false });
+        assert.equal(sock.data.privacy?.typingIndicators, false);
+
+        await sock.trigger("typing", { conversationId: convId, senderId: sock.data.userId, senderName: "Tester" });
+        assert.equal(sock.emitted.some((e: any) => e.event === "room:typing"), false);
+
+        sock.data.privacy.typingIndicators = true;
+        await sock.trigger("typing", { conversationId: convId, senderId: sock.data.userId, senderName: "Tester" });
+        assert.equal(sock.emitted.some((e: any) => e.event === "room:typing"), true);
     });
 });

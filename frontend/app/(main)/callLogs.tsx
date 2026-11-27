@@ -64,6 +64,7 @@ const CallLogsScreen = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "missed">("all");
     const redialTargetRef = useRef<{ name: string; avatar: string } | null>(null);
+    const redialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const fetchHistory = useCallback(async () => {
         try {
@@ -84,6 +85,10 @@ const CallLogsScreen = () => {
 
         const ringingHandler = (data: any) => {
             if (!redialTargetRef.current) return;
+            if (redialTimerRef.current) {
+                clearTimeout(redialTimerRef.current);
+                redialTimerRef.current = null;
+            }
             const target = redialTargetRef.current;
             redialTargetRef.current = null;
             router.push({
@@ -101,6 +106,10 @@ const CallLogsScreen = () => {
 
         const failedHandler = (data: any) => {
             if (!redialTargetRef.current) return;
+            if (redialTimerRef.current) {
+                clearTimeout(redialTimerRef.current);
+                redialTimerRef.current = null;
+            }
             redialTargetRef.current = null;
             BubblyAlert.alert("Call Failed", data?.msg || "User is currently busy.");
         };
@@ -109,6 +118,11 @@ const CallLogsScreen = () => {
         onCallFailed(failedHandler);
 
         return () => {
+            if (redialTimerRef.current) {
+                clearTimeout(redialTimerRef.current);
+                redialTimerRef.current = null;
+            }
+            redialTargetRef.current = null;
             onCallRinging(ringingHandler, true);
             onCallFailed(failedHandler, true);
         };
@@ -133,6 +147,11 @@ const CallLogsScreen = () => {
             name: target.name || "Contact",
             avatar: target.avatar || "",
         };
+        if (redialTimerRef.current) clearTimeout(redialTimerRef.current);
+        redialTimerRef.current = setTimeout(() => {
+            redialTargetRef.current = null;
+            redialTimerRef.current = null;
+        }, 12000);
 
         hapticTap("boom");
         callInvite({

@@ -63,10 +63,16 @@ export const getAgoraToken = async (
 export const getCallHistory = async (page = 0) => {
     try {
         const token = await AsyncStorage.getItem("token");
+        if (!token) {
+            return { success: false, msg: "Authentication token not found" };
+        }
         const response = await fetch(`${API_URL}/api/call/history?page=${page}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
         const data = await response.json();
+        if (!response.ok) {
+            return { success: false, msg: data?.msg || "Failed to get call history" };
+        }
         return data;
     } catch (error) {
         return { success: false, msg: "Failed to get call history" };

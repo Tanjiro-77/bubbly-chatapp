@@ -73,14 +73,16 @@ export function intializeSocket(server: any): SocketIOServer {
         registerAppEvents(io, socket);
 
         try {
-            const [, conversations, me] = await Promise.all([
-                User.findByIdAndUpdate(userId, {
-                    isOnline: true,
-                    lastSeen: null,
-                }),
+            const [me, conversations] = await Promise.all([
+                User.findByIdAndUpdate(
+                    userId,
+                    { isOnline: true, lastSeen: null },
+                    { new: true }
+                ).select("privacy isOnline lastSeen").lean(),
                 Conversation.find({ participants: userId }).select("_id type").lean(),
-                User.findById(userId).select("privacy isOnline lastSeen").lean(),
             ]);
+
+            socket.data.privacy = me?.privacy || {};
 
             conversations.forEach(conversation => {
                 socket.join(conversation._id.toString());
@@ -143,10 +145,14 @@ export function intializeSocket(server: any): SocketIOServer {
             });
 
             // Only mark offline if user has no remaining connected sockets
-            const remainingSockets = Array.from(io.sockets.sockets.values()).filter(
-                (s) => s.id !== socket.id && s.data.userId === userId
-            );
-            if (remainingSockets.length > 0) {
+            let hasOtherSocket = false;
+            for (const s of io.sockets.sockets.values()) {
+                if (s.id !== socket.id && s.data.userId === userId) {
+                    hasOtherSocket = true;
+                    break;
+                }
+            }
+            if (hasOtherSocket) {
                 return;
             }
 
