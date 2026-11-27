@@ -112,7 +112,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e2aae6de-a401-4f84-9225-aaf63af53f14"
+        "projectId": "881b5abb-ca66-4fca-83e3-b616aa9f0862"
       }
     },
     "runtimeVersion": {
@@ -121,6 +121,6 @@
     "updates": {
       "url": "https://u.expo.dev/881b5abb-ca66-4fca-83e3-b616aa9f0862"
     },
-    "owner": "arnav77"
+    "owner": "arnav5569"
   }
 }
