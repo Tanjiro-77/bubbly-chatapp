@@ -36,6 +36,8 @@ jobs:
         working-directory: frontend
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+          JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=1024m"
           EXPO_PUBLIC_API_URL: https://bubbly-chatapp.onrender.com
           EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME: dafb37rpe
           EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET: images_1
