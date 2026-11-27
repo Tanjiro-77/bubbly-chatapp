@@ -79,7 +79,7 @@ const Login = () => {
         <ScreenWrapper showPattern={true}>
             <KeyboardAvoidingView
                 style={styles.container}
-                behavior={Platform.OS === 'ios' ? "padding" : "height"}
+                behavior="padding"
             >
 
                     {/* Header */}

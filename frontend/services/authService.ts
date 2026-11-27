@@ -1,12 +1,14 @@
 import axios from 'axios';
 import { API_URL } from "../constants";
 
+const AUTH_TIMEOUT_MS = 35000;
+
 export const login = async (email: string, password: string): Promise<{ token: string }> => {
     try {
         const response = await axios.post(`${API_URL}/auth/login`, {
             email,
             password
-        })
+        }, { timeout: AUTH_TIMEOUT_MS })
         return response.data;
     } catch (error: any) {
         const msg = error?.response?.data?.msg || "Login failed";
@@ -19,7 +21,7 @@ export const loginWithPhone = async (phoneNumber: string, password: string): Pro
         const response = await axios.post(`${API_URL}/auth/phone/login`, {
             phoneNumber,
             password,
-        });
+        }, { timeout: AUTH_TIMEOUT_MS });
         return response.data;
     } catch (error: any) {
         const msg = error?.response?.data?.msg || "Phone login failed";
@@ -35,7 +37,7 @@ export const register = async (email: string, password: string, name: string, av
             name,
             avatar,
             ...(phoneNumber ? { phoneNumber } : {}),
-        });
+        }, { timeout: AUTH_TIMEOUT_MS });
         return response.data;
     } catch (error: any) {
         const msg = error?.response?.data?.msg || "Registration failed";
@@ -57,7 +59,7 @@ export const registerWithPhone = async (
             name,
             avatar,
             ...(email ? { email } : {}),
-        });
+        }, { timeout: AUTH_TIMEOUT_MS });
         return response.data;
     } catch (error: any) {
         const msg = error?.response?.data?.msg || "Phone registration failed";
@@ -74,7 +76,7 @@ export const googleLogin = async (payload: {
     googleId?: string;
 }): Promise<{ token: string; user?: any }> => {
     try {
-        const response = await axios.post(`${API_URL}/auth/google`, payload);
+        const response = await axios.post(`${API_URL}/auth/google`, payload, { timeout: AUTH_TIMEOUT_MS });
         return response.data;
     } catch (error: any) {
         console.log("googleLogin error:", error?.response?.data || error.message);

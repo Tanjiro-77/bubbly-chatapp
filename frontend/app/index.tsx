@@ -11,9 +11,7 @@ import {
 import Animated, {
   Easing,
   FadeIn,
-  FadeInDown,
   FadeInUp,
-  FadeOut,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -23,79 +21,17 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import * as Icons from "phosphor-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radius } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import { hapticTap } from "../utils/haptics";
 import {
-  forceBypassWarmup,
   getWarmupSnapshot,
   startServerWarmup,
   subscribeWarmupState,
   WarmupSnapshot,
 } from "../utils/serverWarmup";
-
-const SPLASH_SHOWCASE = [
-  {
-    emoji: "💬",
-    tag: "INSTANT MESSAGING",
-    title: "Zero-Lag Real-Time Chats",
-    desc: "Optimistic delivery, live typing waves, and smart read receipts.",
-  },
-  {
-    emoji: "💸",
-    tag: "SHARED EXPENSES",
-    title: "In-Chat Split Bills",
-    desc: "Split dinners or trips inside chat and mark shares settled in one tap.",
-  },
-  {
-    emoji: "🎨",
-    tag: "CREATIVE STUDIO",
-    title: "Hand-Drawn Sketch Doodles",
-    desc: "Draw quick vector doodles with custom inks right inside any chat.",
-  },
-  {
-    emoji: "🙈",
-    tag: "PLAYFUL PRIVACY",
-    title: "Tap-to-Reveal Spoilers",
-    desc: "Wrap ||secrets|| to keep surprises hidden until friends tap to reveal.",
-  },
-  {
-    emoji: "📞",
-    tag: "VOICE & VIDEO",
-    title: "Crystal-Clear HD Calls",
-    desc: "Jump into voice or video calls with 4 signature custom ringtones.",
-  },
-  {
-    emoji: "🔐",
-    tag: "CHAT VAULT",
-    title: "4-Digit PIN & Privacy Shield",
-    desc: "Hide sensitive conversations and mask previews on lock screens.",
-  },
-  {
-    emoji: "📝",
-    tag: "ORGANIZED",
-    title: "Private Chat Scratchpads",
-    desc: "Jot private sticky notes and checklists per chat without clutter.",
-  },
-  {
-    emoji: "🔥",
-    tag: "DAILY PULSE",
-    title: "Messaging Streaks & Quiet Hours",
-    desc: "Track your daily streak and auto-silence alerts overnight.",
-  },
-] as const;
-
-const STATUS_HINTS = [
-  "Waking up cloud servers...",
-  "Brewing warm Honey Amber bubbles...",
-  "Preparing HD voice & video channels...",
-  "Syncing encrypted keys & vaults...",
-  "Polishing real-time chat rooms...",
-  "Almost ready — thanks for hanging tight!",
-];
 
 const BUBBLES: {
   size: number;
@@ -104,13 +40,16 @@ const BUBBLES: {
   delayMs: number;
   durationMs: number;
   driftY: number;
+  maxOpacity: number;
 }[] = [
-  { size: 68, leftPct: "8%", bottomPct: "16%", delayMs: 0, durationMs: 5200, driftY: -36 },
-  { size: 42, leftPct: "82%", bottomPct: "22%", delayMs: 500, durationMs: 4400, driftY: -30 },
-  { size: 28, leftPct: "22%", bottomPct: "68%", delayMs: 900, durationMs: 4800, driftY: -24 },
-  { size: 52, leftPct: "72%", bottomPct: "70%", delayMs: 300, durationMs: 5600, driftY: -32 },
-  { size: 22, leftPct: "48%", bottomPct: "12%", delayMs: 1200, durationMs: 4200, driftY: -26 },
-  { size: 36, leftPct: "14%", bottomPct: "44%", delayMs: 700, durationMs: 5000, driftY: -28 },
+  { size: 74, leftPct: "6%", bottomPct: "14%", delayMs: 0, durationMs: 5400, driftY: -40, maxOpacity: 0.16 },
+  { size: 46, leftPct: "82%", bottomPct: "20%", delayMs: 450, durationMs: 4500, driftY: -32, maxOpacity: 0.2 },
+  { size: 28, leftPct: "20%", bottomPct: "68%", delayMs: 850, durationMs: 4900, driftY: -26, maxOpacity: 0.14 },
+  { size: 56, leftPct: "74%", bottomPct: "72%", delayMs: 250, durationMs: 5700, driftY: -34, maxOpacity: 0.17 },
+  { size: 20, leftPct: "48%", bottomPct: "10%", delayMs: 1100, durationMs: 4200, driftY: -28, maxOpacity: 0.18 },
+  { size: 38, leftPct: "12%", bottomPct: "44%", delayMs: 650, durationMs: 5100, driftY: -30, maxOpacity: 0.15 },
+  { size: 30, leftPct: "86%", bottomPct: "48%", delayMs: 950, durationMs: 4700, driftY: -28, maxOpacity: 0.15 },
+  { size: 16, leftPct: "34%", bottomPct: "82%", delayMs: 550, durationMs: 4300, driftY: -22, maxOpacity: 0.16 },
 ];
 
 const FloatingBubble = ({
@@ -120,6 +59,7 @@ const FloatingBubble = ({
   delayMs,
   durationMs,
   driftY,
+  maxOpacity,
 }: (typeof BUBBLES)[number]) => {
   const progress = useSharedValue(0);
 
@@ -136,10 +76,10 @@ const FloatingBubble = ({
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [12, driftY]) },
-      { scale: interpolate(progress.value, [0, 0.5, 1], [0.9, 1.08, 0.92]) },
+      { translateY: interpolate(progress.value, [0, 1], [14, driftY]) },
+      { scale: interpolate(progress.value, [0, 0.5, 1], [0.86, 1.12, 0.9]) },
     ],
-    opacity: interpolate(progress.value, [0, 0.5, 1], [0.06, 0.18, 0.06]),
+    opacity: interpolate(progress.value, [0, 0.5, 1], [0.04, maxOpacity, 0.04]),
   }));
 
   return (
@@ -166,17 +106,18 @@ const SplashScreen = () => {
   const { width } = useWindowDimensions();
 
   const [warmup, setWarmup] = useState<WarmupSnapshot>(() => getWarmupSnapshot());
-  const [showcaseIdx, setShowcaseIdx] = useState(0);
-  const [hintIdx, setHintIdx] = useState(0);
 
   const auraBreath = useSharedValue(0);
   const pulseOuter = useSharedValue(0);
   const pulseInner = useSharedValue(0);
-  const orbitSpin = useSharedValue(0);
+  const orbitOuter = useSharedValue(0);
+  const orbitInner = useSharedValue(360);
   const shimmerProgress = useSharedValue(0);
+  const logoSheen = useSharedValue(0);
   const emblemFloat = useSharedValue(0);
   const emblemTapScale = useSharedValue(1);
-  const warmupProgress = useSharedValue(0.05);
+  const dotPulse = useSharedValue(0);
+  const warmupProgress = useSharedValue(0.06);
 
   useEffect(() => {
     startServerWarmup();
@@ -185,40 +126,61 @@ const SplashScreen = () => {
 
   useEffect(() => {
     auraBreath.value = withRepeat(
-      withTiming(1, { duration: 2800, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
 
     pulseOuter.value = withRepeat(
-      withTiming(1, { duration: 2400, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 2300, easing: Easing.out(Easing.cubic) }),
       -1,
       false
     );
 
     pulseInner.value = withDelay(
-      800,
+      750,
       withRepeat(
-        withTiming(1, { duration: 2400, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 2300, easing: Easing.out(Easing.cubic) }),
         -1,
         false
       )
     );
 
-    orbitSpin.value = withRepeat(
-      withTiming(360, { duration: 14000, easing: Easing.linear }),
+    orbitOuter.value = withRepeat(
+      withTiming(360, { duration: 12000, easing: Easing.linear }),
+      -1,
+      false
+    );
+
+    orbitInner.value = withRepeat(
+      withTiming(0, { duration: 16000, easing: Easing.linear }),
       -1,
       false
     );
 
     shimmerProgress.value = withRepeat(
-      withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.quad) }),
+      withTiming(1, { duration: 1450, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      false
+    );
+
+    logoSheen.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.cubic) }),
+        withDelay(1800, withTiming(0, { duration: 0 }))
+      ),
       -1,
       false
     );
 
     emblemFloat.value = withRepeat(
-      withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+
+    dotPulse.value = withRepeat(
+      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
@@ -227,62 +189,66 @@ const SplashScreen = () => {
       duration: 40000,
       easing: Easing.out(Easing.cubic),
     });
-
-    const showcaseTimer = setInterval(() => {
-      setShowcaseIdx((prev) => (prev + 1) % SPLASH_SHOWCASE.length);
-    }, 5000);
-
-    const hintTimer = setInterval(() => {
-      setHintIdx((prev) => (prev + 1) % STATUS_HINTS.length);
-    }, 4200);
-
-    return () => {
-      clearInterval(showcaseTimer);
-      clearInterval(hintTimer);
-    };
   }, []);
 
   useEffect(() => {
     if (warmup.serverResponded || warmup.status !== "warming") {
       warmupProgress.value = withTiming(1, {
-        duration: 360,
+        duration: 320,
         easing: Easing.out(Easing.cubic),
       });
     }
   }, [warmup.serverResponded, warmup.status]);
 
   const auraAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(auraBreath.value, [0, 1], [0.92, 1.1]) }],
-    opacity: interpolate(auraBreath.value, [0, 1], [0.28, 0.6]),
+    transform: [{ scale: interpolate(auraBreath.value, [0, 1], [0.9, 1.14]) }],
+    opacity: interpolate(auraBreath.value, [0, 1], [0.3, 0.68]),
   }));
 
   const outerRingAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pulseOuter.value, [0, 1], [0.95, 1.66]) }],
-    opacity: interpolate(pulseOuter.value, [0, 0.2, 1], [0, 0.42, 0]),
+    transform: [{ scale: interpolate(pulseOuter.value, [0, 1], [0.95, 1.75]) }],
+    opacity: interpolate(pulseOuter.value, [0, 0.2, 1], [0, 0.48, 0]),
   }));
 
   const innerRingAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pulseInner.value, [0, 1], [0.95, 1.46]) }],
-    opacity: interpolate(pulseInner.value, [0, 0.2, 1], [0, 0.52, 0]),
+    transform: [{ scale: interpolate(pulseInner.value, [0, 1], [0.95, 1.52]) }],
+    opacity: interpolate(pulseInner.value, [0, 0.2, 1], [0, 0.56, 0]),
   }));
 
-  const orbitAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${orbitSpin.value}deg` }],
+  const orbitOuterStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${orbitOuter.value}deg` }],
+  }));
+
+  const orbitInnerStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${orbitInner.value}deg` }],
   }));
 
   const emblemAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: interpolate(emblemFloat.value, [0, 1], [3, -5]) },
-      { scale: interpolate(emblemFloat.value, [0, 1], [1, 1.02]) * emblemTapScale.value },
+      { translateY: interpolate(emblemFloat.value, [0, 1], [4, -6]) },
+      { scale: interpolate(emblemFloat.value, [0, 1], [0.99, 1.03]) * emblemTapScale.value },
     ],
   }));
 
-  const trackWidth = Math.min(scale(250), width * 0.68);
-  const indicatorWidth = scale(76);
+  const sheenAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: interpolate(logoSheen.value, [0, 1], [-scale(140), scale(140)]) },
+      { rotate: "24deg" },
+    ],
+    opacity: interpolate(logoSheen.value, [0, 0.5, 1], [0, 0.32, 0]),
+  }));
+
+  const dotAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(dotPulse.value, [0, 1], [0.85, 1.28]) }],
+    opacity: interpolate(dotPulse.value, [0, 1], [0.65, 1]),
+  }));
+
+  const trackWidth = Math.min(scale(220), width * 0.58);
+  const indicatorWidth = scale(72);
   const shimmerEndX = trackWidth + scale(12);
 
   const fillBarStyle = useAnimatedStyle(() => ({
-    width: `${Math.round(warmupProgress.value * 1000) / 10}%`,
+    width: warmupProgress.value * trackWidth,
   }));
 
   const shimmerBarStyle = useAnimatedStyle(() => ({
@@ -297,23 +263,16 @@ const SplashScreen = () => {
     ],
   }));
 
-  const heroOrbSize = Math.min(scale(290), width * 0.78);
-  const activeCard = SPLASH_SHOWCASE[showcaseIdx];
+  const heroOrbSize = Math.min(scale(310), width * 0.82);
   const isReady = warmup.serverResponded || warmup.status === "ready";
-  const showBypassPill = !isReady && warmup.elapsedMs >= 6500;
 
   const handleEmblemTap = () => {
     hapticTap("medium");
     emblemTapScale.value = withSequence(
-      withSpring(0.92, { damping: 10, stiffness: 280 }),
-      withSpring(1.04, { damping: 10, stiffness: 240 }),
-      withSpring(1, { damping: 12, stiffness: 200 })
+      withSpring(0.9, { damping: 10, stiffness: 300 }),
+      withSpring(1.06, { damping: 10, stiffness: 250 }),
+      withSpring(1, { damping: 12, stiffness: 210 })
     );
-  };
-
-  const handleNextShowcase = () => {
-    hapticTap("light");
-    setShowcaseIdx((prev) => (prev + 1) % SPLASH_SHOWCASE.length);
   };
 
   return (
@@ -324,9 +283,9 @@ const SplashScreen = () => {
         translucent
       />
 
-      {/* Obsidian + Warm Charcoal Layered Canvas */}
+      {/* Deep Obsidian + Honey Amber Gradient Canvas */}
       <LinearGradient
-        colors={["#090807", "#14110f", "#1c1917", "#0d0b0a"]}
+        colors={["#070605", "#120f0d", "#1b1612", "#0b0908"]}
         locations={[0, 0.35, 0.72, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -346,8 +305,8 @@ const SplashScreen = () => {
       {/* Top Radial Honey-Gold Ambient Vignette */}
       <LinearGradient
         colors={[
-          "rgba(250, 204, 21, 0.14)",
-          "rgba(245, 158, 11, 0.04)",
+          "rgba(250, 204, 21, 0.16)",
+          "rgba(245, 158, 11, 0.05)",
           "transparent",
         ]}
         style={styles.topGlowWash}
@@ -375,18 +334,24 @@ const SplashScreen = () => {
           <Animated.View style={[styles.pulseRingOuter, outerRingAnimatedStyle]} />
           <Animated.View style={[styles.pulseRingInner, innerRingAnimatedStyle]} />
 
-          <Animated.View style={[styles.orbitHaloRing, orbitAnimatedStyle]}>
-            <View style={styles.orbitSpark} />
+          {/* Outer Orbital Halo */}
+          <Animated.View style={[styles.orbitHaloOuter, orbitOuterStyle]}>
+            <View style={styles.orbitSparkPrimary} />
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.duration(340).springify().damping(16)}>
+          {/* Counter-Rotating Inner Orbital Halo */}
+          <Animated.View style={[styles.orbitHaloInner, orbitInnerStyle]}>
+            <View style={styles.orbitSparkSecondary} />
+          </Animated.View>
+
+          <Animated.View entering={FadeIn.duration(400)}>
             <TouchableOpacity activeOpacity={0.95} onPress={handleEmblemTap}>
               <Animated.View style={emblemAnimatedStyle}>
                 <LinearGradient
                   colors={[
-                    "rgba(250, 204, 21, 0.65)",
-                    "rgba(245, 158, 11, 0.22)",
-                    "rgba(255, 255, 255, 0.1)",
+                    "rgba(250, 204, 21, 0.78)",
+                    "rgba(245, 158, 11, 0.28)",
+                    "rgba(255, 255, 255, 0.14)",
                   ]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
@@ -394,11 +359,12 @@ const SplashScreen = () => {
                 >
                   <View style={styles.logoCardInner}>
                     <LinearGradient
-                      colors={["rgba(255,255,255,0.09)", "transparent"]}
+                      colors={["rgba(255,255,255,0.1)", "transparent"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 0.9, y: 0.9 }}
                       style={styles.logoCardGloss}
                     />
+                    <Animated.View style={[styles.logoSheenBeam, sheenAnimatedStyle]} />
                     <Image
                       source={require("../assets/images/splash-icon.png")}
                       style={styles.logo}
@@ -411,9 +377,9 @@ const SplashScreen = () => {
           </Animated.View>
         </View>
 
-        {/* Wordmark & Server Status Pill */}
+        {/* Clean Minimal Brand Wordmark */}
         <Animated.View
-          entering={FadeInUp.delay(60).duration(320)}
+          entering={FadeInUp.delay(80).duration(360)}
           style={styles.brandBlock}
         >
           <View style={styles.wordmarkRow}>
@@ -424,179 +390,52 @@ const SplashScreen = () => {
             >
               BUBBLY
             </Text>
-            <View
+            <Animated.View
               style={[
                 styles.amberLiveDot,
+                dotAnimatedStyle,
                 isReady && { backgroundColor: "#22c55e", shadowColor: "#22c55e" },
               ]}
             />
           </View>
-
-          <Text
-            style={styles.brandSubtitle}
-            maxFontSizeMultiplier={1.25}
-            numberOfLines={1}
-          >
-            Connect beyond messages
-          </Text>
-
-          <LinearGradient
-            colors={
-              isReady
-                ? ["rgba(34, 197, 94, 0.2)", "rgba(16, 185, 129, 0.08)"]
-                : ["rgba(250, 204, 21, 0.16)", "rgba(245, 158, 11, 0.06)"]
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[
-              styles.taglinePill,
-              isReady && { borderColor: "rgba(34, 197, 94, 0.35)" },
-            ]}
-          >
-            {isReady ? (
-              <Icons.CheckCircle size={13} color="#4ade80" weight="fill" />
-            ) : (
-              <Icons.Lightning size={12} color={colors.primary} weight="fill" />
-            )}
-            <Text
-              style={[styles.taglineText, isReady && { color: "#86efac" }]}
-              maxFontSizeMultiplier={1.25}
-              numberOfLines={1}
-            >
-              {isReady ? "Server Ready • Launching..." : "Fast  •  Private  •  Connected"}
-            </Text>
-          </LinearGradient>
         </Animated.View>
-
-        {/* Interactive Feature Showcase Carousel (Tap to explore!) */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={handleNextShowcase}
-          style={styles.showcaseTouchWrap}
-        >
-          <Animated.View
-            key={`card_${showcaseIdx}`}
-            entering={FadeIn.duration(360)}
-            exiting={FadeOut.duration(220)}
-            style={styles.showcaseCard}
-          >
-            <View style={styles.showcaseEmojiBox}>
-              <Text style={styles.showcaseEmoji}>{activeCard.emoji}</Text>
-            </View>
-            <View style={styles.showcaseTextWrap}>
-              <Text style={styles.showcaseTag} numberOfLines={1}>
-                {activeCard.tag}
-              </Text>
-              <Text style={styles.showcaseTitle} numberOfLines={1}>
-                {activeCard.title}
-              </Text>
-              <Text style={styles.showcaseDesc} numberOfLines={2}>
-                {activeCard.desc}
-              </Text>
-            </View>
-            <Icons.CaretRight size={14} color="rgba(255,255,255,0.4)" weight="bold" />
-          </Animated.View>
-
-          <View style={styles.dotsRow}>
-            {SPLASH_SHOWCASE.map((item, idx) => (
-              <View
-                key={item.tag}
-                style={[styles.dot, idx === showcaseIdx && styles.dotActive]}
-              />
-            ))}
-          </View>
-        </TouchableOpacity>
       </View>
 
-      {/* Bottom Smooth 40s Progress & Footer */}
+      {/* Bottom Minimal Animated Progress Bar (Zero Text Clutter) */}
       <Animated.View
-        entering={FadeInUp.delay(120).duration(300)}
+        entering={FadeInUp.delay(140).duration(340)}
         style={[
           styles.footerContainer,
-          { paddingBottom: Math.max(insets.bottom + verticalScale(16), verticalScale(28)) },
+          { paddingBottom: Math.max(insets.bottom + verticalScale(24), verticalScale(36)) },
         ]}
       >
-        <View style={styles.progressSection}>
-          <View style={[styles.progressTrack, { width: trackWidth }]}>
-            <Animated.View style={[styles.progressFillBar, fillBarStyle]}>
-              <LinearGradient
-                colors={[colors.primaryDark, colors.primary, "#fde047"]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-              />
-            </Animated.View>
-            <Animated.View
-              style={[
-                styles.progressSweepWrapper,
-                { width: indicatorWidth },
-                shimmerBarStyle,
-              ]}
-            >
-              <LinearGradient
-                colors={[
-                  "rgba(255, 255, 255, 0)",
-                  "rgba(255, 255, 255, 0.55)",
-                  "rgba(255, 255, 255, 0)",
-                ]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.progressSweepGradient}
-              />
-            </Animated.View>
-          </View>
-
-          <Animated.Text
-            key={`hint_${isReady ? "ready" : hintIdx}`}
-            entering={FadeIn.duration(260)}
-            style={styles.statusHintText}
-            maxFontSizeMultiplier={1.25}
-            numberOfLines={1}
-          >
-            {isReady ? "Connected! Opening your chats..." : STATUS_HINTS[hintIdx]}
-          </Animated.Text>
-
-          {showBypassPill && (
-            <Animated.View entering={FadeInUp.duration(280)}>
-              <TouchableOpacity
-                onPress={() => {
-                  hapticTap("medium");
-                  forceBypassWarmup();
-                }}
-                activeOpacity={0.75}
-                style={styles.bypassBtn}
-              >
-                <Text style={styles.bypassText}>Continue without waiting →</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
-        </View>
-
-        <View style={styles.footerMetaRow}>
-          <View style={styles.securityPill}>
-            <Icons.ShieldCheck
-              size={13}
-              color={colors.primary}
-              weight="fill"
+        <View style={[styles.progressTrack, { width: trackWidth }]}>
+          <Animated.View style={[styles.progressFillBar, fillBarStyle]}>
+            <LinearGradient
+              colors={[colors.primaryDark, colors.primary, "#fde047"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
             />
-            <Text
-              style={styles.footerText}
-              maxFontSizeMultiplier={1.25}
-              numberOfLines={1}
-            >
-              End-to-End Encrypted
-            </Text>
-          </View>
-
-          <View style={styles.versionBadge}>
-            <Text
-              style={styles.versionText}
-              maxFontSizeMultiplier={1.25}
-              numberOfLines={1}
-            >
-              v4.1.5
-            </Text>
-          </View>
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.progressSweepWrapper,
+              { width: indicatorWidth },
+              shimmerBarStyle,
+            ]}
+          >
+            <LinearGradient
+              colors={[
+                "rgba(255, 255, 255, 0)",
+                "rgba(255, 255, 255, 0.65)",
+                "rgba(255, 255, 255, 0)",
+              ]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.progressSweepGradient}
+            />
+          </Animated.View>
         </View>
       </Animated.View>
     </View>
@@ -608,7 +447,7 @@ export default SplashScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#090807",
+    backgroundColor: "#070605",
     justifyContent: "space-between",
     alignItems: "center",
     overflow: "hidden",
@@ -626,7 +465,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: "45%",
+    height: "48%",
   },
   centerStage: {
     flex: 1,
@@ -638,59 +477,79 @@ const styles = StyleSheet.create({
   emblemStage: {
     alignItems: "center",
     justifyContent: "center",
-    width: scale(205),
-    height: scale(205),
+    width: scale(220),
+    height: scale(220),
   },
   radialGlowImage: {
     position: "absolute",
   },
   pulseRingOuter: {
     position: "absolute",
-    width: scale(134),
-    height: scale(134),
+    width: scale(142),
+    height: scale(142),
     borderRadius: radius.full,
     borderWidth: 1.5,
-    borderColor: "rgba(250, 204, 21, 0.34)",
+    borderColor: "rgba(250, 204, 21, 0.36)",
   },
   pulseRingInner: {
     position: "absolute",
-    width: scale(124),
-    height: scale(124),
+    width: scale(130),
+    height: scale(130),
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.45)",
+    borderColor: "rgba(245, 158, 11, 0.46)",
   },
-  orbitHaloRing: {
+  orbitHaloOuter: {
     position: "absolute",
-    width: scale(152),
-    height: scale(152),
+    width: scale(168),
+    height: scale(168),
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.16)",
+    borderColor: "rgba(250, 204, 21, 0.18)",
     borderStyle: "dashed",
     alignItems: "center",
   },
-  orbitSpark: {
-    width: scale(8),
-    height: scale(8),
+  orbitHaloInner: {
+    position: "absolute",
+    width: scale(194),
+    height: scale(194),
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.12)",
+    alignItems: "center",
+  },
+  orbitSparkPrimary: {
+    width: scale(9),
+    height: scale(9),
     borderRadius: radius.full,
     backgroundColor: colors.primary,
-    marginTop: -scale(4),
+    marginTop: -scale(4.5),
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
+    shadowOpacity: 0.95,
+    shadowRadius: 8,
+  },
+  orbitSparkSecondary: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: radius.full,
+    backgroundColor: "#fde047",
+    marginTop: -scale(3),
+    shadowColor: "#fde047",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.85,
     shadowRadius: 6,
   },
   logoFrameGradient: {
-    width: scale(114),
-    height: scale(114),
+    width: scale(120),
+    height: scale(120),
     borderRadius: radius._30,
     padding: 1.5,
     shadowColor: "#facc15",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 16,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.36,
+    shadowRadius: 26,
+    elevation: 18,
   },
   logoCardInner: {
     flex: 1,
@@ -707,13 +566,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
+  logoSheenBeam: {
+    position: "absolute",
+    width: scale(46),
+    height: scale(200),
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+  },
   logo: {
-    width: scale(76),
-    height: scale(76),
+    width: scale(80),
+    height: scale(80),
   },
   brandBlock: {
     alignItems: "center",
-    marginTop: verticalScale(8),
+    marginTop: verticalScale(14),
   },
   wordmarkRow: {
     flexDirection: "row",
@@ -721,130 +586,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   brandTitle: {
-    fontSize: scale(35),
+    fontSize: scale(36),
     fontWeight: "900",
     color: colors.white,
-    letterSpacing: 7,
-    textShadowColor: "rgba(250, 204, 21, 0.16)",
+    letterSpacing: 8,
+    textShadowColor: "rgba(250, 204, 21, 0.2)",
     textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 14,
+    textShadowRadius: 16,
   },
   amberLiveDot: {
-    width: scale(8),
-    height: scale(8),
+    width: scale(9),
+    height: scale(9),
     borderRadius: radius.full,
     backgroundColor: colors.primary,
-    marginLeft: scale(4),
-    marginBottom: verticalScale(16),
+    marginLeft: scale(5),
+    marginBottom: verticalScale(18),
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
+    shadowOpacity: 0.95,
     shadowRadius: 8,
     elevation: 4,
-  },
-  brandSubtitle: {
-    marginTop: verticalScale(3),
-    fontSize: scale(13),
-    fontWeight: "500",
-    color: colors.neutral400,
-    letterSpacing: 0.5,
-  },
-  taglinePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(6),
-    marginTop: verticalScale(12),
-    paddingHorizontal: scale(15),
-    paddingVertical: verticalScale(6),
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.22)",
-  },
-  taglineText: {
-    fontSize: scale(11.5),
-    fontWeight: "600",
-    color: "#fef08a",
-    letterSpacing: 0.5,
-  },
-  showcaseTouchWrap: {
-    marginTop: verticalScale(22),
-    width: "100%",
-    maxWidth: scale(320),
-    alignItems: "center",
-    gap: verticalScale(10),
-  },
-  showcaseCard: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(12),
-    paddingHorizontal: scale(14),
-    paddingVertical: verticalScale(12),
-    borderRadius: radius._20,
-    backgroundColor: "rgba(255, 255, 255, 0.048)",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.2)",
-  },
-  showcaseEmojiBox: {
-    width: scale(42),
-    height: scale(42),
-    borderRadius: radius._12,
-    backgroundColor: "rgba(250, 204, 21, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  showcaseEmoji: {
-    fontSize: scale(20),
-  },
-  showcaseTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  showcaseTag: {
-    fontSize: scale(9),
-    fontWeight: "800",
-    color: colors.primary,
-    letterSpacing: 0.9,
-  },
-  showcaseTitle: {
-    marginTop: 1,
-    fontSize: scale(13),
-    fontWeight: "700",
-    color: colors.white,
-  },
-  showcaseDesc: {
-    marginTop: 2,
-    fontSize: scale(11),
-    color: colors.neutral400,
-    lineHeight: verticalScale(15),
-  },
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(5),
-  },
-  dot: {
-    width: scale(5),
-    height: scale(5),
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-  },
-  dotActive: {
-    width: scale(16),
-    backgroundColor: colors.primary,
   },
   footerContainer: {
     width: "100%",
     alignItems: "center",
-    gap: verticalScale(14),
     paddingHorizontal: scale(24),
-  },
-  progressSection: {
-    alignItems: "center",
-    gap: verticalScale(8),
   },
   progressTrack: {
     height: verticalScale(5),
@@ -867,62 +633,5 @@ const styles = StyleSheet.create({
   progressSweepGradient: {
     flex: 1,
     borderRadius: radius.full,
-  },
-  statusHintText: {
-    fontSize: scale(11),
-    fontWeight: "500",
-    color: colors.neutral400,
-    letterSpacing: 0.4,
-  },
-  bypassBtn: {
-    marginTop: verticalScale(2),
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(5),
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-  },
-  bypassText: {
-    fontSize: scale(11),
-    fontWeight: "600",
-    color: colors.neutral300,
-  },
-  footerMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: scale(8),
-  },
-  securityPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(6),
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(5),
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.035)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-  },
-  footerText: {
-    fontSize: scale(11),
-    fontWeight: "600",
-    color: colors.neutral400,
-    letterSpacing: 0.4,
-  },
-  versionBadge: {
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(5),
-    borderRadius: radius.full,
-    backgroundColor: "rgba(250, 204, 21, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.22)",
-  },
-  versionText: {
-    fontSize: scale(10.5),
-    fontWeight: "700",
-    color: colors.primary,
-    letterSpacing: 0.8,
   },
 });

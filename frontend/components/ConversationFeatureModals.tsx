@@ -94,7 +94,7 @@ export const ChecklistCreatorModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -324,7 +324,7 @@ export const CountdownCreatorModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -469,7 +469,7 @@ export const QuickRepliesManagerModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8, maxHeight: "82%" }]}
                         >
                             <View style={modalStyles.handle} />
@@ -712,7 +712,7 @@ export const EventCreatorModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -828,7 +828,7 @@ export const WouldYouRatherModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -931,7 +931,7 @@ export const FancyTextModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -1033,7 +1033,7 @@ export const QuickJumpModal = ({
             <TouchableWithoutFeedback onPress={onClose}>
                 <View style={modalStyles.overlayCenter}>
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        behavior="padding"
                         style={{ width: "100%" }}
                     >
                         <TouchableWithoutFeedback>
@@ -1290,7 +1290,7 @@ export const SplitBillModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -1486,7 +1486,7 @@ export const DoodlePadModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />
@@ -1667,7 +1667,7 @@ export const ChatScratchpadModal = ({
                 <View style={modalStyles.overlay}>
                     <TouchableWithoutFeedback>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior="padding"
                             style={[modalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                         >
                             <View style={modalStyles.handle} />

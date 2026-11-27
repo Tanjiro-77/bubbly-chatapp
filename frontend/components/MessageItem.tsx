@@ -256,7 +256,7 @@ const EmojiGridPopup = ({
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose} statusBarTranslucent>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
             <TouchableWithoutFeedback onPress={handleClose}>
                 <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={popupStyles.overlay}>
                     <TouchableWithoutFeedback>
@@ -1873,7 +1873,7 @@ const EditMessageModal = ({ visible, initialContent, onSave, onClose }: { visibl
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
             <TouchableWithoutFeedback onPress={onClose}>
                 <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={editStyles.overlay}>
                     <TouchableWithoutFeedback>

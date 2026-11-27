@@ -4039,7 +4039,7 @@ const Conversation = () => {
     // ─────────────────────────────────────────────
     return (
         <ScreenWrapper showPattern={true} bgOpacity={0.5}>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? "padding" : "height"} style={styles.container}>
+            <KeyboardAvoidingView behavior="padding" style={styles.container}>
 
                 {/* ── Header ── */}
                 <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
@@ -4255,7 +4255,7 @@ const Conversation = () => {
                         maxToRenderPerBatch={12}
                         updateCellsBatchingPeriod={24}
                         windowSize={9}
-                        removeClippedSubviews={Platform.OS === 'android'}
+                        removeClippedSubviews={false}
                         keyboardShouldPersistTaps="handled"
                         onScroll={handleScroll}
                         scrollEventThrottle={32}
@@ -4602,7 +4602,7 @@ const Conversation = () => {
                     <View style={pollModalStyles.overlay}>
                         <TouchableWithoutFeedback>
                             <KeyboardAvoidingView
-                                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                                behavior="padding"
                                 style={[pollModalStyles.sheet, { paddingBottom: Math.max(insets.bottom, spacingY._20) + spacingY._8 }]}
                             >
                                 <View style={pollModalStyles.handle} />

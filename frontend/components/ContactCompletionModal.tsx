@@ -107,7 +107,7 @@ export const ContactCompletionModal = () => {
             onRequestClose={() => {}}
         >
             <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior="padding"
                 style={styles.overlay}
             >
                 <Animated.View entering={FadeIn.duration(200)} style={styles.backdrop}>

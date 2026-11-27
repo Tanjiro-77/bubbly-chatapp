@@ -312,7 +312,7 @@ export const GifPickerModal = ({
                                 initialNumToRender={8}
                                 maxToRenderPerBatch={8}
                                 windowSize={5}
-                                removeClippedSubviews={Platform.OS === "android"}
+                                removeClippedSubviews={false}
                                 renderItem={({ item }) => (
                                     <TouchableOpacity
                                         style={styles.gifTile}

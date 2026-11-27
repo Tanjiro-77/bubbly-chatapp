@@ -79,7 +79,7 @@ const CompleteProfileScreen = () => {
         <ScreenWrapper showPattern={true}>
             <KeyboardAvoidingView
                 style={styles.container}
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior="padding"
             >
                 <Animated.View entering={FadeInDown.duration(240)} style={styles.header}>
                     <View style={styles.stepPill}>

@@ -110,8 +110,8 @@ export async function getErrorReports(req: AuthRequest, res: Response): Promise<
         if (typeof status === "string" && status.trim()) filter.status = status.trim();
         if (typeof type === "string" && type.trim()) filter.type = type.trim();
 
-        const limitNum = Math.max(1, Math.min(Number(limit) || 50, 100));
-        const pageNum = Math.max(1, Number(page) || 1);
+        const limitNum = Math.floor(Math.max(1, Math.min(Number(limit) || 50, 100)));
+        const pageNum = Math.floor(Math.max(1, Number(page) || 1));
         const skip = (pageNum - 1) * limitNum;
 
         const [reports, total] = await Promise.all([

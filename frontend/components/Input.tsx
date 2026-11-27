@@ -1,4 +1,4 @@
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, TextInput, View } from 'react-native';
 import React, { useState } from 'react';
 import { InputProps } from "../types";
 import { colors, radius, spacingX } from "../constants/theme";
@@ -76,11 +76,6 @@ const styles = StyleSheet.create({
     primaryBorder: {
         borderColor: colors.primary,
         backgroundColor: colors.white,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.14,
-        shadowRadius: 8,
-        elevation: 2,
     },
     accessory: {
         flexShrink: 0,
@@ -95,6 +90,8 @@ const styles = StyleSheet.create({
         paddingVertical: 0,
     },
     multilineInput: {
+        minHeight: verticalScale(24),
+        paddingVertical: Platform.OS === "android" ? verticalScale(2) : 0,
         textAlignVertical: "center",
     },
 });

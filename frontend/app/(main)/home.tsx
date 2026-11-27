@@ -1391,7 +1391,7 @@ const Home = () => {
                         maxToRenderPerBatch={10}
                         updateCellsBatchingPeriod={24}
                         windowSize={9}
-                        removeClippedSubviews={Platform.OS === 'android'}
+                        removeClippedSubviews={false}
                         refreshControl={
                             <RefreshControl
                                 refreshing={refreshing}
@@ -2020,9 +2020,6 @@ const styles = StyleSheet.create({
     searchBarActive: {
         borderColor: colors.primary,
         backgroundColor: colors.white,
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-        elevation: 3,
     },
     searchInput: {
         flex: 1,
