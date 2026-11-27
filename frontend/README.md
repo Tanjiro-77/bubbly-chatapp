@@ -1,56 +1,70 @@
-# Welcome to your Expo app 👋
+# Bubbly Mobile — Frontend 💛
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**v4.1.5** · React Native · Expo SDK 57 · TypeScript
 
-## Get started
+The cross-platform Android & iOS mobile client for the Bubbly messaging app. Built with Expo Router (file-based routing), Reanimated 3, Socket.IO, and a two-tier caching architecture for near-instant rendering.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Quick Start
 
 ```bash
-npm run reset-project
+npm install
+# create .env (see root README for env vars)
+npx expo start
+# Press 'a' for Android · 'i' for iOS
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## TypeScript Check
 
-### Other setup steps
+```bash
+npx tsc --noEmit
+# Expected: 0 errors
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## EAS Build
 
-## Learn more
+```bash
+# Android APK (sideload)
+eas build --platform android --profile production-apk
 
-To learn more about developing your project with Expo, look at the following resources:
+# Android AAB (Play Store)
+eas build --platform android --profile production
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+# iOS
+eas build --platform ios --profile production
+```
 
-## Join the community
+---
 
-Join our community of developers creating universal apps.
+## v4.1.5 Highlights
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+| Area | Change |
+|---|---|
+| **Two-tier cache** | `utils/chatCache.ts` — in-memory + AsyncStorage for conversations, messages, contacts, stories |
+| **Optimistic messaging** | Text & GIF bubbles appear instantly; `messageAck` confirms or rolls back |
+| **GIF support** | `GifPickerModal.tsx` — browse, search, send animated GIFs |
+| **Invite system** | `InviteSheetModal.tsx` — SMS / WhatsApp / Share / copy, 3 tone presets, personal link |
+| **Credential completion** | `ContactCompletionModal.tsx` + adaptive `completeProfile.tsx` — per-user phone/email prompt |
+| **No session expiry** | JWT tokens persist indefinitely; no forced re-login |
+| **UI polish** | Reanimated spring on Button, focus glow on Input, `React.memo` everywhere |
+| **Socket reconnect** | 450 ms → 3 000 ms back-off, 3 500 ms connect timeout |
+
+---
+
+## Key Directories
+
+```
+app/           Expo Router screens ((auth)/ and (main)/)
+components/    Shared UI components
+contexts/      Auth context (JWT, routing, session management)
+hooks/         Custom React hooks
+services/      contactService, notificationService
+socket/        Socket.IO client setup
+utils/         chatCache, featureStorage, haptics, styling
+assets/        Images, audio, fonts
+```
+
+---
+
+For full documentation see the [root README](../README.md).

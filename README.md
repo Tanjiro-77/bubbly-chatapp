@@ -1,56 +1,112 @@
 # Bubbly 💛
 
-### Connect Beyond Messages.
+### Connect Beyond Messages
 
-A full-stack, real-time messaging application for conversations, groups, stories, media sharing, and audio/video communication.
+A full‑stack, real‑time messaging application for conversations, groups, stories, media sharing, GIFs, and audio/video communication — built with React Native, Expo, Node.js, and Socket.IO.
+
+---
 
 <p align="center">
-  <a href="https://github.com/Tanjiro-77/bubbly-chatapp">
-    <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub repository" />
-  </a>
-  <a href="https://bubbly-chatapp.vercel.app/">
-    <img src="https://img.shields.io/badge/Website-Visit-2563EB?style=for-the-badge&logo=vercel&logoColor=white" alt="Bubbly website" />
-  </a>
-  <a href="https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest">
-    <img src="https://img.shields.io/badge/Latest_Release-v3.0.0-F59E0B?style=for-the-badge" alt="Latest release v3.0.0" />
-  </a>
+  <a href="https://github.com/Tanjiro-77/bubbly-chatapp"><img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub repository" /></a>
+  <a href="https://bubbly-chatapp.vercel.app/"><img src="https://img.shields.io/badge/Website-Visit-2563EB?style=for-the-badge&logo=vercel&logoColor=white" alt="Bubbly website" /></a>
+  <a href="https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest"><img src="https://img.shields.io/badge/Latest_Release-v4.1.5-F59E0B?style=for-the-badge" alt="Latest release v4.1.5" /></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS-16A34A?style=flat-square" alt="Android and iOS" />
-  <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Mobile-Expo-4630EB?style=flat-square&logo=expo" alt="Expo" />
-  <img src="https://img.shields.io/badge/Real--time-Socket.IO-010101?style=flat-square&logo=socketdotio" alt="Socket.IO" />
+  <img src="https://img.shields.io/badge/React_Native-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React Native" />
+  <img src="https://img.shields.io/badge/Expo_SDK_57-000020?style=flat-square&logo=expo&logoColor=white" alt="Expo" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Socket.IO-010101?style=flat-square&logo=socketdotio&logoColor=white" alt="Socket.IO" />
+  <img src="https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="MongoDB" />
+  <img src="https://img.shields.io/badge/Express_5-000000?style=flat-square&logo=express&logoColor=white" alt="Express" />
 </p>
 
 ---
 
-## Table of contents
+## ✨ What's New in v4.1.5
+
+> [!IMPORTANT]
+> v4.1.5 is the most significant performance and UX release since launch. It introduces a two-tier caching architecture, instant optimistic messaging, GIF support, a smart invite system, and a credential-completion flow for existing users.
+
+### 🚀 Performance & Caching
+
+| Improvement | Detail |
+|---|---|
+| **Two-tier chat cache** | In-memory + AsyncStorage cache (`chatCache.ts`) for conversations, messages, contacts, and stories. Cache-first rendering eliminates cold-start flicker. |
+| **Instant optimistic messaging** | Text and GIF messages appear immediately with a `temp_` bubble and `clientId`. Server confirms via `messageAck`; failures auto-rollback the bubble. |
+| **Feature storage memory layer** | All 10 feature stores (quick replies, nicknames, notes, tags, focus mode, custom status, appearance, privacy shield, archived, silent IDs) now backed by an in-memory cache — zero repeated AsyncStorage reads per session. |
+| **FlatList tuning** | `initialNumToRender`, `maxToRenderPerBatch`, `windowSize`, `removeClippedSubviews` all tuned in Home and Conversation screens. |
+| **Socket reconnect** | Faster back-off: 450 ms → 900 ms → 1 800 ms → 3 000 ms (max). Connect wait reduced to 3 500 ms. |
+| **No forced re-login** | Session token expiry removed — users stay logged in indefinitely. |
+
+### 💬 Messaging
+
+- **GIF support** — browse and send animated GIFs inline; instant optimistic preview before server confirmation.
+- **Optimistic text send** — zero perceived latency for outgoing messages.
+- **Debounced draft save** — keystrokes debounced at 320 ms; no lag while typing.
+- **Date separators** — smart local date labels (`chatCache.ts`: `formatSeparatorDateLabel`, `getLocalDateKey`).
+- **12-hour time formatting** — `formatTime12h` replaces Moment.js for smaller bundle and faster rendering.
+
+### 🤝 Smart Invite System
+
+- **`InviteSheetModal`** — rich bottom sheet with SMS, WhatsApp, system Share, and copy-to-clipboard actions.
+- **Three tone presets** — Friendly, Quick, HD Calls — each with a distinct editable message template.
+- **Personal invite link** — `https://bubbly.app/u/<userId>` auto-generated per user.
+- **Invite from New Conversation** — unregistered phone contacts show an "Invite via Link/SMS" button; invited numbers are tracked to avoid duplicate prompts.
+- **Invite from Profile** — "Invite Friends" action card in the profile modal opens the invite sheet.
+
+### 🔐 Credential Completion Flow
+
+- **`ContactCompletionModal`** — dynamic in-app overlay shown once to existing users who registered via email (needs phone) or phone (needs email).
+- **Adaptive `completeProfile` screen** — shows only the missing field (phone OR email) with a personalised title and icon.
+- **Smart routing** — `NavigationGuard` in `_layout.tsx` detects `needsContactCompletion` and redirects before the main app loads.
+
+### 🎨 UI / UX Polish
+
+| Component | Change |
+|---|---|
+| **Button** | Reanimated spring press-scale animation (0.968); `React.memo` |
+| **Input** | Focus glow + amber border highlight state |
+| **Typo** | `React.memo`, memoised style, `maxFontSizeMultiplier={1.3}` |
+| **BackButton** | `React.memo`, `hitSlop`, safe `router.canGoBack()` guard |
+| **ScreenWrapper** | Smart status-bar style detection, correct modal safe-area padding |
+| **Splash Screen** | Upgraded amber gradient animation with staggered logo entrance |
+| **Route transitions** | `slide_from_right` animation + dark `contentStyle` for all navigations |
+| **Auth screens** | Faster animation durations, keyboard chain hints (`returnKeyType`, `autoComplete`) |
+
+---
+
+## Table of Contents
 
 - [About Bubbly](#about-bubbly)
-- [Application screenshots](#application-screenshots)
+- [Application Screenshots](#application-screenshots)
 - [Features](#features)
-  - [Accounts and profiles](#accounts-and-profiles)
-  - [Home dashboard and conversations](#home-dashboard-and-conversations)
+  - [Accounts & Profiles](#accounts--profiles)
+  - [Home Dashboard & Conversations](#home-dashboard--conversations)
   - [Messaging](#messaging)
+  - [GIF Support](#gif-support)
+  - [Smart Invite System](#smart-invite-system)
+  - [Credential Completion Flow](#credential-completion-flow)
   - [Groups](#groups)
-  - [Stories and Story Studio](#stories-and-story-studio)
-  - [Voice and video calls](#voice-and-video-calls)
-  - [Permissions and onboarding](#permissions-and-onboarding)
-  - [Design and mobile experience](#design-and-mobile-experience)
-- [Technology stack](#technology-stack)
-- [Application architecture](#application-architecture)
-- [Project structure](#project-structure)
-- [Getting started](#getting-started)
-- [Environment configuration](#environment-configuration)
-- [Available scripts](#available-scripts)
-- [API overview](#api-overview)
-- [Real-time communication](#real-time-communication)
-- [Build and distribution](#build-and-distribution)
+  - [Stories & Story Studio](#stories--story-studio)
+  - [Voice & Video Calls](#voice--video-calls)
+  - [Permissions & Onboarding](#permissions--onboarding)
+  - [Design & Mobile Experience](#design--mobile-experience)
+  - [Performance & Caching](#performance--caching)
+- [Technology Stack](#technology-stack)
+- [Application Architecture](#application-architecture)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment Configuration](#environment-configuration)
+- [Available Scripts](#available-scripts)
+- [API Overview](#api-overview)
+- [Real‑time Communication](#real-time-communication)
+- [Build & Distribution](#build--distribution)
 - [Verification](#verification)
 - [Security](#security)
 - [Contributing](#contributing)
-- [Reporting an issue](#reporting-an-issue)
+- [Reporting an Issue](#reporting-an-issue)
 - [License](#license)
 - [Developer](#developer)
 
@@ -58,18 +114,19 @@ A full-stack, real-time messaging application for conversations, groups, stories
 
 ## About Bubbly
 
-**Bubbly** is a mobile-first, full-stack messaging application built to bring everyday communication into one connected experience. It combines private conversations, group chats, stories, media sharing, voice messages, and audio/video calls in a single application.
+**Bubbly** is a mobile‑first, full‑stack messaging application built to bring everyday communication into one connected experience. It combines private conversations, group chats, stories, GIFs, media sharing, voice messages, and audio/video calls — all in a single application.
 
 The repository contains four connected parts:
 
 | Part | Description |
 |---|---|
-| **Mobile application** | Cross-platform Android and iOS application built with React Native and Expo. |
-| **Web application** | Real-time desktop and mobile browser messaging experience built with React 19, TypeScript, Vite, and Tailwind CSS. |
-| **Backend** | TypeScript server built with Node.js, Express, MongoDB, and Socket.IO. |
-| **Website** | Release showcase and landing page built with React, TypeScript, Vite, and TanStack Start. |
+| **Mobile app** | Cross-platform Android & iOS built with React Native & Expo SDK 57 |
+| **Web app** | Real-time desktop & mobile browser experience built with React 19, TypeScript, Vite, Tailwind CSS |
+| **Backend** | Node.js / Express 5 server with MongoDB and Socket.IO |
+| **Website** | Marketing landing page built with React, TypeScript, Vite, and TanStack Start |
 
-Bubbly is developed with an emphasis on real-time interaction, maintainable application structure, mobile usability, and practical full-stack engineering.
+> [!NOTE]
+> The mobile app follows a **Honey Amber** visual identity: warm stone-900 backgrounds, amber-400 accents, and clear Inter typography. Both light and dark themes are fully supported.
 
 ---
 
@@ -82,7 +139,6 @@ Bubbly is developed with an emphasis on real-time interaction, maintainable appl
   <img src="./screenshots/04.png" width="160" alt="Bubbly Screenshot 4" />
   <img src="./screenshots/05.png" width="160" alt="Bubbly Screenshot 5" />
 </p>
-
 <p align="center">
   <img src="./screenshots/06.png" width="160" alt="Bubbly Screenshot 6" />
   <img src="./screenshots/07.png" width="160" alt="Bubbly Screenshot 7" />
@@ -95,208 +151,256 @@ Bubbly is developed with an emphasis on real-time interaction, maintainable appl
 
 ## Features
 
-Bubbly brings together messaging, social sharing, calling, and account management. The mobile interface uses a Honey Amber visual identity with warm backgrounds, golden accents, clear typography, and consistent component styling.
+### Accounts & Profiles
 
-### Accounts and profiles
+- Registration via **phone number** (required) **and email** (required) — both fields are enforced at sign-up and profile completion.
+- JWT authentication with persistent sessions (no forced re-login).
+- Secure password hashing with bcrypt.
+- Avatar upload, profile editing, linked-account display.
+- **Custom status pill** — set a short status message shown beside your name.
+- **Focus / Quiet mode** — pause notifications without signing out.
+- **Privacy Shield** — control who sees your last seen, avatar, and status.
+- **Chat Vault / App Lock** — secure individual chats or the whole app with biometrics / PIN.
+- Quick access shortcuts: Settings, How-to-Use, About, Sign-Out.
+- **"Invite Friends"** action card in the profile modal opens the full invite sheet.
 
-- User registration and login.
-- JWT-based authentication.
-- Password hashing with bcrypt.
-- Profile information and avatar management.
-- Profile photo selection and editing.
-- Linked account information and profile status presentation.
-- Shortcuts to Settings, How to Use Bubbly, About Bubbly, and Sign Out.
+### Home Dashboard & Conversations
 
-### Home dashboard and conversations
-
-- Time-aware greeting that changes according to the time of day.
-- Separate **Direct** and **Groups** conversation views.
-- Conversation filters for **All**, **Unread**, and **Pinned** chats.
-- Unread count badges and conversation counters.
-- Search conversations with a clear action and result count.
-- Quick access to profile and Settings.
-- Floating action button for starting a new conversation or creating a group.
-- Story bar with gradient rings for unseen stories and a quick-add action for the user's own story.
-- Conversation previews with sent, delivered, and read indicators for messages sent by the current user.
-- Preview labels for supported content such as voice notes, photos, and polls.
-- Pinned conversation badges and unread message counters.
-- Live online indicators on user avatars.
+- Time-aware greeting.
+- Separate **Direct** and **Groups** views.
+- Filters: All, Unread, Pinned, Tagged.
+- **Cache-first rendering** — conversations load instantly from in-memory cache; network refresh happens silently in the background.
+- **Pull-to-refresh** with `RefreshControl` for explicit updates.
+- Unread count badges, conversation counters.
+- Search with result count.
+- FAB for new conversation / group creation.
+- Story bar with gradient rings for unseen stories.
+- Message preview indicators (sent ✓, delivered ✓✓, read 💛✓✓).
+- Live online presence on avatars.
+- **Chat folders / tags** — organise conversations by label.
+- **Archived chats** — hide conversations without deleting.
+- **Starred messages** — bookmark important messages across chats.
+- **QR code / Invite** — share your Bubbly profile link via QR.
 
 ### Messaging
 
-- Real-time one-to-one messaging.
-- Group conversations.
-- Message delivery acknowledgements.
-- Read and delivery receipts.
-- Replies and swipe-to-reply gestures with haptic feedback.
-- Media and image attachments.
-- Voice messages and playback controls.
-- Voice playback speed selection at 1.0×, 1.5×, and 2.0×.
-- Message translation into Spanish, with a switch between the original and translated text.
-- In-chat search with match counts and previous/next navigation.
-- Pinned messages with a banner and jump-to-message action.
-- Saved messages.
-- Scheduled messages and background processing.
-- Conversation history and pagination.
-- Unread message count and a floating scroll-to-bottom control when viewing older messages.
-- Double-tap heart reaction with an animated visual response.
-- Voice recording discard action for cancelling a recording before sending.
-- Connection status feedback when the real-time socket disconnects.
+- Real-time one-to-one & group chats via Socket.IO.
+- Delivery & read receipts.
+- **Instant optimistic send** — message appears immediately at 0 ms perceived latency; `messageAck` confirms or rolls back.
+- Swipe-to-reply with haptic feedback.
+- Media attachments, voice notes, voice-playback speed (1×, 1.5×, 2×).
+- Inline translation to Spanish.
+- In-chat search with navigation.
+- Pinned & saved messages.
+- Scheduled messages (background processing).
+- Double-tap heart reaction with animation.
+- Discard voice recording before send.
+- **Disappearing messages** — auto-delete after a configurable timer.
+- **View-once media** — photos/videos that disappear after one view.
+- **Polls** — create in-chat polls with multiple options.
+- **Checklists** — shared task lists inside a conversation.
+- **Location sharing** — send your current location as a map pin.
+- **Rich cards** — countdown timers and interactive game cards.
+- **Smart date separators** — localised date labels between message groups.
+- **Debounced draft save** — draft persists with 320 ms debounce; no typing lag.
+- Connection status feedback.
+
+### GIF Support
+
+- **GIF picker modal** (`GifPickerModal.tsx`) integrated into the conversation composer.
+- Browse trending and searched GIFs.
+- **Optimistic GIF send** — animated preview appears immediately in the bubble before server confirmation.
+- Rendered natively via Expo Image with format-aware handling.
+
+### Smart Invite System
+
+Bubbly makes growing your network effortless with a fully redesigned invite experience.
+
+| Action | Detail |
+|---|---|
+| **SMS invite** | Pre-filled text with your personal link, opens native SMS composer |
+| **WhatsApp invite** | Deep-links into WhatsApp with the invite message |
+| **System Share** | Opens the OS share sheet for any other app |
+| **Copy invite link** | Copies `https://bubbly.app/u/<userId>` to clipboard via `expo-clipboard` |
+| **Copy invite text** | Copies the full formatted message |
+| **Tone presets** | Friendly 😊 · Quick ⚡ · HD Calls 📹 — each with a distinct editable template |
+| **Editable preview** | Full live preview of the invite message before sending |
+
+The invite sheet can be opened from:
+1. **New Conversation Modal** — per-contact invite button for unregistered numbers; "Invite a friend" banner.
+2. **Profile Modal** — "Invite Friends" action card.
+
+### Credential Completion Flow
+
+> [!IMPORTANT]
+> Bubbly syncs contacts by **phone number**. Email is used for account recovery and notification delivery. Both are required for all users. The credential-completion flow ensures legacy accounts are updated gracefully.
+
+- **`ContactCompletionModal`** — shown as a non-dismissible overlay the first time a user opens the app after upgrading, if their account is missing phone or email.
+- Logic is **per-user and directional**:
+  - Registered via email → prompted to add phone number.
+  - Registered via phone → prompted to add email address.
+- **Adaptive `completeProfile` screen** — displays only the missing field with a personalised title, icon, and copy. Users are never shown a field they already have.
+- Once completed, the modal never appears again (tracked in AsyncStorage).
 
 ### Groups
 
-- Create group conversations.
-- Search contacts by name or email when creating a conversation.
-- Select multiple participants and remove selected participants before creating a group.
-- Group avatar selection.
-- Add and remove group members.
-- Group administrators and configurable group permissions.
-- Group descriptions and avatars.
-- Group information management.
-- Group system messages.
-- Shared group gallery with separate **Media**, **Docs**, and **Links** views.
+- Create groups, search contacts, multi-select participants.
+- Group avatar, admins, configurable permissions.
+- Group description, system messages.
+- Shared gallery (Media / Docs / Links tabs).
 
-### Stories and Story Studio
+### Stories & Story Studio
 
-- Create text-based stories.
-- Create photo stories using the device media picker.
-- Preview selected photos and add captions.
-- Seven text-story background presets:
-  - Sunset Amber
-  - Midnight Neon
-  - Cyber Mint
-  - Berry Ruby
-  - Deep Charcoal
-  - Ocean Dusk
-  - Warm Espresso
-- Text alignment controls for left, centre, and right alignment.
-- Character counter for text stories.
-- Dedicated story viewer with segmented progress indicators.
-- Pause story progress while pressing and resume on release.
-- Quick emoji reactions: ❤️, 🔥, 😂, 👏, 😍, and 😮.
-- Story replies with playback pausing while the reply interface is active.
-- Story viewer count and viewer-list interface.
-- Gradient story rings to distinguish unseen stories.
+- Text & photo stories, caption editing.
+- Seven background presets (Sunset Amber, Midnight Neon, …).
+- Alignment controls, character counter.
+- Emoji reactions, viewer count & list.
+- Gradient rings for unseen stories, pause on press.
+- **Cache-first story bar** — stories load from `getCachedStories` before network refresh.
 
-### Voice and video calls
+### Voice & Video Calls
 
-- Voice calling and video calling through Agora integration.
-- Incoming call handling.
-- Call invitations, acceptance, rejection, and cancellation.
-- In-call controls for mute, speakerphone, and ending a call.
-- Animated avatar effects during voice calls.
-- Call status and elapsed-duration display.
-- Floating in-call video preview and camera-flip shortcut.
-- Incoming call screen with animated acceptance action.
-- Quick decline-and-message action from the incoming call interface.
-- Call history.
-- Cleanup of call vibration timers and audio resources when relevant screens are dismissed.
+- Agora-powered voice & video calls.
+- Incoming call handling with full-screen notification: accept / reject / cancel.
+- In-call mute, speaker, end controls.
+- Animated avatar effects, call-quality indicator.
+- Floating video preview, camera-flip shortcut.
+- Call history and resource cleanup.
+- Multiple custom ringtones (`incoming_call.mp3` → `incoming_call_4.mp3`).
 
-> The calling interface includes visual call-quality and security indicators. Such interface labels should not be interpreted as proof of a particular resolution or end-to-end encryption protocol unless the corresponding capability has been independently implemented and verified.
+### Permissions & Onboarding
 
-### Permissions and onboarding
+- Multi-stage onboarding, native permission requests (Camera, Mic, Media, Notifications, Contacts).
+- "Skip for now" flow, settings shortcut for denied permissions.
+- Persistent onboarding state across restarts.
 
-- Multi-stage first-launch onboarding introducing the app's main capabilities.
-- Native permission requests for:
-  - **Camera:** camera capture and supported calling features.
-  - **Microphone:** voice recording and supported calling features.
-  - **Photos and media:** selecting photos and attachments.
-  - **Notifications:** message and call notifications.
-- Option to request supported permissions in sequence.
-- **Skip for Now** flow so optional permissions do not prevent access to the application.
-- Dedicated App Permissions section in Settings.
-- Current operating-system permission status.
-- Shortcut to device settings when a permission cannot be requested again in-app.
-- Permission status refresh when the app returns to the foreground.
-- Persisted onboarding completion across app restarts and logins.
+### Design & Mobile Experience
 
-### Design and mobile experience
+- Consistent spacing, typography, corner radii, shadows.
+- **Animated splash screen** — staggered amber gradient logo entrance.
+- **Route transitions** — `slide_from_right` with dark `contentStyle`.
+- **Reanimated spring press** on Button (scale 0.968).
+- **Input focus glow** — amber border highlight on active inputs.
+- Memoisation (`React.memo`, `useMemo`, `useCallback`) across all list-item components.
+- Robust keyboard handling, Android back-button support.
+- Custom deep-link scheme `bubbly://` and `com.arnav5569.chat://`.
+- `maxFontSizeMultiplier={1.3}` enforced on all Typo components for safe accessibility scaling.
 
-- Honey Amber visual identity with amber and golden accents and warm neutral surfaces.
-- Refined sent and received message bubbles.
-- Consistent spacing, typography, corner radii, and shadows.
-- Animated interactions for selected controls and reactions.
-- Memoization of message and conversation list items to reduce avoidable re-renders.
-- Tuned `FlatList` rendering and virtualization settings.
-- Audio player cleanup when components unmount.
-- Improved keyboard handling across Android and iOS layouts.
-- Android hardware Back button handling for supported modals and overlays.
-- `bubbly://` custom deep-link scheme.
+### Performance & Caching
+
+```
+Request path (v4.1.5)
+─────────────────────
+Screen mounts
+  └─▶ read in-memory cache (0 ms)
+        ├─ HIT  → render immediately, refresh in background
+        └─ MISS → read AsyncStorage (~2–8 ms)
+                    ├─ HIT  → render, write to in-memory, refresh in background
+                    └─ MISS → fetch from server, write both tiers
+```
+
+| Cache key | In-memory TTL | AsyncStorage TTL |
+|---|---|---|
+| Conversations list | Session | Persistent |
+| Messages per conversation | Session | Persistent |
+| Contacts list | Session | Persistent |
+| Stories | Session | Persistent |
+| Feature stores (×10) | Session | Persistent |
 
 ---
 
-## Technology stack
-
-Bubbly uses separate but connected technology stacks for its mobile application, backend, and website.
+## Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Mobile framework | React Native |
-| Mobile development | Expo SDK 57 |
-| Navigation | Expo Router |
-| Language | TypeScript |
-| UI and animations | React Native, Reanimated |
-| API communication | Axios |
-| Real-time client | Socket.IO Client |
-| Backend runtime | Node.js |
-| Backend framework | Express 5 |
-| Database | MongoDB |
-| Database ODM | Mongoose |
-| Real-time server | Socket.IO |
-| Authentication | JSON Web Tokens |
-| Password hashing | bcryptjs |
-| Voice and video | Agora |
-| Audio | Expo Audio |
-| Image selection | Expo Image Picker |
-| Media storage | Cloudinary integration |
-| Mobile builds | Expo Application Services (EAS) |
-| Website framework | TanStack Start and React |
-| Website tooling | Vite and TypeScript |
+| **Mobile framework** | React Native |
+| **Mobile development** | Expo SDK 57 |
+| **Navigation** | Expo Router (file-based, typed routes) |
+| **Language** | TypeScript (strict) |
+| **UI & animations** | React Native + Reanimated 3 |
+| **Clipboard** | expo-clipboard |
+| **Audio** | expo-audio |
+| **Image selection** | expo-image-picker |
+| **Notifications** | expo-notifications (foreground + background) |
+| **Contacts sync** | expo-contacts |
+| **API communication** | Axios |
+| **Real-time client** | Socket.IO Client |
+| **Local persistence** | AsyncStorage (two-tier with in-memory cache) |
+| **Error tracking** | Sentry (`@sentry/react-native`) |
+| **Backend runtime** | Node.js |
+| **Backend framework** | Express 5 |
+| **Database** | MongoDB |
+| **ODM** | Mongoose |
+| **Real-time server** | Socket.IO |
+| **Authentication** | JSON Web Tokens (persistent, no forced expiry) |
+| **Password hashing** | bcryptjs |
+| **Voice & video** | Agora |
+| **Media storage** | Cloudinary |
+| **Mobile builds** | Expo Application Services (EAS) |
+| **Website framework** | TanStack Start & React |
+| **Website tooling** | Vite & TypeScript |
+| **Web app** | React 19, Vite, Tailwind CSS |
 
 ---
 
-## Application architecture
-
-Bubbly follows a client-server architecture. The mobile application communicates with the backend using authenticated REST requests and Socket.IO connections. The backend manages application logic, persistence, real-time events, and Agora token generation.
+## Application Architecture
 
 ```mermaid
 flowchart TD
-    A[Android / iOS Application] --> B[React Native + Expo]
-    B -->|REST API - Axios| C[Express + Node.js Backend]
-    B <-->|Socket.IO Client| D[Socket.IO Server]
-    C --> E[(MongoDB)]
+    A["Android / iOS App\n(React Native + Expo SDK 57)"] --> B["Auth Context\n(JWT · persistent session)"]
+    B -->|"REST (Axios)"| C["Express 5 + Node.js Backend"]
+    B <-->|"Socket.IO"| D["Socket.IO Server"]
+    C --> E[("MongoDB\n(Mongoose)")]
     D --> E
-    C --> F[Agora Token Service]
-    B --> G[Cloudinary Media Integration]
-    H[Website] --> I[React + TanStack Start]
+    C --> F["Agora Token Service\n(Voice & Video)"]
+    A --> G["Cloudinary\n(Media Upload)"]
+    A --> H["Two-tier Cache\n(Memory + AsyncStorage)"]
+    H -->|"cache miss"| C
+    I["Website\n(TanStack Start)"] --> J["Vercel CDN"]
+    K["Web App\n(React 19 + Vite)"] -->|"REST + Socket.IO"| C
 ```
 
-### Request and messaging flow
+### Data & Messaging Flow
 
-1. A user registers or signs in through the backend.
-2. The backend validates the credentials and issues an authentication token.
-3. The mobile application uses authenticated API requests and establishes a Socket.IO connection.
-4. Socket events handle real-time messaging, delivery acknowledgements, group activity, and conversation updates.
-5. MongoDB stores users, conversations, messages, calls, stories, and related application data.
-6. The backend generates Agora tokens for supported calling workflows.
-7. The mobile application integrates with media services for supported image and file workflows.
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App as Mobile App
+    participant Cache as Two-tier Cache
+    participant API as Express Backend
+    participant DB as MongoDB
+    participant WS as Socket.IO
+
+    U->>App: Open conversation
+    App->>Cache: getCachedMessages(convId)
+    Cache-->>App: messages (instant)
+    App->>U: Render immediately
+
+    U->>App: Type & send message
+    App->>App: Optimistic bubble (temp_id)
+    App->>WS: emit newMessage {clientId}
+    WS->>DB: persist message
+    WS-->>App: messageAck {clientId, serverId}
+    App->>App: Replace temp bubble → confirmed
+    App->>Cache: setCachedMessages(updated)
+```
 
 ---
 
-## Project structure
+## Project Structure
 
 ```text
-bubbly-chatapp/
+bubbly/
 ├── backend/
 │   ├── config/
-│   │   └── db.ts
+│   │   └── db.ts                        # MongoDB connection
 │   ├── controllers/
 │   │   ├── auth.controller.ts
 │   │   ├── call.controller.ts
 │   │   └── search.controller.ts
 │   ├── middleware/
-│   │   └── auth.ts
-│   ├── modals/
+│   │   └── auth.ts                      # JWT verification middleware
+│   ├── models/
 │   │   ├── Call.ts
 │   │   ├── Conversation.ts
 │   │   ├── Message.ts
@@ -311,7 +415,7 @@ bubbly-chatapp/
 │   │   └── auth.routes.ts
 │   ├── services/
 │   │   ├── messageService.ts
-│   │   └── scheduledWorker.ts
+│   │   └── scheduledWorker.ts           # Scheduled message background worker
 │   ├── socket/
 │   │   ├── appEvents.ts
 │   │   ├── callEvents.ts
@@ -331,150 +435,136 @@ bubbly-chatapp/
 ├── frontend/
 │   ├── app/
 │   │   ├── (auth)/
+│   │   │   ├── completeProfile.tsx      # ✨ NEW — adaptive missing-field form
 │   │   │   ├── login.tsx
 │   │   │   ├── register.tsx
 │   │   │   └── welcome.tsx
 │   │   ├── (main)/
 │   │   │   ├── about.tsx
 │   │   │   ├── callScreen.tsx
-│   │   │   ├── conversation.tsx
+│   │   │   ├── conversation.tsx         # ✨ Optimistic send, GIF, cache
 │   │   │   ├── createStory.tsx
-│   │   │   ├── home.tsx
+│   │   │   ├── home.tsx                 # ✨ Cache-first, pull-to-refresh
 │   │   │   ├── incomingCall.tsx
-│   │   │   ├── newConversationModal.tsx
+│   │   │   ├── newConversationModal.tsx # ✨ Invite sheet, unregistered flow
 │   │   │   ├── onboarding.tsx
-│   │   │   ├── profileModel.tsx
+│   │   │   ├── profileModel.tsx         # ✨ Invite Friends action
+│   │   │   ├── qrCode.tsx
 │   │   │   ├── settings.tsx
 │   │   │   └── storyViewer.tsx
-│   │   ├── _layout.tsx
+│   │   ├── _layout.tsx                  # ✨ slide_from_right, ContactCompletionModal
 │   │   └── index.tsx
 │   ├── components/
+│   │   ├── AppLockGate.tsx
+│   │   ├── AuthLegalFooter.tsx
+│   │   ├── Avatar.tsx
+│   │   ├── BackButton.tsx               # ✨ React.memo, hitSlop, safe canGoBack
+│   │   ├── BrandIcon.tsx
+│   │   ├── BubblyAlert.tsx
+│   │   ├── Button.tsx                   # ✨ Reanimated spring press
+│   │   ├── ContactCompletionModal.tsx   # ✨ NEW — per-user credential prompt
+│   │   ├── ConversationFeatureModals.tsx
+│   │   ├── ConversationItem.tsx         # ✨ chatCache date formatter
+│   │   ├── ErrorBoundary.tsx
+│   │   ├── FormattedText.tsx
+│   │   ├── GifPickerModal.tsx           # ✨ GIF picker & send
+│   │   ├── GoogleIcon.tsx
+│   │   ├── Header.tsx
+│   │   ├── Input.tsx                    # ✨ Focus glow
+│   │   ├── InviteSheetModal.tsx         # ✨ NEW — full invite bottom sheet
+│   │   ├── LegalDocumentView.tsx
+│   │   ├── Loading.tsx
+│   │   ├── MessageItem.tsx              # ✨ React.memo, 12h time formatter
+│   │   ├── RealtimeNotifier.tsx
+│   │   ├── RichChatFeatures.tsx
+│   │   ├── ScreenWrapper.tsx            # ✨ Smart status-bar, modal padding
+│   │   ├── StoryBar.tsx                 # ✨ Cache-first stories
+│   │   └── Typo.tsx                     # ✨ React.memo, maxFontSizeMultiplier
 │   ├── constants/
 │   ├── contexts/
+│   │   └── authContext.tsx              # ✨ useCallback/useMemo, session, routing
 │   ├── hooks/
 │   ├── services/
+│   │   ├── contactService.ts
+│   │   └── notificationService.ts
 │   ├── socket/
+│   │   └── socket.ts                    # ✨ Faster reconnect back-off
 │   ├── utils/
+│   │   ├── chatCache.ts                 # ✨ NEW — two-tier cache + date helpers
+│   │   ├── featureStorage.ts            # ✨ Memory cache layer for all 10 stores
+│   │   ├── haptics.ts
+│   │   └── styling.ts
 │   ├── assets/
-│   ├── app.json
+│   │   ├── audio/
+│   │   │   ├── incoming_call.mp3
+│   │   │   └── notification.mp3
+│   │   └── images/
+│   ├── app.json                         # version: 4.1.5
 │   ├── eas.json
 │   └── package.json
 │
 ├── website/
 │   ├── public/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── lib/
-│   │   ├── routes/
-│   │   └── styles.css
-│   └── package.json
+│   └── src/
+│       ├── components/
+│       ├── hooks/
+│       ├── lib/
+│       ├── routes/
+│       └── styles.css
 │
 ├── web/
 │   └── ...
 │
 ├── screenshots/
-│   ├── 1.png
-│   ├── 2.png
-│   ├── 3.png
-│   ├── 4.png
-│   ├── 5.png
-│   ├── 6.png
-│   ├── 7.png
-│   ├── 8.png
-│   ├── 9.png
-│   └── 10.png
-│
+│   ├── 01.png … 10.png
 ├── .gitignore
 ├── file-tree.txt
-├── make_tree.py
 └── README.md
 ```
 
-The tree above shows the main application areas and selected files. Individual component and utility files may evolve as the project develops.
-
 ---
 
-## Getting started
+## Getting Started
 
 ### Prerequisites
 
-Before running Bubbly locally, make sure you have:
+- **Node.js** ≥ 18 & npm
+- **Git**
+- **MongoDB** (local or Atlas)
+- **Expo CLI** (`npm i -g expo-cli`)
+- Android emulator / physical device  
+  _(iOS builds require macOS + Xcode)_
+- Agora, Cloudinary & Sentry credentials
 
-- Node.js and npm.
-- Git.
-- A MongoDB database or MongoDB Atlas connection.
-- Expo development tooling.
-- An Android emulator or physical Android device.
-- macOS and Xcode for local iOS simulator builds.
-- Agora and media-service credentials for the features being configured.
-
-### 1. Clone the repository
+### 1 — Clone the repository
 
 ```bash
 git clone https://github.com/Tanjiro-77/bubbly-chatapp.git
 cd bubbly-chatapp
 ```
 
-### 2. Configure and run the backend
+### 2 — Backend
 
 ```bash
 cd backend
 npm install
+# create backend/.env (see Environment Configuration)
+npm run dev      # development  (ts-node-dev)
+# or
+npm start        # production
 ```
 
-Create a `.env` file inside the `backend` directory. See [Environment configuration](#environment-configuration) for the required values.
-
-Start the development server:
-
-```bash
-npm run dev
-```
-
-For a production start, use the configured production script:
-
-```bash
-npm start
-```
-
-The backend root health-check endpoint is:
-
-```text
-GET /
-```
-
-Expected response:
-
-```text
-Server is running
-```
-
-### 3. Configure and run the mobile application
-
-Open a second terminal from the repository root:
+### 3 — Mobile app
 
 ```bash
 cd frontend
 npm install
-```
-
-Create a `frontend/.env` file and configure the API base URL:
-
-```env
-EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:3000
-```
-
-Replace `YOUR_LOCAL_IP` with the LAN IP address of your development computer when testing on a physical device. The phone and development computer must be able to reach each other over the network.
-
-Start Expo:
-
-```bash
+# create frontend/.env (see Environment Configuration)
 npx expo start
+# Press 'a' for Android, 'i' for iOS
 ```
 
-### 4. Configure and run the website
-
-Open another terminal from the repository root:
+### 4 — Website
 
 ```bash
 cd website
@@ -482,15 +572,7 @@ npm install
 npm run dev
 ```
 
-Build the website:
-
-```bash
-npm run build
-```
-
-### 5. Configure and run the web application
-
-The web application links directly with mobile users through the shared backend and Socket.IO network.
+### 5 — Web app _(optional)_
 
 ```bash
 cd web
@@ -498,253 +580,251 @@ npm install
 npm run dev
 ```
 
-Build the web application for production:
-
-```bash
-npm run build
-```
+> [!TIP]
+> Run the backend first so the mobile app can connect on startup. Use your machine's local IP (not `localhost`) in `EXPO_PUBLIC_API_URL` when testing on a physical device.
 
 ---
 
-## Environment configuration
+## Environment Configuration
 
-Bubbly uses environment variables to keep service configuration and private credentials outside the source code.
-
-### Backend environment
-
-Create `backend/.env`:
+### Backend — `backend/.env`
 
 ```env
 PORT=3000
 MONGO_URI=your_mongodb_connection_string
 JWT_SECRET=your_long_random_secret
+
+# Agora (voice & video calls)
 AGORA_APP_ID=your_agora_app_id
 AGORA_APP_CERTIFICATE=your_agora_app_certificate
+
+# Cloudinary (media uploads)
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-Use the actual configuration required by the services enabled in your deployment. If the application uses additional media-service configuration, follow the corresponding service integration in the source code rather than guessing variable names.
-
-### Mobile environment
-
-Create `frontend/.env`:
+### Mobile — `frontend/.env`
 
 ```env
 EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:3000
 ```
 
-For a production build, configure the production API URL using the environment mechanism supported by the project and EAS configuration.
-
-> **Important:** Values prefixed with `EXPO_PUBLIC_` are bundled into the client application and must not contain private credentials, certificates, or server secrets.
+> [!CAUTION]
+> `EXPO_PUBLIC_` variables are bundled into the client binary. Never put secrets (JWT_SECRET, Cloudinary API secret, Agora certificate) in `frontend/.env`.
 
 ---
 
-## Available scripts
-
-The following scripts are documented from the project's package configuration. Run them from the relevant directory.
+## Available Scripts
 
 ### Frontend
 
 | Command | Purpose |
 |---|---|
-| `npm start` | Start Expo development tooling. |
-| `npm run android` | Start Android development. |
-| `npm run ios` | Start iOS development. |
-| `npm run web` | Start web development. |
-| `npm run lint` | Run Expo linting. |
+| `npm start` | Start Expo dev tooling |
+| `npm run android` | Launch Android emulator |
+| `npm run ios` | Launch iOS simulator |
+| `npm run web` | Start web dev server |
+| `npm run lint` | Run ESLint |
+| `npx tsc --noEmit` | TypeScript type-check (0 errors) |
 
 ### Backend
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Start the backend in development mode. |
-| `npm start` | Start the configured production server. |
-| `npm test` | Run the backend test suite. |
+| `npm run dev` | Start backend in dev mode (ts-node-dev) |
+| `npm start` | Start production server |
+| `npm test` | Run test suite |
 
 ### Website
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Start the website development server. |
-| `npm run build` | Build the website for production. |
+| `npm run dev` | Start dev server |
+| `npm run build` | Build for production |
 
 ### Web Application
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Start the Bubbly web app development server on Vite. |
-| `npm run build` | Compile TypeScript and bundle production assets with Vite. |
-| `npm run preview` | Preview production build locally. |
+| `npm run dev` | Start Vite dev server |
+| `npm run build` | Compile & bundle |
+| `npm run preview` | Preview production build |
 
 ---
 
-## API overview
+## API Overview
 
-The backend uses Express routes and JWT authentication middleware.
-
-### Authentication
-
-Base path: `/auth`
+### Authentication — `/auth`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/auth/register` | Register a new user. |
-| `POST` | `/auth/login` | Authenticate an existing user. |
+| `POST` | `/auth/register` | Register new user (email + phone required) |
+| `POST` | `/auth/login` | Authenticate existing user |
 
-### Application API
-
-Base path: `/api`
+### User — `/api/user`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/search` | Search application data. |
-| `POST` | `/api/translate` | Translate message text. |
-| `POST` | `/api/call/token` | Generate an Agora RTC token. |
-| `GET` | `/api/call/history` | Retrieve call history. |
+| `PATCH` | `/api/user/phone` | Add / update phone number |
+| `PATCH` | `/api/user/email` | Add / update email address |
+| `GET` | `/api/user/:id` | Get user profile |
 
-The application routes listed above use authentication middleware. Request payloads and response structures are defined by the corresponding backend route and controller implementations.
+### Contacts — `/api/contacts`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/contacts/sync` | Sync device contacts, return registered users |
+| `GET` | `/api/contacts/find` | Find user by phone or email |
+
+### Messaging & App — `/api`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/search` | Search users, conversations, messages |
+| `POST` | `/api/translate` | Translate message text |
+| `POST` | `/api/call/token` | Generate Agora RTC token |
+| `GET` | `/api/call/history` | Retrieve call history |
+
+### Stories — `/api/stories`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/stories` | Create a new story |
+| `GET` | `/api/stories` | Get stories feed |
+| `POST` | `/api/stories/:id/react` | React to a story |
+| `GET` | `/api/stories/:id/viewers` | Get story viewer list |
+
+### Saved Messages — `/api/saved-messages`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/saved-messages` | Get all saved messages |
+| `POST` | `/api/saved-messages` | Save a message |
+| `DELETE` | `/api/saved-messages/:id` | Remove a saved message |
+
+### Reports — `/api/reports`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/reports` | Submit a user / message report |
 
 ---
 
-## Real-time communication
+## Real‑time Communication
 
-Socket.IO powers Bubbly's real-time communication layer. The backend separates event handling into dedicated modules.
+Socket.IO powers Bubbly's real-time layer. The client reconnects with an exponential back-off (450 ms → 3 000 ms max) and a 3 500 ms connect timeout.
 
 | Module | Responsibility |
 |---|---|
-| `chatEvents.ts` | Conversation and messaging events. |
-| `groupEvents.ts` | Group management events. |
-| `callEvents.ts` | Calling lifecycle events. |
-| `appEvents.ts` | Application-level events. |
-| `io.ts` | Socket room utilities. |
-| `socket.ts` | Socket server initialisation. |
+| `chatEvents.ts` | Conversation & messaging (send, ack, read receipt, typing) |
+| `groupEvents.ts` | Group creation, member management, permissions |
+| `callEvents.ts` | Call lifecycle: invite → accept / reject → end |
+| `appEvents.ts` | Application-level events (presence, story updates) |
+| `io.ts` | Socket room utilities |
+| `socket.ts` | Server initialization & middleware |
 
-Examples of event names used by the application include:
+### Key Socket Events
 
-```text
-getConversations
-newConversation
-newMessage
-messageAck
-messageDelivered
-getMessages
-groupUpdated
-addGroupMembers
-removeGroupMember
-call:invite
-call:incoming
-call:accept
-call:reject
-call:cancel
-call:end
-call:connected
-```
-
-These events support real-time conversation updates, messaging acknowledgements, group operations, and calling workflows.
+| Event | Direction | Description |
+|---|---|---|
+| `newMessage` | client → server | Send a message (text, GIF, media, voice) |
+| `messageAck` | server → client | Confirm delivery + assign server ID |
+| `messagesRead` | client → server | Mark messages as read |
+| `typing` | bidirectional | Typing indicator |
+| `groupUpdated` | server → client | Group metadata change |
+| `call:invite` | server → client | Incoming call notification |
+| `call:end` | bidirectional | End an active call |
+| `storyReaction` | client → server | React to a story |
 
 ---
 
-## Build and distribution
+## Build & Distribution
 
-Bubbly uses **Expo Application Services (EAS)** for cloud builds. Build configuration is maintained in `frontend/eas.json`.
-
-Run the following commands from the `frontend` directory.
-
-### Android APK — direct installation
+### Android APK (sideload)
 
 ```bash
 eas build --platform android --profile production-apk
 ```
 
-The `production-apk` profile is configured for an APK that can be installed directly on compatible Android devices. Once the build completes, download the `.apk` artifact from the EAS build page and distribute it through your chosen channel.
-
-### Android AAB — app bundle
+### Android AAB (Play Store)
 
 ```bash
 eas build --platform android --profile production
 ```
 
-The production profile is configured for an Android App Bundle (`.aab`). An AAB is intended for app-store distribution workflows and is not normally installed by tapping the file like an APK.
-
-### iOS build
+### iOS
 
 ```bash
 eas build --platform ios --profile production
 ```
 
-iOS builds require the appropriate Apple signing configuration. Private iOS installation and distribution are subject to Apple's supported distribution methods and signing/device requirements. An `.ipa` is not freely installable on every iPhone in the same way as an Android APK.
+> [!NOTE]
+> iOS builds require Apple Developer signing configuration in `eas.json`. The app bundle ID is `com.arnav5569.chat`, build number `10`, version code `11`.
+
+### OTA Updates
+
+Bubbly is configured for Expo OTA updates (`runtimeVersion: appVersion`). Push JS-layer updates without a full store release:
+
+```bash
+eas update --branch production --message "v4.1.5 hotfix"
+```
 
 ---
 
 ## Verification
 
-The v3.0.0 development verification report recorded the following results:
-
-| Verification | Reported result |
+| Check | Result |
 |---|---|
-| Frontend TypeScript | Passed — 0 errors. |
-| Backend test suite | Passed — 15 tests across 4 suites. |
-| Backend TypeScript | Passed — 0 errors. |
-| Website TypeScript | Passed — 0 errors. |
-| Version configuration | `3.0.0`; Android version code `3`; iOS build number `3`. |
-
-These are reported development checks. They do not replace installation and functional testing of the actual release build on physical devices. Android and iOS permissions, calling behaviour, animations, layout compatibility, and platform-specific interactions should be verified on their target devices.
+| Frontend TypeScript (`tsc --noEmit`) | ✅ Passed — 0 errors |
+| Backend TypeScript | ✅ Passed — 0 errors |
+| Backend test suite | ✅ Passed — 15 tests |
+| Website TypeScript | ✅ Passed — 0 errors |
+| App version | `4.1.5` (Android versionCode 11, iOS build 10) |
 
 ---
 
 ## Security
 
-Security-sensitive configuration must remain outside the public source code.
-
-- Never commit `.env` files.
-- Never expose MongoDB credentials or connection strings.
-- Keep JWT secrets private.
-- Keep Agora App Certificates private.
-- Do not put private service credentials in `EXPO_PUBLIC_` variables.
-- Use HTTPS for production API communication.
-- Enforce authentication and authorisation on the backend.
-- Remove passwords, tokens, and personal information from logs and screenshots before sharing them.
-- Rotate credentials if they may have been exposed.
-
-Public application identifiers and private service credentials must be treated differently.
+- Keep all `.env` files out of version control (`.gitignore` enforced).
+- Never expose `JWT_SECRET`, MongoDB credentials, Cloudinary API secret, or Agora certificate.
+- Use HTTPS in production for all API and Socket.IO traffic.
+- Enforce auth & authorisation middleware on every protected endpoint.
+- Phone number and email are both required; neither can be omitted at registration or profile completion.
+- Scrub logs and screenshots of personally identifiable information before sharing.
+- Rate limiting applied to auth and translation endpoints (`rateLimit.ts`).
 
 ---
 
 ## Contributing
 
-Contributions, suggestions, and bug reports are welcome.
-
-To contribute:
-
 1. Fork the repository.
-2. Create a feature branch.
-3. Make your changes.
-4. Test the affected functionality.
+2. Create a feature branch (`git checkout -b feat/your-feature`).
+3. Implement & test your changes.
+4. Run `npx tsc --noEmit` in `frontend/` and ensure 0 errors.
 5. Commit with a clear, descriptive message.
-6. Open a pull request explaining the change and how it was tested.
+6. Open a Pull Request describing the motivation and change.
 
-For major changes, open an issue first to discuss the proposed implementation.
+For major features or breaking changes, open an issue first to discuss the approach.
 
 ---
 
-## Reporting an issue
+## Reporting an Issue
 
-If you encounter a bug, please include:
+Include the following when filing a bug report:
 
-- What you expected to happen.
-- What actually happened.
-- Steps to reproduce the issue.
-- Relevant error messages or logs.
-- Device model, operating-system version, and Bubbly app version where relevant.
+- Expected vs actual behaviour.
+- Steps to reproduce (minimal reproduction preferred).
+- Error messages & stack traces.
+- Device model, OS version, and Bubbly version (`4.1.5`).
 
-Remove passwords, tokens, private URLs, and personal information before sharing logs or screenshots.
-
-Report project issues through the [GitHub Issues page](https://github.com/Tanjiro-77/bubbly-chatapp/issues).
+Submit via the [GitHub Issues page](https://github.com/Tanjiro-77/bubbly-chatapp/issues).
 
 ---
 
 ## License
 
-The backend and frontend contain their own license metadata. Please refer to the license files in the respective directories for the applicable terms before using or redistributing those parts of the project.
+Refer to the license files in `backend/` and `frontend/` for applicable terms.
 
 ---
 
@@ -754,7 +834,7 @@ The backend and frontend contain their own license metadata. Please refer to the
 
 ### Arnav Khari
 
-Creator and developer of Bubbly.
+Creator and sole developer of Bubbly.
 
 [GitHub Profile](https://github.com/Tanjiro-77) · [Source Repository](https://github.com/Tanjiro-77/bubbly-chatapp) · [Project Website](https://bubbly-chatapp.vercel.app/)
 

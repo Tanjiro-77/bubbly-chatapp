@@ -1,24 +1,31 @@
-# Pixel Perfect
+# Bubbly Website 💛
 
-Implement exactly the screenshot and nothing else
+**v4.1.5** · TanStack Start · React · TypeScript · Vite
 
-This project was built with [Lovable](https://lovable.dev).
+The marketing & feature-showcase landing page for the Bubbly messaging app, deployed to Vercel at [bubbly-chatapp.vercel.app](https://bubbly-chatapp.vercel.app/).
 
-## Build with Lovable
+---
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/60fda0fc-8265-4341-86ec-b38ed5378461).
+## Quick Start
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build
 ```
+
+---
+
+## What's Showcased (v4.1.5)
+
+- Required phone **and** email at sign-up — both enforced across all onboarding flows.
+- Two-tier chat cache for instant message rendering.
+- Instant optimistic messaging with GIF support.
+- Smart invite system (SMS / WhatsApp / Share / copy, tone presets).
+- Credential-completion flow for existing users missing phone or email.
+- No forced re-login — persistent JWT sessions.
+- Upgraded UI: Reanimated spring press, Input focus glow, smart splash screen.
+
+---
+
+For full documentation see the [root README](../README.md).
