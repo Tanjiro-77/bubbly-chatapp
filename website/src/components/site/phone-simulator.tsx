@@ -573,7 +573,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                     </p>
 
                     {storyEmoji && (
-                      <span className="pop-in absolute text-5xl animate-bounce drop-shadow-xl">
+                      <span className="animate-bounce absolute text-5xl animate-bounce drop-shadow-xl">
                         {storyEmoji}
                       </span>
                     )}
