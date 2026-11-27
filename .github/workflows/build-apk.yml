@@ -25,26 +25,29 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
-
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Write Google Services JSON if configured
-        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
+      - name: Configure Google Services JSON (optional)
         working-directory: frontend
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if echo "$GOOGLE_SERVICES_JSON" | grep -q '^{'; then
+          if [ -z "${GOOGLE_SERVICES_JSON:-}" ]; then
+            echo "GOOGLE_SERVICES_JSON secret is not set; building without google-services.json."
+            exit 0
+          fi
+          if printf '%s' "$GOOGLE_SERVICES_JSON" | grep -q '^[[:space:]]*{'; then
             printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json
           else
-            echo "$GOOGLE_SERVICES_JSON" | base64 --decode > google-services.json
+            printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '\r\n' | base64 --decode > google-services.json
           fi
+          node -e "JSON.parse(require('fs').readFileSync('google-services.json', 'utf8'));"
+          cp google-services.json "${RUNNER_TEMP}/google-services.json"
+          echo "GOOGLE_SERVICES_JSON_PATH=${RUNNER_TEMP}/google-services.json" >> "$GITHUB_ENV"
 
-      - name: Build production APK locally
+      - name: Build production APK
         working-directory: frontend
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -56,7 +59,19 @@ jobs:
           EXPO_PUBLIC_AGORA_APP_ID: ff4f2dea21944c55b1512724e18448aa
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
           EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}
-        run: eas build --platform android --profile production-apk --local --non-interactive --output bubbly-production.apk
+        run: |
+          if [ -n "${EXPO_TOKEN:-}" ]; then
+            echo "EXPO_TOKEN detected - building via EAS local build..."
+            npm install -g eas-cli
+            eas build --platform android --profile production-apk --local --non-interactive --output bubbly-production.apk
+          else
+            echo "EXPO_TOKEN not set - building release APK via Expo prebuild + Gradle..."
+            npx expo prebuild --platform android --no-install
+            cd android
+            chmod +x gradlew
+            ./gradlew assembleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk ../bubbly-production.apk
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
