@@ -8,8 +8,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
     createAgoraRtcEngine,
     IRtcEngine,
+    IRtcEngineEventHandler,
     ChannelProfileType,
     ClientRoleType,
+    AudioProfileType,
+    AudioScenarioType,
+    ConnectionStateType,
+    ConnectionChangedReasonType,
     RtcSurfaceView,
     VideoSourceType,
 } from 'react-native-agora';
@@ -22,9 +27,9 @@ import { colors, radius, spacingX, spacingY } from '../../constants/theme';
 import { verticalScale, scale } from '../../utils/styling';
 import Typo from '../../components/Typo';
 import Avatar from '../../components/Avatar';
-import { endCallHttp, getAgoraToken, rejectCallHttp } from '../../services/callService';
+import { endCallHttp, getAgoraToken, getCallStatus, rejectCallHttp } from '../../services/callService';
 import { clearDeliveredCallNotifications } from '../../services/notificationService';
-import { startOutgoingRingback, stopOutgoingRingback } from '../../services/soundService';
+import { releaseCallAudioSession, startOutgoingRingback, stopOutgoingRingback } from '../../services/soundService';
 import { hapticTap } from '../../utils/haptics';
 import { connectSocket } from '../../socket/socket';
 import {
@@ -135,14 +140,29 @@ const CallScreen = () => {
     const isVideo = kindStr === 'video';
     const isOutgoingCall = (Array.isArray(isOutgoing) ? isOutgoing[0] : isOutgoing) === 'true';
 
+    const hasExitedRef = useRef(false);
+
     const safeBack = useCallback(() => {
-        if (router.canGoBack()) router.back();
-        else router.replace("/(main)/home");
+        if (hasExitedRef.current) return;
+        hasExitedRef.current = true;
+        try {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(main)/home");
+        } catch {}
     }, [router]);
 
     const engineRef = useRef<IRtcEngine | null>(null);
+    const eventHandlerRef = useRef<IRtcEngineEventHandler | null>(null);
     const hasCleanedUp = useRef(false);
+    const hasSignaledEndRef = useRef(false);
+    const hasStartedAgoraRef = useRef(false);
+    const isStartingAgoraRef = useRef(false);
+    const isRenewingTokenRef = useRef(false);
     const isRemoteJoinedRef = useRef(false);
+    const isSpeakerOnRef = useRef(true);
+    const callStateRef = useRef<CallState>(isOutgoingCall ? 'ringing' : 'connecting');
+    const credentialsRef = useRef<{ token: string; appId: string; channelName: string; uid: number } | null>(null);
+    const permissionsRef = useRef<{ granted: boolean; videoAllowed: boolean } | null>(null);
 
     const [callState, setCallState] = useState<CallState>(
         isOutgoingCall ? 'ringing' : 'connecting'
@@ -157,6 +177,336 @@ const CallScreen = () => {
 
     const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    useEffect(() => {
+        callStateRef.current = callState;
+    }, [callState]);
+
+    useEffect(() => {
+        isSpeakerOnRef.current = isSpeakerOn;
+    }, [isSpeakerOn]);
+
+    const signalCallTermination = useCallback(() => {
+        if (hasSignaledEndRef.current || !callIdStr) return;
+        hasSignaledEndRef.current = true;
+        if (isOutgoingCall && callStateRef.current === 'ringing') {
+            callCancel(callIdStr);
+            endCallHttp(callIdStr).catch(() => {});
+        } else {
+            callEnd(callIdStr);
+            endCallHttp(callIdStr).catch(() => {});
+        }
+    }, [callIdStr, isOutgoingCall]);
+
+    const renewChannelToken = useCallback(async (engine: IRtcEngine, currentCallId: string, channelName: string): Promise<boolean> => {
+        if (isRenewingTokenRef.current || hasCleanedUp.current) return false;
+        isRenewingTokenRef.current = true;
+        try {
+            const newTokenRes = await getAgoraToken(currentCallId, channelName);
+            if (hasCleanedUp.current || !engineRef.current) return false;
+            if (newTokenRes.success && newTokenRes.data?.token) {
+                await Promise.resolve(engine.renewToken(newTokenRes.data.token));
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
+        } finally {
+            isRenewingTokenRef.current = false;
+        }
+    }, []);
+
+    const startDurationTimer = () => {
+        if (durationRef.current) return;
+        durationRef.current = setInterval(() => {
+            setDuration(prev => prev + 1);
+        }, 1000);
+    };
+
+    const stopDurationTimer = () => {
+        if (durationRef.current) {
+            clearInterval(durationRef.current);
+            durationRef.current = null;
+        }
+    };
+
+    const cleanup = () => {
+        if (hasCleanedUp.current) return;
+        hasCleanedUp.current = true;
+        void releaseCallAudioSession();
+        stopDurationTimer();
+        if (controlsTimerRef.current) {
+            clearTimeout(controlsTimerRef.current);
+            controlsTimerRef.current = null;
+        }
+        if (statusPollRef.current) {
+            clearInterval(statusPollRef.current);
+            statusPollRef.current = null;
+        }
+        if (engineRef.current) {
+            if (eventHandlerRef.current) {
+                try { engineRef.current.unregisterEventHandler(eventHandlerRef.current); } catch {}
+                eventHandlerRef.current = null;
+            }
+            try { engineRef.current.stopPreview(); } catch {}
+            try { engineRef.current.leaveChannel(); } catch {}
+            try { engineRef.current.release(true); } catch {}
+            engineRef.current = null;
+        }
+    };
+
+    const handleCallEnd = () => {
+        if (hasCleanedUp.current) return;
+        hapticTap("boom");
+        signalCallTermination();
+        cleanup();
+        safeBack();
+    };
+
+    const startAgoraSession = useCallback(async () => {
+        const currentCallId = callIdStr;
+        const creds = credentialsRef.current;
+        const perms = permissionsRef.current;
+        if (
+            !currentCallId ||
+            !creds ||
+            !perms?.granted ||
+            hasCleanedUp.current ||
+            hasStartedAgoraRef.current ||
+            isStartingAgoraRef.current ||
+            callStateRef.current === 'ringing' ||
+            callStateRef.current === 'ended'
+        ) {
+            return;
+        }
+
+        isStartingAgoraRef.current = true;
+        try {
+            // Release expo-audio ringback focus cleanly so Android AudioManager gives Agora full communication audio
+            await releaseCallAudioSession();
+            if (hasCleanedUp.current) return;
+
+            if (typeof createAgoraRtcEngine !== "function") {
+                throw new Error("AGORA_NATIVE_UNAVAILABLE");
+            }
+
+            const engine = createAgoraRtcEngine();
+            if (!engine) {
+                throw new Error("AGORA_NATIVE_UNAVAILABLE");
+            }
+            if (hasCleanedUp.current) {
+                try { engine.release(true); } catch {}
+                return;
+            }
+            engineRef.current = engine;
+
+            engine.initialize({
+                appId: creds.appId,
+                channelProfile: ChannelProfileType.ChannelProfileCommunication,
+                audioScenario: AudioScenarioType.AudioScenarioChatroom,
+            });
+
+            engine.setAudioProfile(
+                AudioProfileType.AudioProfileSpeechStandard,
+                AudioScenarioType.AudioScenarioChatroom
+            );
+
+            const handler: IRtcEngineEventHandler = {
+                onLocalVideoStateChanged: (_connection, state, error) => {
+                    if (hasCleanedUp.current) return;
+                    if (error === 0 && state === 2) setLocalVideoReady(true);
+                    if (state === 0) setLocalVideoReady(false);
+                },
+                onJoinChannelSuccess: () => {
+                    if (hasCleanedUp.current || !engineRef.current) return;
+                    try { engine.setEnableSpeakerphone(isSpeakerOnRef.current); } catch {}
+                    setCallState((prev) => (prev === "connected" ? "connected" : "connecting"));
+                },
+                onUserJoined: (_connection, rUid) => {
+                    if (hasCleanedUp.current || !engineRef.current) return;
+                    isRemoteJoinedRef.current = true;
+                    hapticTap("success");
+                    setRemoteUid(rUid);
+                    setCallState("connected");
+                    callConnected(currentCallId);
+                    try { engine.setEnableSpeakerphone(isSpeakerOnRef.current); } catch {}
+                    startDurationTimer();
+                },
+                onUserOffline: () => {
+                    if (hasCleanedUp.current) return;
+                    setRemoteUid(null);
+                    handleCallEnd();
+                },
+                onError: (err) => {
+                    console.error("Agora error code:", err);
+                    if (!hasCleanedUp.current && (err === 109 || err === 110)) {
+                        void renewChannelToken(engine, currentCallId, creds.channelName);
+                    }
+                },
+                onRequestToken: () => {
+                    if (!hasCleanedUp.current) {
+                        void renewChannelToken(engine, currentCallId, creds.channelName);
+                    }
+                },
+                onTokenPrivilegeWillExpire: () => {
+                    if (!hasCleanedUp.current) {
+                        void renewChannelToken(engine, currentCallId, creds.channelName);
+                    }
+                },
+                onConnectionStateChanged: async (_connection, state, reason) => {
+                    if (state !== ConnectionStateType.ConnectionStateFailed || hasCleanedUp.current) return;
+                    if (
+                        reason === ConnectionChangedReasonType.ConnectionChangedTokenExpired ||
+                        reason === ConnectionChangedReasonType.ConnectionChangedInvalidToken
+                    ) {
+                        const renewed = await renewChannelToken(engine, currentCallId, creds.channelName);
+                        if (renewed || hasCleanedUp.current) return;
+                    }
+                    signalCallTermination();
+                    cleanup();
+                    BubblyAlert.alert("Call Failed", "Could not connect the voice/video media stream.");
+                    safeBack();
+                },
+            };
+
+            eventHandlerRef.current = handler;
+            engine.registerEventHandler(handler);
+
+            engine.enableAudio?.();
+            engine.enableLocalAudio(true);
+            if (perms.videoAllowed) {
+                engine.enableVideo();
+                engine.enableLocalVideo(true);
+                engine.startPreview();
+            }
+
+            engine.setDefaultAudioRouteToSpeakerphone(isSpeakerOnRef.current);
+
+            const joinOptions = {
+                clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+                publishMicrophoneTrack: true,
+                autoSubscribeAudio: true,
+                publishCameraTrack: perms.videoAllowed,
+                autoSubscribeVideo: isVideo,
+            };
+
+            let joinCode = await Promise.resolve(
+                engine.joinChannel(creds.token, creds.channelName, creds.uid, joinOptions)
+            );
+            if (joinCode === -17 && !hasCleanedUp.current) {
+                try { engine.leaveChannel(); } catch {}
+                await new Promise((r) => setTimeout(r, 250));
+                if (!hasCleanedUp.current) {
+                    joinCode = await Promise.resolve(
+                        engine.joinChannel(creds.token, creds.channelName, creds.uid, joinOptions)
+                    );
+                }
+            }
+            if (typeof joinCode === "number" && joinCode < 0 && joinCode !== -17) {
+                throw new Error(`Could not join call channel (${joinCode})`);
+            }
+
+            if (hasCleanedUp.current) {
+                try {
+                    engine.unregisterEventHandler(handler);
+                    engine.stopPreview();
+                    engine.leaveChannel();
+                    engine.release(true);
+                } catch {}
+                engineRef.current = null;
+                eventHandlerRef.current = null;
+                return;
+            }
+
+            hasStartedAgoraRef.current = true;
+            setIsSpeakerOn(isSpeakerOnRef.current);
+        } catch (error: any) {
+            if (hasCleanedUp.current) return;
+            console.error("startAgoraSession error:", error);
+            const msg = String(error?.message || "");
+            const isNativeMissing = msg.includes("AGORA_NATIVE_UNAVAILABLE") || msg.includes("AgoraRtc") || msg.includes("null");
+            signalCallTermination();
+            cleanup();
+            BubblyAlert.alert(
+                "Call Unavailable",
+                isNativeMissing
+                    ? "Native voice & video SDK is unavailable in Expo Go. Please run the Bubbly Android/iOS APK or Dev Build."
+                    : (msg || "Could not initialize the call")
+            );
+            safeBack();
+        } finally {
+            isStartingAgoraRef.current = false;
+        }
+    }, [callIdStr, isVideo, renewChannelToken, safeBack, signalCallTermination]);
+
+    const prepareCallSession = useCallback(async () => {
+        try {
+            const currentCallId = callIdStr;
+            if (!currentCallId) throw new Error("Missing callId");
+
+            const { AudioModule } = require("expo-audio");
+            const micPerm = await AudioModule.requestRecordingPermissionsAsync();
+            if (hasCleanedUp.current) return;
+            if (!micPerm?.granted) {
+                hasSignaledEndRef.current = true;
+                if (isOutgoingCall) {
+                    callCancel(currentCallId);
+                    endCallHttp(currentCallId).catch(() => {});
+                } else {
+                    callReject(currentCallId);
+                    rejectCallHttp(currentCallId).catch(() => {});
+                }
+                cleanup();
+                BubblyAlert.alert("Microphone Permission", "Microphone access is required for calls.");
+                safeBack();
+                return;
+            }
+
+            let videoAllowed = isVideo;
+            if (isVideo) {
+                const ImagePicker = require("expo-image-picker");
+                const camPerm = await ImagePicker.requestCameraPermissionsAsync();
+                if (hasCleanedUp.current) return;
+                if (!camPerm?.granted) {
+                    videoAllowed = false;
+                    setIsVideoOff(true);
+                    BubblyAlert.alert("Camera Permission", "Camera denied — continuing call with voice audio.");
+                }
+            }
+            permissionsRef.current = { granted: true, videoAllowed };
+
+            const tokenRes = await getAgoraToken(currentCallId, currentCallId);
+            if (hasCleanedUp.current) return;
+            if (!tokenRes.success || !tokenRes.data) {
+                console.error("Agora token error:", tokenRes.msg);
+                signalCallTermination();
+                cleanup();
+                BubblyAlert.alert("Call Error", tokenRes.msg || "Could not get Agora token");
+                safeBack();
+                return;
+            }
+
+            const { token, appId, channelName, uid } = tokenRes.data;
+            if (!token || !appId || !channelName || typeof uid !== "number") {
+                console.error("Invalid Agora response:", tokenRes.data);
+                signalCallTermination();
+                cleanup();
+                BubblyAlert.alert("Call Error", "Invalid Agora configuration received from server");
+                safeBack();
+                return;
+            }
+
+            credentialsRef.current = { token, appId, channelName, uid };
+            void startAgoraSession();
+        } catch (error: any) {
+            if (hasCleanedUp.current) return;
+            signalCallTermination();
+            cleanup();
+            BubblyAlert.alert("Call Error", String(error?.message || "Could not prepare call session"));
+            safeBack();
+        }
+    }, [callIdStr, isOutgoingCall, isVideo, safeBack, signalCallTermination, startAgoraSession]);
 
     useEffect(() => {
         if (isOutgoingCall && callState === 'ringing') {
@@ -164,10 +514,42 @@ const CallScreen = () => {
         } else {
             stopOutgoingRingback();
         }
+        if (callState === 'connecting' || callState === 'connected') {
+            void startAgoraSession();
+        }
         return () => {
             stopOutgoingRingback();
         };
-    }, [callState, isOutgoingCall]);
+    }, [callState, isOutgoingCall, startAgoraSession]);
+
+    useEffect(() => {
+        if (!callIdStr || (callState !== 'ringing' && callState !== 'connecting')) return;
+        statusPollRef.current = setInterval(async () => {
+            if (hasCleanedUp.current) return;
+            const res = await getCallStatus(callIdStr);
+            const serverStatus = res?.data?.status;
+            if (!serverStatus || hasCleanedUp.current) return;
+
+            if (serverStatus === 'connecting' && callStateRef.current === 'ringing') {
+                setCallState('connecting');
+            } else if (serverStatus === 'connected' && callStateRef.current !== 'connected') {
+                setCallState('connected');
+                startDurationTimer();
+            } else if (['ended', 'missed', 'rejected', 'failed', 'cancelled'].includes(serverStatus)) {
+                hasSignaledEndRef.current = true;
+                setCallState('ended');
+                cleanup();
+                safeBack();
+            }
+        }, 1800);
+
+        return () => {
+            if (statusPollRef.current) {
+                clearInterval(statusPollRef.current);
+                statusPollRef.current = null;
+            }
+        };
+    }, [callIdStr, callState, safeBack]);
 
     useEffect(() => {
         if (!isSocketConnected()) {
@@ -176,7 +558,7 @@ const CallScreen = () => {
         if (callIdStr) {
             clearDeliveredCallNotifications(callIdStr).catch(() => {});
         }
-        initAgora();
+        void prepareCallSession();
         onCallAccepted(handleRemoteAccepted);
         onCallEnded(handleRemoteCallEnded);
         onCallConnected(handleRemoteConnected);
@@ -199,170 +581,11 @@ const CallScreen = () => {
             onCallEnded(handleRemoteCallEnded, true);
             onCallConnected(handleRemoteConnected, true);
             if (!hasCleanedUp.current && callIdStr) {
-                callEnd(callIdStr);
-                endCallHttp(callIdStr).catch(() => {});
+                signalCallTermination();
             }
             cleanup();
         };
     }, []);
-
-    const initAgora = async () => {
-        try {
-            const currentCallId = callIdStr;
-            if (!currentCallId) throw new Error("Missing callId");
-
-            const { AudioModule } = require("expo-audio");
-            const micPerm = await AudioModule.requestRecordingPermissionsAsync();
-            if (!micPerm?.granted) {
-                hasCleanedUp.current = true;
-                if (isOutgoingCall) {
-                    callCancel(currentCallId);
-                } else {
-                    callReject(currentCallId);
-                    rejectCallHttp(currentCallId).catch(() => {});
-                }
-                BubblyAlert.alert("Microphone Permission", "Microphone access is required for calls.");
-                safeBack();
-                return;
-            }
-            let videoAllowed = isVideo;
-            if (isVideo) {
-                const ImagePicker = require("expo-image-picker");
-                const camPerm = await ImagePicker.requestCameraPermissionsAsync();
-                if (!camPerm?.granted) {
-                    videoAllowed = false;
-                    setIsVideoOff(true);
-                    BubblyAlert.alert("Camera Permission", "Camera denied — continuing call with voice audio.");
-                }
-            }
-
-            const tokenRes = await getAgoraToken(currentCallId, currentCallId);
-            if (hasCleanedUp.current) return;
-            if (!tokenRes.success || !tokenRes.data) {
-                console.error("Agora token error:", tokenRes.msg);
-                BubblyAlert.alert("Call Error", tokenRes.msg || "Could not get Agora token");
-                safeBack();
-                return;
-            }
-
-            const { token, appId, channelName, uid } = tokenRes.data;
-            if (!token || !appId || !channelName || typeof uid !== "number") {
-                console.error("Invalid Agora response:", tokenRes.data);
-                BubblyAlert.alert("Call Error", "Invalid Agora configuration received from server");
-                safeBack();
-                return;
-            }
-
-            if (typeof createAgoraRtcEngine !== "function") {
-                throw new Error("AGORA_NATIVE_UNAVAILABLE");
-            }
-
-            const engine = createAgoraRtcEngine();
-            if (!engine) {
-                throw new Error("AGORA_NATIVE_UNAVAILABLE");
-            }
-            if (hasCleanedUp.current) {
-                try { engine.release(); } catch {}
-                return;
-            }
-            engineRef.current = engine;
-
-            engine.initialize({
-                appId,
-                channelProfile: ChannelProfileType.ChannelProfileCommunication,
-            });
-
-            engine.registerEventHandler({
-                onLocalAudioStateChanged: (connection, state, error) => {
-                    console.log("Agora local audio:", { state, error });
-                },
-                onLocalVideoStateChanged: (_connection, state, error) => {
-                    console.log("Agora local video:", { state, error });
-                    if (error === 0 && state === 2) setLocalVideoReady(true);
-                    if (state === 0) setLocalVideoReady(false);
-                },
-                onAudioRoutingChanged: (routing) => console.log("Agora audio route:", routing),
-                onPermissionError: (permission) => console.log("Agora permission error:", permission),
-                onJoinChannelSuccess: (connection, elapsed) => {
-                    console.log("Agora joined channel successfully:", {
-                        channel: connection.channelId, uid: connection.localUid, elapsed,
-                    });
-                    setCallState((prev) => (prev === "connected" ? "connected" : isOutgoingCall ? "ringing" : "connecting"));
-                },
-                onUserJoined: (_connection, rUid) => {
-                    console.log("Agora remote user joined:", rUid);
-                    isRemoteJoinedRef.current = true;
-                    hapticTap("success");
-                    setRemoteUid(rUid);
-                    setCallState("connected");
-                    callConnected(currentCallId);
-                    startDurationTimer();
-                },
-                onUserOffline: (_connection, rUid) => {
-                    console.log("Agora remote user left:", rUid);
-                    setRemoteUid(null);
-                    if (!hasCleanedUp.current) handleCallEnd();
-                },
-                onError: (err) => console.error("Agora error code:", err),
-                onTokenPrivilegeWillExpire: async () => {
-                    console.log("Agora token is about to expire");
-                    try {
-                        const newTokenRes = await getAgoraToken(currentCallId, channelName);
-                        if (hasCleanedUp.current || !engineRef.current) return;
-                        if (newTokenRes.success && newTokenRes.data?.token) {
-                            await engine.renewToken(newTokenRes.data.token);
-                            console.log("Agora token renewed");
-                        } else {
-                            console.error("Failed to renew Agora token:", newTokenRes.msg);
-                        }
-                    } catch (error) {
-                        console.error("Agora token renewal error:", error);
-                    }
-                },
-            });
-
-            engine.enableAudio?.();
-            engine.enableLocalAudio(true);
-            if (videoAllowed) {
-                engine.enableVideo();
-                engine.enableLocalVideo(true);
-                engine.startPreview();
-            }
-
-            engine.setDefaultAudioRouteToSpeakerphone(true);
-
-            await engine.joinChannel(token, channelName, uid, {
-                clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-                publishMicrophoneTrack: true,
-                autoSubscribeAudio: true,
-                publishCameraTrack: videoAllowed,
-                autoSubscribeVideo: isVideo,
-            });
-
-            if (hasCleanedUp.current) {
-                try { engine.leaveChannel(); engine.release(); } catch {}
-                engineRef.current = null;
-                return;
-            }
-
-            engine.setEnableSpeakerphone(true);
-            setIsSpeakerOn(true);
-        } catch (error: any) {
-            if (hasCleanedUp.current) return;
-            console.error("initAgora error:", error);
-            const msg = String(error?.message || "");
-            const isNativeMissing = msg.includes("AGORA_NATIVE_UNAVAILABLE") || msg.includes("AgoraRtc") || msg.includes("null");
-            if (callIdStr) callEnd(callIdStr);
-            BubblyAlert.alert(
-                "Call Unavailable",
-                isNativeMissing
-                    ? "Native voice & video SDK is unavailable in Expo Go. Please run the Bubbly Android/iOS APK or Dev Build."
-                    : (msg || "Could not initialize the call")
-            );
-            cleanup();
-            safeBack();
-        }
-    };
 
     const handleRemoteAccepted = useCallback((data: { callId: string }) => {
         if (String(data?.callId) !== callIdStr) return;
@@ -377,6 +600,7 @@ const CallScreen = () => {
         if (String(data?.callId) !== callIdStr) return;
         if (hasCleanedUp.current) return;
 
+        hasSignaledEndRef.current = true;
         hapticTap("warning");
         setCallState("ended");
         cleanup();
@@ -390,55 +614,17 @@ const CallScreen = () => {
         startDurationTimer();
     }, [callIdStr]);
 
-    const startDurationTimer = () => {
-        if (durationRef.current) return;
-        durationRef.current = setInterval(() => {
-            setDuration(prev => prev + 1);
-        }, 1000);
-    };
-
-    const stopDurationTimer = () => {
-        if (durationRef.current) {
-            clearInterval(durationRef.current);
-            durationRef.current = null;
-        }
-    };
-
-    const cleanup = () => {
-        if (hasCleanedUp.current) return;
-        hasCleanedUp.current = true;
-        stopOutgoingRingback();
-        stopDurationTimer();
-        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
-        if (engineRef.current) {
-            try { engineRef.current.leaveChannel(); } catch {}
-            try { engineRef.current.release(); } catch {}
-            engineRef.current = null;
-        }
-    };
-
-    const handleCallEnd = () => {
-        if (hasCleanedUp.current) return;
-        hapticTap("boom");
-        callEnd(callIdStr);
-        if (callIdStr) {
-            endCallHttp(callIdStr).catch(() => {});
-        }
-        cleanup();
-        safeBack();
-    };
-
     const toggleMute = () => {
         hapticTap("heavy");
         const next = !isMuted;
-        engineRef.current?.muteLocalAudioStream(next);
+        try { engineRef.current?.muteLocalAudioStream(next); } catch {}
         setIsMuted(next);
     };
 
     const toggleVideo = () => {
         hapticTap("heavy");
         const next = !isVideoOff;
-        engineRef.current?.muteLocalVideoStream(next);
+        try { engineRef.current?.muteLocalVideoStream(next); } catch {}
         if (next) setLocalVideoReady(false);
         setIsVideoOff(next);
     };
@@ -446,13 +632,13 @@ const CallScreen = () => {
     const toggleSpeaker = () => {
         hapticTap("medium");
         const next = !isSpeakerOn;
-        engineRef.current?.setEnableSpeakerphone(next);
+        try { engineRef.current?.setEnableSpeakerphone(next); } catch {}
         setIsSpeakerOn(next);
     };
 
     const switchCamera = () => {
         hapticTap("medium");
-        engineRef.current?.switchCamera();
+        try { engineRef.current?.switchCamera(); } catch {}
         setIsFrontCamera(prev => !prev);
     };
 
@@ -495,7 +681,7 @@ const CallScreen = () => {
                 <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
                 {/* Remote video full screen */}
-                {remoteUid !== null ? (
+                {remoteUid !== null && RtcSurfaceView ? (
                     <RtcSurfaceView
                         style={StyleSheet.absoluteFill}
                         canvas={{ uid: remoteUid, sourceType: VideoSourceType.VideoSourceRemote }}
@@ -525,7 +711,7 @@ const CallScreen = () => {
                 )}
 
                 {/* Local video small PIP preview */}
-                {!isVideoOff && localVideoReady && (
+                {!isVideoOff && localVideoReady && RtcSurfaceView && (
                     <Animated.View
                         entering={FadeIn.duration(300)}
                         style={[

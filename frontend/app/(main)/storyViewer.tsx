@@ -73,6 +73,7 @@ const StoryViewer = () => {
     const isPausedRef = useRef<boolean>(false);
     const replyAckCleanupRef = useRef<(() => void) | null>(null);
     const isMountedRef = useRef(true);
+    const hasExitedRef = useRef(false);
 
     useEffect(() => {
         return () => {
@@ -87,8 +88,12 @@ const StoryViewer = () => {
     const isMyStory = currentStory && currentUser?.id === currentGroup?.user?.id;
 
     const safeBack = useCallback(() => {
-        if (router.canGoBack()) router.back();
-        else router.replace('/(main)/home');
+        if (hasExitedRef.current || !isMountedRef.current) return;
+        hasExitedRef.current = true;
+        try {
+            if (router.canGoBack()) router.back();
+            else router.replace('/(main)/home');
+        } catch {}
     }, [router]);
 
     useEffect(() => {
@@ -101,11 +106,12 @@ const StoryViewer = () => {
     // PROGRESS & TIMER
     // ─────────────────────────────────────────────
     const goToNext = useCallback(() => {
+        if (!isMountedRef.current) return;
         cancelAnimation(progress);
         const group = allGroups[currentGroupIndex];
         if (!group) { safeBack(); return; }
 
-        if (currentStoryIndex < group.stories.length - 1) {
+        if (currentStoryIndex < (group.stories?.length || 0) - 1) {
             setCurrentStoryIndex(prev => prev + 1);
         } else if (currentGroupIndex < allGroups.length - 1) {
             setCurrentGroupIndex(prev => prev + 1);
@@ -144,7 +150,7 @@ const StoryViewer = () => {
     };
 
     useEffect(() => {
-        if (!currentStory) return;
+        if (!currentStory?._id) return;
         isPausedRef.current = false;
         elapsedRef.current = 0;
         progress.value = 0;
@@ -161,12 +167,14 @@ const StoryViewer = () => {
     // NAVIGATION
     // ─────────────────────────────────────────────
     const goToPrev = useCallback(() => {
+        if (!isMountedRef.current) return;
         cancelAnimation(progress);
         if (currentStoryIndex > 0) {
             setCurrentStoryIndex(prev => prev - 1);
         } else if (currentGroupIndex > 0) {
+            const prevGroupStoriesLen = allGroups[currentGroupIndex - 1]?.stories?.length || 0;
             setCurrentGroupIndex(prev => prev - 1);
-            setCurrentStoryIndex(allGroups[currentGroupIndex - 1].stories.length - 1);
+            setCurrentStoryIndex(Math.max(0, prevGroupStoriesLen - 1));
         } else {
             isPausedRef.current = false;
             elapsedRef.current = 0;
@@ -194,12 +202,13 @@ const StoryViewer = () => {
             if (!isMountedRef.current) return;
             if (res?.success) {
                 hapticTap('success');
-                BubblyAlert.alert('✅ Message Sent', 'Your reply was delivered to ' + currentGroup.user.name);
+                BubblyAlert.alert('✅ Message Sent', 'Your reply was delivered to ' + (currentGroup?.user?.name || 'your friend'));
             } else {
                 hapticTap('error');
                 BubblyAlert.alert('Reply Failed', res?.msg || 'Could not send story reply.');
             }
         };
+        if (!currentStory?._id) return;
         hapticTap('heavy');
         replyAckCleanupRef.current = () => replyToStory(ack, true);
         replyToStory(ack);
@@ -307,11 +316,11 @@ const StoryViewer = () => {
             <View style={styles.header}>
                 <View style={styles.userInfo}>
                     <View style={styles.avatarBorder}>
-                        <Avatar size={40} uri={currentGroup.user.avatar} />
+                        <Avatar size={40} uri={currentGroup.user?.avatar} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                         <Typo size={15} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1, ellipsizeMode: 'tail' }}>
-                            {currentGroup.user.name}
+                            {currentGroup.user?.name || 'Story'}
                         </Typo>
                         <Typo size={11} color={'rgba(255,255,255,0.7)'} fontWeight="500">
                             {moment(currentStory.createdAt).fromNow()}

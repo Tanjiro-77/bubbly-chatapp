@@ -245,7 +245,8 @@ const CreateStory = () => {
             if (isMountedRef.current) {
                 AsyncStorage.removeItem(STORY_DRAFT_KEY).catch(() => {});
                 hapticTap('celebration');
-                router.back();
+                if (router.canGoBack()) router.back();
+                else router.replace("/(main)/home");
             }
         } catch (error) {
             if (isMountedRef.current) {
@@ -268,7 +269,11 @@ const CreateStory = () => {
             {/* ── Header ── */}
             <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + spacingY._8 }]}>
                 <TouchableOpacity
-                    onPress={() => { hapticTap('light'); router.back(); }}
+                    onPress={() => {
+                        hapticTap('light');
+                        if (router.canGoBack()) router.back();
+                        else router.replace('/(main)/home');
+                    }}
                     style={styles.closeBtn}
                     activeOpacity={0.7}
                 >

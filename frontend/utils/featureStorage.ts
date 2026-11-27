@@ -2,7 +2,7 @@
  * frontend/utils/featureStorage.ts
  *
  * Persistent local storage, event pub/sub, and rich card codecs
- * for Bubbly v4.1.5 flagship features with offline & backward compatibility.
+ * for Bubbly v4.2.1 flagship features with offline & backward compatibility.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -1175,7 +1175,7 @@ export async function exportLocalPreferencesSnapshot(): Promise<string> {
     return JSON.stringify(
         {
             exportedAt: new Date().toISOString(),
-            app: "Bubbly v4.1.5",
+            app: "Bubbly v4.2.1",
             bio,
             appearance,
             privacyShield,

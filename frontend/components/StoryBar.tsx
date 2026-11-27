@@ -81,6 +81,7 @@ const StoryBar = () => {
         const others: StoryGroupProps[] = [];
         const indexMap = new Map<string, number>();
         storyGroups.forEach((g, idx) => {
+            if (!g?.user?.id) return;
             indexMap.set(g.user.id, idx);
             if (g.user.id === currentUser?.id) {
                 myIdx = idx;
@@ -164,7 +165,9 @@ const StoryBar = () => {
 
                 {/* ── Other Stories ── */}
                 {otherGroups.map((group) => {
+                    if (!group?.user?.id) return null;
                     const realIndex = indexByUserId.get(group.user.id) ?? 0;
+                    const firstName = (group.user?.name || 'User').trim().split(' ')[0] || 'User';
                     return (
                         <TouchableOpacity
                             key={group.user.id}
@@ -196,7 +199,7 @@ const StoryBar = () => {
                                 textProps={{ numberOfLines: 1 }}
                                 style={styles.storyName}
                             >
-                                {group.user.name.split(' ')[0]}
+                                {firstName}
                             </Typo>
                         </TouchableOpacity>
                     );

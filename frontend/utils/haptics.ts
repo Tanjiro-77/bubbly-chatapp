@@ -60,8 +60,8 @@ function scalePattern(pattern: number | number[], mult: number): number | number
     });
 }
 
-export async function initHapticStrength(): Promise<HapticStrength> {
-    if (initialized) return currentStrength;
+export async function initHapticStrength(forceRefresh = false): Promise<HapticStrength> {
+    if (initialized && !forceRefresh) return currentStrength;
     try {
         const stored = await AsyncStorage.getItem(HAPTIC_STRENGTH_KEY);
         if (
@@ -72,10 +72,9 @@ export async function initHapticStrength(): Promise<HapticStrength> {
         ) {
             currentStrength = stored;
         }
-    } catch {
-        // Keep default "strong"
-    } finally {
         initialized = true;
+    } catch {
+        // Leave initialized false so retries succeed once native storage is ready
     }
     return currentStrength;
 }

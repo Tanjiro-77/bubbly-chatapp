@@ -1,10 +1,11 @@
 import {
-    StyleSheet, View, Modal, FlatList,
+    StyleSheet, View, Modal, FlatList, ActivityIndicator,
     TouchableOpacity, TouchableWithoutFeedback,
     Pressable, TextInput, Dimensions, ScrollView, Linking,
     PanResponder, Animated as RNAnimated, Platform,
     KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BubblyAlert } from './BubblyAlert'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
@@ -26,7 +27,7 @@ import ImageViewing from "react-native-image-viewing"
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pinMessage, unpinMessage, openViewOnce, toggleChecklistItem } from "../socket/socketEvents"
 import { getFileIcon, formatFileSize } from "../services/imageService"
-import { translateMessage } from "../services/chatService"
+import { translateMessage, transcribeVoiceNote } from "../services/chatService"
 import FormattedText from "./FormattedText"
 import { ChecklistCardBubble, CountdownCardBubble, DoodleCardBubble, EventCardBubble, GameCardBubble, SplitBillCardBubble, WyrCardBubble } from "./RichChatFeatures"
 import {
@@ -413,16 +414,34 @@ const popupStyles = StyleSheet.create({
 // ─────────────────────────────────────────────
 // VOICE MESSAGE PLAYER
 // ─────────────────────────────────────────────
-const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { voiceUrl: string; voiceDuration: number; isMe: boolean; content?: string }) => {
+const VoiceMessageBubble = ({
+    messageId,
+    voiceUrl,
+    voiceDuration = 0,
+    isMe,
+    content,
+    initialTranscript,
+}: {
+    messageId?: string;
+    voiceUrl: string;
+    voiceDuration: number;
+    isMe: boolean;
+    content?: string;
+    initialTranscript?: string | null;
+}) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [loadFailed, setLoadFailed] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [totalDuration, setTotalDuration] = useState(voiceDuration);
     const [showTranscript, setShowTranscript] = useState(false);
-    const player = useAudioPlayer(voiceUrl, { updateInterval: 200 });
+    const [transcriptText, setTranscriptText] = useState<string>(() => (initialTranscript || content || "").trim());
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const [transcriptError, setTranscriptError] = useState<string | null>(null);
+    const safeVoiceSource = typeof voiceUrl === "string" && voiceUrl.trim().length > 0 ? { uri: voiceUrl.trim() } : null;
+    const player = useAudioPlayer(safeVoiceSource, { updateInterval: 200 });
     const status = useAudioPlayerStatus(player);
-    const BARS = [3, 5, 8, 6, 10, 7, 4, 9, 6, 8, 5, 7, 10, 4, 6, 8, 5, 9, 7, 4, 6, 8, 10, 5, 7];
+    const BARS = [3, 6, 8, 5, 10, 7, 4, 9, 6, 8, 5, 7, 10, 4, 7, 9, 5, 8, 6, 4];
     const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
     const progress = totalDuration > 0 ? currentTime / totalDuration : 0;
     const dot1 = useSharedValue(1);
@@ -430,13 +449,30 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
     const dot3 = useSharedValue(1);
 
     useEffect(() => {
+        if (initialTranscript?.trim()) {
+            setTranscriptText(initialTranscript.trim());
+        } else if (messageId) {
+            AsyncStorage.getItem(`@bubbly_transcript_${messageId}`)
+                .then((cached) => {
+                    if (cached?.trim()) setTranscriptText(cached.trim());
+                })
+                .catch(() => {});
+        }
+    }, [initialTranscript, messageId]);
+
+    useEffect(() => {
+        let cancelled = false;
         getVoiceSpeedPref().then((saved) => {
+            if (cancelled) return;
             setPlaybackSpeed(saved);
             try {
-                if ((player as any).setPlaybackRate) (player as any).setPlaybackRate(saved);
-                else if ('playbackRate' in player) (player as any).playbackRate = saved;
+                if (player && (player as any).setPlaybackRate) (player as any).setPlaybackRate(saved);
+                else if (player && 'playbackRate' in player) (player as any).playbackRate = saved;
             } catch {}
-        });
+        }).catch(() => {});
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const handleToggleSpeed = () => {
@@ -444,9 +480,9 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
         setPlaybackSpeed(nextSpeed);
         saveVoiceSpeedPref(nextSpeed);
         try {
-            if ((player as any).setPlaybackRate) {
+            if (player && (player as any).setPlaybackRate) {
                 (player as any).setPlaybackRate(nextSpeed);
-            } else if ('playbackRate' in player) {
+            } else if (player && 'playbackRate' in player) {
                 (player as any).playbackRate = nextSpeed;
             }
         } catch {}
@@ -463,25 +499,73 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
         } catch {}
     };
 
+    const runTranscription = async () => {
+        if (isTranscribing) return;
+        setShowTranscript(true);
+        setTranscriptError(null);
+        setIsTranscribing(true);
+        try {
+            if (!safeVoiceSource) {
+                setTranscriptError("Voice clip URL is missing or still uploading.");
+                return;
+            }
+            const res = await transcribeVoiceNote({
+                messageId,
+                audioUrl: safeVoiceSource.uri,
+            });
+            if (res.success) {
+                const cleaned = (res.data?.transcript || "").trim();
+                if (cleaned) {
+                    setTranscriptText(cleaned);
+                    if (messageId) {
+                        AsyncStorage.setItem(`@bubbly_transcript_${messageId}`, cleaned).catch(() => {});
+                    }
+                } else {
+                    setTranscriptError("No clear spoken words detected in this audio.");
+                }
+            } else {
+                setTranscriptError(res.msg || "Could not transcribe voice note right now.");
+            }
+        } catch {
+            setTranscriptError("Transcription request failed. Please try again.");
+        } finally {
+            setIsTranscribing(false);
+        }
+    };
+
+    const handleToggleTranscript = () => {
+        hapticTap("light");
+        if (showTranscript && !transcriptError) {
+            setShowTranscript(false);
+            return;
+        }
+        if (transcriptText) {
+            setTranscriptError(null);
+            setShowTranscript(true);
+            return;
+        }
+        void runTranscription();
+    };
+
     useEffect(() => {
-        setIsPlaying(status.playing);
-        setIsLoading(!status.isLoaded && !loadFailed);
-        if (status.isLoaded) {
+        setIsPlaying(Boolean(status?.playing));
+        setIsLoading(!status?.isLoaded && !loadFailed && Boolean(safeVoiceSource));
+        if (status?.isLoaded) {
             setLoadFailed(false);
             setCurrentTime(Math.max(0, status.currentTime || 0));
             if (status.duration > 0) setTotalDuration(Math.floor(status.duration));
         }
-        if (status.didJustFinish) { setIsPlaying(false); setCurrentTime(0); }
-    }, [status.playing, status.isLoaded, status.currentTime, status.duration, status.didJustFinish, loadFailed]);
+        if (status?.didJustFinish) { setIsPlaying(false); setCurrentTime(0); }
+    }, [status?.playing, status?.isLoaded, status?.currentTime, status?.duration, status?.didJustFinish, loadFailed, safeVoiceSource]);
 
     useEffect(() => {
-        if (status.isLoaded) return;
+        if (status?.isLoaded || !safeVoiceSource) return;
         const timer = setTimeout(() => {
             setLoadFailed(true);
             setIsLoading(false);
         }, 8000);
         return () => clearTimeout(timer);
-    }, [voiceUrl, status.isLoaded]);
+    }, [voiceUrl, status?.isLoaded, safeVoiceSource]);
 
     useEffect(() => {
         if (isPlaying) {
@@ -509,10 +593,11 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
 
     const handlePlayPause = async () => {
         try {
+            if (!safeVoiceSource || !player) return;
             if (isPlaying) { player.pause(); setIsPlaying(false); return; }
             setIsLoading(!player.isLoaded);
-            await setAudioModeAsync({ playsInSilentMode: true });
-            if (status.didJustFinish || (totalDuration > 0 && currentTime >= totalDuration - 0.2)) {
+            await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+            if (status?.didJustFinish || (totalDuration > 0 && currentTime >= totalDuration - 0.2)) {
                 try { await (player as any).seekTo?.(0); } catch {}
                 setCurrentTime(0);
             }
@@ -537,6 +622,7 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
 
     const activeColor = isMe ? colors.neutral700 : colors.primary;
     const inactiveColor = isMe ? "rgba(0,0,0,0.2)" : colors.neutral300;
+    const pillBg = isMe ? "rgba(0,0,0,0.08)" : colors.neutral200;
 
     return (
         <View style={voiceStyles.container}>
@@ -575,26 +661,54 @@ const VoiceMessageBubble = ({ voiceUrl, voiceDuration = 0, isMe, content }: { vo
                         {isPlaying || currentTime > 0 ? `${formatDuration(currentTime)} / ${formatDuration(totalDuration)}` : formatDuration(totalDuration)}
                     </Typo>
                     <View style={voiceStyles.metaActions}>
-                        <TouchableOpacity onPress={() => handleSeekDelta(-5)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                        <TouchableOpacity onPress={() => handleSeekDelta(-5)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: pillBg }]}>
                             <Typo size={9} fontWeight="700" color={colors.neutral800}>-5s</Typo>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleSeekDelta(5)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                        <TouchableOpacity onPress={() => handleSeekDelta(5)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: pillBg }]}>
                             <Typo size={9} fontWeight="700" color={colors.neutral800}>+5s</Typo>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleToggleSpeed} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
+                        <TouchableOpacity onPress={handleToggleSpeed} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: pillBg }]}>
                             <Typo size={9} fontWeight="700" color={colors.neutral800}>{playbackSpeed}x</Typo>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setShowTranscript(prev => !prev)} activeOpacity={0.7} style={[voiceStyles.speedBtn, { backgroundColor: isMe ? "rgba(0,0,0,0.08)" : colors.neutral200 }]}>
-                            <Typo size={9} fontWeight="700" color={colors.neutral800}>{showTranscript ? "Hide" : "Transcribe 📝"}</Typo>
                         </TouchableOpacity>
                     </View>
                 </View>
+                <TouchableOpacity
+                    onPress={handleToggleTranscript}
+                    activeOpacity={0.75}
+                    style={[voiceStyles.transcribeBtn, { backgroundColor: pillBg }]}
+                >
+                    {isTranscribing ? (
+                        <ActivityIndicator size={10} color={colors.neutral800} />
+                    ) : (
+                        <Icons.TextAa size={11} color={colors.neutral800} weight="bold" />
+                    )}
+                    <Typo size={9.5} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
+                        {isTranscribing ? "Transcribing..." : showTranscript && !transcriptError ? "Hide Transcript" : "Transcribe"}
+                    </Typo>
+                </TouchableOpacity>
                 {showTranscript && (
-                    <View style={voiceStyles.transcriptWrap}>
-                        <Icons.Quotes size={11} color={colors.primaryDark} weight="fill" />
-                        <Typo size={11.5} color={colors.neutral800} style={{ fontStyle: 'italic', flex: 1, lineHeight: 16 }}>
-                            {content?.trim() || "Voice note transcribed on Bubbly."}
-                        </Typo>
+                    <View style={[voiceStyles.transcriptWrap, transcriptError && voiceStyles.transcriptErrorWrap]}>
+                        {isTranscribing ? (
+                            <Typo size={11} color={colors.neutral600} style={{ fontStyle: 'italic', flex: 1 }}>
+                                Converting speech to text...
+                            </Typo>
+                        ) : transcriptError ? (
+                            <TouchableOpacity onPress={() => void runTranscription()} activeOpacity={0.7} style={{ flex: 1, gap: 2 }}>
+                                <Typo size={11} fontWeight="600" color="#b91c1c" style={{ lineHeight: 15 }}>
+                                    {transcriptError}
+                                </Typo>
+                                <Typo size={10} fontWeight="700" color={colors.neutral700}>
+                                    Tap to retry
+                                </Typo>
+                            </TouchableOpacity>
+                        ) : (
+                            <>
+                                <Icons.Quotes size={11} color={colors.primaryDark} weight="fill" />
+                                <Typo size={11.5} color={colors.neutral800} style={{ flex: 1, lineHeight: 16 }}>
+                                    {transcriptText}
+                                </Typo>
+                            </>
+                        )}
                     </View>
                 )}
             </View>
@@ -745,22 +859,36 @@ const voiceStyles = StyleSheet.create({
     },
     loadingDots: { flexDirection: "row", alignItems: "center", gap: 2 },
     loadingDot: { width: 4, height: 4, borderRadius: 2 },
-    rightSection: { flex: 1, gap: 4 },
-    waveform: { flexDirection: "row", alignItems: "center", gap: 2, height: verticalScale(22) },
-    bar: { width: 3, borderRadius: radius.full },
-    metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    metaActions: { flexDirection: "row", alignItems: "center", gap: scale(4) },
+    rightSection: { flex: 1, minWidth: 0, gap: verticalScale(5) },
+    waveform: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: verticalScale(22), width: "100%" },
+    bar: { width: 2.5, borderRadius: radius.full },
+    metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: scale(6) },
+    metaActions: { flexDirection: "row", alignItems: "center", gap: scale(4), flexShrink: 1 },
     speedBtn: { paddingHorizontal: spacingX._6, paddingVertical: verticalScale(2), borderRadius: radius.full },
+    transcribeBtn: {
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(4),
+        paddingHorizontal: spacingX._10,
+        paddingVertical: verticalScale(4),
+        borderRadius: radius.full,
+        maxWidth: "100%",
+    },
     transcriptWrap: {
-        marginTop: verticalScale(5),
+        marginTop: verticalScale(3),
         padding: spacingX._8,
-        backgroundColor: "rgba(0,0,0,0.04)",
+        backgroundColor: "rgba(0,0,0,0.045)",
         borderRadius: radius._8,
         flexDirection: "row",
         alignItems: "flex-start",
         gap: scale(5),
         borderWidth: 1,
-        borderColor: "rgba(0,0,0,0.04)",
+        borderColor: "rgba(0,0,0,0.06)",
+    },
+    transcriptErrorWrap: {
+        backgroundColor: "rgba(239,68,68,0.08)",
+        borderColor: "rgba(239,68,68,0.25)",
     },
 });
 
@@ -2671,10 +2799,12 @@ const MessageItem = ({
                             {/* ── Voice message ── */}
                             {isVoiceMessage && (
                                 <VoiceMessageBubble
+                                    messageId={item.id}
                                     voiceUrl={item.voiceUrl!}
                                     voiceDuration={item.voiceDuration || 0}
                                     isMe={isMe}
                                     content={item.content}
+                                    initialTranscript={item.transcript}
                                 />
                             )}
 

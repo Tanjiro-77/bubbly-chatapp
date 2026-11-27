@@ -28,6 +28,7 @@ const HighlightText = React.memo(({
     fontWeight?: TextStyle['fontWeight'];
     numberOfLines?: number;
 }) => {
+    const safeText = typeof text === 'string' ? text : String(text ?? '');
     if (!query.trim()) {
         return (
             <Typo
@@ -37,13 +38,13 @@ const HighlightText = React.memo(({
                 style={{ flexShrink: 1 }}
                 textProps={{ numberOfLines, ellipsizeMode: "tail" }}
             >
-                {text}
+                {safeText}
             </Typo>
         );
     }
 
     const escapedQuery = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
+    const parts = safeText.split(new RegExp(`(${escapedQuery})`, 'gi'));
 
     return (
         <Typo
@@ -141,7 +142,7 @@ const ConversationItem = ({
                 name: item.name,
                 avatar: item.avatar,
                 type: item.type,
-                participants: JSON.stringify(item.participants),
+                participants: JSON.stringify(Array.isArray(item.participants) ? item.participants : []),
                 admins: JSON.stringify(item.admins || []),
                 createdBy: item.createdBy || "",
                 disappearingSeconds: String(item.disappearingSeconds || 0),

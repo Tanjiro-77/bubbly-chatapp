@@ -18,6 +18,74 @@ const PUSH_TOKEN_STORAGE_KEY = "bubbly_expo_push_token";
 const NOTIF_ENABLED_STORAGE_KEY = "bubbly_notifications_enabled";
 const SOUND_ENABLED_STORAGE_KEY = "bubbly_sound_enabled";
 
+export type PushRegistrationState =
+    | "idle"
+    | "registered"
+    | "permission_denied"
+    | "fcm_unconfigured"
+    | "unsupported_device"
+    | "sync_error";
+
+export interface PushRegistrationSnapshot {
+    status: PushRegistrationState;
+    token: string | null;
+    detail: string;
+    updatedAt: number;
+}
+
+let pushSnapshot: PushRegistrationSnapshot = {
+    status: "idle",
+    token: null,
+    detail: "Checking push status...",
+    updatedAt: Date.now(),
+};
+
+const pushStatusListeners = new Set<(snap: PushRegistrationSnapshot) => void>();
+
+function updatePushSnapshot(next: Partial<PushRegistrationSnapshot>) {
+    pushSnapshot = {
+        ...pushSnapshot,
+        ...next,
+        updatedAt: Date.now(),
+    };
+    pushStatusListeners.forEach((fn) => {
+        try {
+            fn({ ...pushSnapshot });
+        } catch {}
+    });
+}
+
+export function getPushRegistrationStatus(): PushRegistrationSnapshot {
+    return { ...pushSnapshot };
+}
+
+export function subscribePushStatus(fn: (snap: PushRegistrationSnapshot) => void): () => void {
+    pushStatusListeners.add(fn);
+    fn({ ...pushSnapshot });
+    return () => {
+        pushStatusListeners.delete(fn);
+    };
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = 2): Promise<Response> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const res = await fetch(url, init);
+            if (res.ok || (res.status >= 400 && res.status < 500)) {
+                return res;
+            }
+            lastError = new Error(`HTTP ${res.status}`);
+        } catch (err) {
+            lastError = err;
+        }
+        if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 900 * (attempt + 1)));
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Push token sync failed");
+}
+
 let activeConversationId: string | null = null;
 let handlerConfigured = false;
 let channelsSetupPromise: Promise<void> | null = null;
@@ -311,10 +379,20 @@ export async function registerForPushNotificationsAsync(
         }
 
         if (finalStatus !== "granted") {
+            updatePushSnapshot({
+                status: "permission_denied",
+                token: null,
+                detail: "Allow Notifications in device Settings to receive background messages & calls.",
+            });
             return null;
         }
 
         if (!Device.isDevice) {
+            updatePushSnapshot({
+                status: "unsupported_device",
+                token: null,
+                detail: "Remote push tokens require a physical Android or iOS device.",
+            });
             console.log("Push notifications require a physical device for remote tokens.");
             return null;
         }
@@ -323,18 +401,41 @@ export async function registerForPushNotificationsAsync(
             Constants.expoConfig?.extra?.eas?.projectId ??
             Constants.easConfig?.projectId;
 
-        const tokenResponse = await Notifications.getExpoPushTokenAsync(
-            projectId ? { projectId } : undefined
-        );
-        const pushToken = tokenResponse.data;
+        let pushToken = "";
+        try {
+            const tokenResponse = await Notifications.getExpoPushTokenAsync(
+                projectId ? { projectId } : undefined
+            );
+            pushToken = tokenResponse.data || "";
+        } catch (tokenErr: any) {
+            const msg = String(tokenErr?.message || tokenErr || "");
+            const isFcmMissing =
+                /FirebaseApp|google-services|FCM|SENDER_ID|Default FirebaseApp is not initialized/i.test(msg);
+            updatePushSnapshot({
+                status: isFcmMissing ? "fcm_unconfigured" : "sync_error",
+                token: null,
+                detail: isFcmMissing
+                    ? "Android FCM (google-services.json) is not configured in this build."
+                    : msg || "Could not obtain Expo push token.",
+            });
+            console.warn("Push token fetch failed:", msg);
+            return null;
+        }
 
-        if (!pushToken) return null;
+        if (!pushToken) {
+            updatePushSnapshot({
+                status: "sync_error",
+                token: null,
+                detail: "Empty push token returned by Expo Notifications.",
+            });
+            return null;
+        }
 
         await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, pushToken);
 
         const jwt = authToken || (await AsyncStorage.getItem("token"));
         if (jwt) {
-            await fetch(`${API_URL}/api/user/push-token`, {
+            const res = await fetchWithRetry(`${API_URL}/api/user/push-token`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -342,17 +443,34 @@ export async function registerForPushNotificationsAsync(
                 },
                 body: JSON.stringify({ pushToken }),
             });
+            if (!res.ok) {
+                const body = await res.text().catch(() => "");
+                updatePushSnapshot({
+                    status: "sync_error",
+                    token: pushToken,
+                    detail: `Backend rejected push token (${res.status}). ${body.slice(0, 80)}`,
+                });
+                return pushToken;
+            }
             initIncomingRingtone()
                 .then((ringtoneId) => syncCallRingtoneToBackend(ringtoneId, jwt))
                 .catch(() => {});
         }
 
+        updatePushSnapshot({
+            status: "registered",
+            token: pushToken,
+            detail: "Background & closed-app push notifications are active.",
+        });
+
         return pushToken;
     } catch (error) {
-        console.warn(
-            "Push notification registration failed:",
-            error instanceof Error ? error.message : error
-        );
+        const message = error instanceof Error ? error.message : String(error);
+        updatePushSnapshot({
+            status: "sync_error",
+            detail: message || "Push registration failed.",
+        });
+        console.warn("Push notification registration failed:", message);
         return null;
     }
 }

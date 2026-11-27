@@ -77,6 +77,10 @@ const userSchema = new Schema<UserProps>({
         wallpaper: { type: String, default: "" },
         bubbleStyle: { type: String, enum: ["rounded", "sharp", "minimal"], default: "rounded" },
     },
+    appPreferences: {
+        type: Schema.Types.Mixed,
+        default: {},
+    },
     customStatus: {
         emoji: { type: String, default: "" },
         text: { type: String, default: "" },

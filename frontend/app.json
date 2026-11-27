@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bubbly",
     "slug": "frontend",
-    "version": "4.1.5",
+    "version": "4.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": [
@@ -17,7 +17,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 11,
+      "versionCode": 12,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -43,7 +43,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.arnav5569.chat",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Bubbly needs access to your camera to take photos and record video for chats and stories.",
@@ -69,12 +69,12 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#1c1917",
+          "backgroundColor": "#090807",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#1c1917",
+            "backgroundColor": "#090807",
             "image": "./assets/images/splash-icon.png"
           }
         }

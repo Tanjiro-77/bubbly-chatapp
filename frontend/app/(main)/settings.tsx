@@ -21,7 +21,8 @@ import {
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { BubblyAlert } from "../../components/BubblyAlert";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import Constants from "expo-constants";
 import MaterialIcons from "@react-native-vector-icons/material-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
@@ -38,7 +39,10 @@ import {
 } from "../../utils/haptics";
 import { useAuth } from "../../contexts/authContext";
 import {
+    getPushRegistrationStatus,
+    PushRegistrationSnapshot,
     registerForPushNotificationsAsync,
+    subscribePushStatus,
     syncNotificationPreference,
 } from "../../services/notificationService";
 import {
@@ -50,7 +54,7 @@ import {
     setIncomingRingtoneId,
     stopPreviewRingtone,
 } from "../../services/soundService";
-import { getBlockedUsers, blockUser, isSocketConnected, updateProfile } from "../../socket/socketEvents";
+import { getBlockedUsers, blockUser, isSocketConnected, updatePrivacy } from "../../socket/socketEvents";
 import {
     ACCENT_SWATCHES,
     BubbleCornerStyle,
@@ -78,7 +82,14 @@ import {
     savePrivacyShield,
     saveQuietHours,
     setFocusMode,
+    subscribeFeatureUpdates,
 } from "../../utils/featureStorage";
+import {
+    DEFAULT_PRIVACY_PREFS,
+    loadEffectivePreferences,
+    persistPreferencesPatch,
+    PrivacyPrefsConfig,
+} from "../../services/preferencesService";
 import { cancelMessageReminder, getActiveReminders, SavedMessageReminder } from "../../services/reminderService";
 import { RemindersListModal } from "../../components/ConversationFeatureModals";
 import {
@@ -97,9 +108,7 @@ const BUG_REPORT_URL =
 const FEEDBACK_EMAIL =
     "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20Feedback&body=Hi%20Arnav%2C%0A%0A";
 
-const NOTIF_KEY = "bubbly_notifications_enabled";
-const SOUND_KEY = "bubbly_sound_enabled";
-const APP_LOCK_KEY = "bubbly_app_lock_enabled";
+const APP_VERSION: string = Constants.expoConfig?.version ?? "4.2.1";
 
 const openLink = async (url: string) => {
     try {
@@ -296,9 +305,12 @@ export default function SettingsScreen() {
     const [privacyShield, setPrivacyShield] = useState<PrivacyShieldConfig>(DEFAULT_PRIVACY_SHIELD);
     const [quietHours, setQuietHours] = useState<QuietHoursConfig>(DEFAULT_QUIET_HOURS);
     const [favoriteReactions, setFavoriteReactions] = useState<string[]>(DEFAULT_FAVORITE_REACTIONS);
+    const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPrefsConfig>(DEFAULT_PRIVACY_PREFS);
     const [focusEnabled, setFocusEnabled] = useState(false);
     const [reminders, setReminders] = useState<SavedMessageReminder[]>([]);
     const [showReminders, setShowReminders] = useState(false);
+    const [pushStatus, setPushStatus] = useState<PushRegistrationSnapshot>(() => getPushRegistrationStatus());
+    const [refreshingPush, setRefreshingPush] = useState(false);
 
     // Live OS permissions state
     const [permissions, setPermissions] = useState<AllPermissionsStatus>({
@@ -316,40 +328,51 @@ export default function SettingsScreen() {
         } catch (_) { }
     }, []);
 
-    useEffect(() => {
-        (async () => {
-            try {
-                const [notif, sound, lock, appCfg, shieldCfg, focusCfg, remList, hapStrength, toneId, qhCfg, favReacts] = await Promise.all([
-                    AsyncStorage.getItem(NOTIF_KEY),
-                    AsyncStorage.getItem(SOUND_KEY),
-                    AsyncStorage.getItem(APP_LOCK_KEY),
-                    getChatAppearance(),
-                    getPrivacyShield(),
-                    getFocusMode(),
-                    getActiveReminders(),
-                    initHapticStrength(),
-                    initIncomingRingtone(),
-                    getQuietHours(),
-                    getFavoriteReactions(),
-                ]);
-                if (notif !== null) setNotificationsEnabled(notif === "true");
-                if (sound !== null) setSoundEnabled(sound === "true");
-                if (lock !== null) setAppLockEnabled(lock === "true");
-                setHapticStrengthState(hapStrength);
-                setCallRingtone(toneId);
-                setAppearance(appCfg);
-                setPrivacyShield(shieldCfg);
-                setFocusEnabled(focusCfg.enabled);
-                setReminders(remList);
-                setQuietHours(qhCfg);
-                setFavoriteReactions(favReacts);
-            } catch (_) {
-            } finally {
-                setLoadingPrefs(false);
-            }
-        })();
+    const hydrateSettings = useCallback(async () => {
+        try {
+            const [bundle, focusCfg, remList] = await Promise.all([
+                loadEffectivePreferences(user?.id),
+                getFocusMode(),
+                getActiveReminders(),
+            ]);
+            setNotificationsEnabled(bundle.notificationsEnabled);
+            setSoundEnabled(bundle.soundEnabled);
+            setAppLockEnabled(bundle.appLockEnabled);
+            setHapticStrengthState(bundle.hapticStrength);
+            setCallRingtone(bundle.callRingtone);
+            setAppearance(bundle.appearance);
+            setPrivacyShield(bundle.privacyShield);
+            setQuietHours(bundle.quietHours);
+            setFavoriteReactions(bundle.favoriteReactions);
+            setPrivacyPrefs(bundle.privacy);
+            setFocusEnabled(focusCfg.enabled);
+            setReminders(remList);
+        } catch (_) {
+        } finally {
+            setLoadingPrefs(false);
+        }
+    }, [user?.id]);
 
+    useEffect(() => {
+        hydrateSettings();
         refreshPermissions();
+        const unsubPush = subscribePushStatus(setPushStatus);
+        const unsubFeature = subscribeFeatureUpdates(() => {
+            loadEffectivePreferences(user?.id)
+                .then((bundle) => {
+                    setNotificationsEnabled(bundle.notificationsEnabled);
+                    setSoundEnabled(bundle.soundEnabled);
+                    setAppLockEnabled(bundle.appLockEnabled);
+                    setHapticStrengthState(bundle.hapticStrength);
+                    setCallRingtone(bundle.callRingtone);
+                    setAppearance(bundle.appearance);
+                    setPrivacyShield(bundle.privacyShield);
+                    setQuietHours(bundle.quietHours);
+                    setFavoriteReactions(bundle.favoriteReactions);
+                    setPrivacyPrefs(bundle.privacy);
+                })
+                .catch(() => {});
+        });
 
         // Refresh permissions when app returns to foreground from Settings
         const subscription = AppState.addEventListener(
@@ -357,11 +380,14 @@ export default function SettingsScreen() {
             (nextState: AppStateStatus) => {
                 if (nextState === "active") {
                     refreshPermissions();
+                    hydrateSettings();
                 }
             }
         );
 
         return () => {
+            unsubPush();
+            unsubFeature();
             subscription.remove();
             if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
             stopPreviewRingtone();
@@ -370,7 +396,14 @@ export default function SettingsScreen() {
                 blockedHandlerRef.current = null;
             }
         };
-    }, [refreshPermissions]);
+    }, [hydrateSettings, refreshPermissions, user?.id]);
+
+    useFocusEffect(
+        useCallback(() => {
+            hydrateSettings();
+            refreshPermissions();
+        }, [hydrateSettings, refreshPermissions])
+    );
 
     const blockedHandlerRef = useRef<((res: any) => void) | null>(null);
 
@@ -397,6 +430,10 @@ export default function SettingsScreen() {
             setPermissions((prev) => ({ ...prev, [key]: updated }));
             hapticTap(updated.granted ? "success" : "warning");
 
+            if (key === "notifications" && updated.granted) {
+                registerForPushNotificationsAsync().catch(() => {});
+            }
+
             if (!updated.granted && !updated.canAskAgain) {
                 BubblyAlert.alert(
                     "Permission Denied",
@@ -415,28 +452,27 @@ export default function SettingsScreen() {
         hapticTap("medium");
         setNotificationsEnabled(value);
         try {
-            await AsyncStorage.setItem(NOTIF_KEY, String(value));
+            await persistPreferencesPatch({ notificationsEnabled: value }, { userId: user?.id });
             syncNotificationPreference(value).catch(() => {});
             if (value) {
                 registerForPushNotificationsAsync().catch(() => {});
             }
         } catch (_) { }
-    }, []);
+    }, [user?.id]);
 
     const toggleSound = useCallback(async (value: boolean) => {
         hapticTap("medium");
         setSoundEnabled(value);
         try {
-            await AsyncStorage.setItem(SOUND_KEY, String(value));
+            await persistPreferencesPatch({ soundEnabled: value }, { userId: user?.id });
         } catch (_) { }
-    }, []);
+    }, [user?.id]);
 
     const toggleAppLock = useCallback(async (value: boolean) => {
         hapticTap("heavy");
         setAppLockEnabled(value);
         try {
-            await AsyncStorage.setItem(APP_LOCK_KEY, String(value));
-            notifyFeatureListeners();
+            await persistPreferencesPatch({ appLockEnabled: value }, { userId: user?.id });
             const pinKey = user?.id ? `@bubbly_vault_pin_${user.id}` : "@bubbly_vault_pin";
             const existingPin = value ? await AsyncStorage.getItem(pinKey) : null;
             BubblyAlert.alert(
@@ -643,6 +679,45 @@ export default function SettingsScreen() {
                         }
                     />
                     <Row
+                        icon={pushStatus.status === "registered" ? "cloud-done" : "cloud-off"}
+                        iconColor={pushStatus.status === "registered" ? "#16a34a" : "#d97706"}
+                        iconBg={pushStatus.status === "registered" ? "#dcfce7" : "#fef3c7"}
+                        label="Closed-App Push Delivery"
+                        subtitle={pushStatus.detail}
+                        onPress={async () => {
+                            if (refreshingPush) return;
+                            setRefreshingPush(true);
+                            try {
+                                await registerForPushNotificationsAsync();
+                            } finally {
+                                setRefreshingPush(false);
+                            }
+                        }}
+                        right={
+                            <View
+                                style={{
+                                    paddingHorizontal: scale(10),
+                                    paddingVertical: verticalScale(4),
+                                    borderRadius: radius.full,
+                                    backgroundColor:
+                                        pushStatus.status === "registered" ? "#dcfce7" : "#fef3c7",
+                                }}
+                            >
+                                <Typo
+                                    size={11}
+                                    fontWeight="700"
+                                    color={pushStatus.status === "registered" ? "#16a34a" : "#b45309"}
+                                >
+                                    {refreshingPush
+                                        ? "Syncing..."
+                                        : pushStatus.status === "registered"
+                                        ? "Active"
+                                        : "Retry Sync"}
+                                </Typo>
+                            </View>
+                        }
+                    />
+                    <Row
                         icon="volume-up"
                         iconColor={colors.primaryDark}
                         iconBg={colors.primaryLight + "55"}
@@ -680,20 +755,8 @@ export default function SettingsScreen() {
                                 const selected = callRingtone === tone.id;
                                 const isPlaying = previewingToneId === tone.id;
                                 return (
-                                    <TouchableOpacity
+                                    <View
                                         key={tone.id}
-                                        activeOpacity={0.78}
-                                        onPress={async () => {
-                                            hapticTap("heavy");
-                                            setCallRingtone(tone.id);
-                                            await setIncomingRingtoneId(tone.id);
-                                            if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
-                                            setPreviewingToneId(tone.id);
-                                            await previewIncomingRingtone(tone.id);
-                                            previewStateTimerRef.current = setTimeout(() => {
-                                                setPreviewingToneId(null);
-                                            }, 5500);
-                                        }}
                                         style={{
                                             flexDirection: "row",
                                             alignItems: "center",
@@ -707,7 +770,21 @@ export default function SettingsScreen() {
                                             gap: scale(10),
                                         }}
                                     >
-                                        <View style={{ flexDirection: "row", alignItems: "center", gap: scale(10), flex: 1, minWidth: 0 }}>
+                                        <TouchableOpacity
+                                            activeOpacity={0.78}
+                                            onPress={async () => {
+                                                hapticTap("heavy");
+                                                setCallRingtone(tone.id);
+                                                await persistPreferencesPatch({ callRingtone: tone.id }, { userId: user?.id });
+                                                if (previewStateTimerRef.current) clearTimeout(previewStateTimerRef.current);
+                                                setPreviewingToneId(tone.id);
+                                                await previewIncomingRingtone(tone.id);
+                                                previewStateTimerRef.current = setTimeout(() => {
+                                                    setPreviewingToneId(null);
+                                                }, 5500);
+                                            }}
+                                            style={{ flexDirection: "row", alignItems: "center", gap: scale(10), flex: 1, minWidth: 0 }}
+                                        >
                                             <MaterialIcons
                                                 name={selected ? "radio-button-checked" : "radio-button-unchecked"}
                                                 size={18}
@@ -721,7 +798,7 @@ export default function SettingsScreen() {
                                                     {tone.subtitle}
                                                 </Typo>
                                             </View>
-                                        </View>
+                                        </TouchableOpacity>
                                         <TouchableOpacity
                                             activeOpacity={0.75}
                                             onPress={async () => {
@@ -760,7 +837,7 @@ export default function SettingsScreen() {
                                                 {isPlaying ? "Stop" : "Preview"}
                                             </Typo>
                                         </TouchableOpacity>
-                                    </TouchableOpacity>
+                                    </View>
                                 );
                             })}
                         </View>
@@ -793,7 +870,7 @@ export default function SettingsScreen() {
                                         activeOpacity={0.75}
                                         onPress={async () => {
                                             setHapticStrengthState(opt.key);
-                                            await setHapticStrength(opt.key);
+                                            await persistPreferencesPatch({ hapticStrength: opt.key }, { userId: user?.id });
                                             if (opt.key !== "off") {
                                                 hapticTap(opt.key === "ultra" ? "rigid" : "heavy");
                                             }
@@ -880,8 +957,9 @@ export default function SettingsScreen() {
                                 value={quietHours.enabled}
                                 onValueChange={async (val) => {
                                     hapticTap("medium");
-                                    const next = await saveQuietHours({ ...quietHours, enabled: val });
+                                    const next = { ...quietHours, enabled: val };
                                     setQuietHours(next);
+                                    await persistPreferencesPatch({ quietHours: next }, { userId: user?.id });
                                 }}
                                 trackColor={{ false: colors.neutral300, true: "#4f46e5" }}
                                 thumbColor={colors.white}
@@ -901,8 +979,9 @@ export default function SettingsScreen() {
                                             key={win.label}
                                             onPress={async () => {
                                                 hapticTap("light");
-                                                const next = await saveQuietHours({ ...quietHours, startHour: win.start, endHour: win.end });
+                                                const next = { ...quietHours, startHour: win.start, endHour: win.end };
                                                 setQuietHours(next);
+                                                await persistPreferencesPatch({ quietHours: next }, { userId: user?.id });
                                             }}
                                             style={{
                                                 paddingHorizontal: scale(10),
@@ -971,7 +1050,7 @@ export default function SettingsScreen() {
                                         maxWidth: "82%",
                                     }, borderStyle]}>
                                         <Typo size={previewFontSize} color={colors.neutral800}>
-                                            Bubbly v4.1.5 looks super crisp! ✨
+                                            Bubbly v{APP_VERSION} looks super crisp! ✨
                                         </Typo>
                                     </View>
                                     <View style={[{
@@ -1008,8 +1087,8 @@ export default function SettingsScreen() {
                                                 hapticTap("medium");
                                                 const next = { ...appearance, bubbleStyle: opt.key };
                                                 setAppearance(next);
-                                                await saveChatAppearance(next);
-                                                if (isSocketConnected()) updateProfile({ theme: { bubbleStyle: opt.key } });
+                                                await persistPreferencesPatch({ appearance: next }, { userId: user?.id });
+                                                if (isSocketConnected()) updatePrivacy({ theme: { bubbleStyle: opt.key } });
                                             }}
                                             style={{
                                                 flex: 1,
@@ -1044,7 +1123,7 @@ export default function SettingsScreen() {
                                                 hapticTap("medium");
                                                 const next = { ...appearance, fontScale: sz };
                                                 setAppearance(next);
-                                                await saveChatAppearance(next);
+                                                await persistPreferencesPatch({ appearance: next }, { userId: user?.id });
                                             }}
                                             style={{
                                                 flex: 1,
@@ -1081,8 +1160,8 @@ export default function SettingsScreen() {
                                                 hapticTap("medium");
                                                 const next = { ...appearance, accentColor: sw.color };
                                                 setAppearance(next);
-                                                await saveChatAppearance(next);
-                                                if (isSocketConnected()) updateProfile({ theme: { accent: sw.color } });
+                                                await persistPreferencesPatch({ appearance: next }, { userId: user?.id });
+                                                if (isSocketConnected()) updatePrivacy({ theme: { accent: sw.color } });
                                             }}
                                             style={{
                                                 flex: 1,
@@ -1113,6 +1192,7 @@ export default function SettingsScreen() {
                                         hapticTap("light");
                                         const reset = await saveFavoriteReactions(DEFAULT_FAVORITE_REACTIONS);
                                         setFavoriteReactions(reset);
+                                        await persistPreferencesPatch({ favoriteReactions: reset }, { userId: user?.id });
                                     }}
                                     activeOpacity={0.7}
                                 >
@@ -1153,6 +1233,7 @@ export default function SettingsScreen() {
                                                     : [emoji, ...favoriteReactions].slice(0, 6);
                                                 const saved = await saveFavoriteReactions(nextList);
                                                 setFavoriteReactions(saved);
+                                                await persistPreferencesPatch({ favoriteReactions: saved }, { userId: user?.id });
                                             }}
                                             style={{
                                                 width: scale(34),
@@ -1205,6 +1286,99 @@ export default function SettingsScreen() {
                         }
                     />
                     <Row
+                        icon="schedule"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Last Seen & Online Visibility"
+                        subtitle={
+                            privacyPrefs.lastSeen === "nobody"
+                                ? "Nobody can see your online status"
+                                : privacyPrefs.lastSeen === "contacts"
+                                ? "Only your contacts can see last seen"
+                                : "Everyone can see when you are online"
+                        }
+                        onPress={() => {
+                            BubblyAlert.alert(
+                                "Last Seen Visibility",
+                                "Who can see your online & last seen status:",
+                                [
+                                    {
+                                        text: "Everyone",
+                                        onPress: async () => {
+                                            const next = { ...privacyPrefs, lastSeen: "everyone" as const };
+                                            setPrivacyPrefs(next);
+                                            await persistPreferencesPatch({ privacy: next }, { userId: user?.id });
+                                            if (isSocketConnected()) updatePrivacy({ lastSeen: "everyone" });
+                                        },
+                                    },
+                                    {
+                                        text: "My Contacts",
+                                        onPress: async () => {
+                                            const next = { ...privacyPrefs, lastSeen: "contacts" as const };
+                                            setPrivacyPrefs(next);
+                                            await persistPreferencesPatch({ privacy: next }, { userId: user?.id });
+                                            if (isSocketConnected()) updatePrivacy({ lastSeen: "contacts" });
+                                        },
+                                    },
+                                    {
+                                        text: "Nobody",
+                                        onPress: async () => {
+                                            const next = { ...privacyPrefs, lastSeen: "nobody" as const };
+                                            setPrivacyPrefs(next);
+                                            await persistPreferencesPatch({ privacy: next }, { userId: user?.id });
+                                            if (isSocketConnected()) updatePrivacy({ lastSeen: "nobody" });
+                                        },
+                                    },
+                                    { text: "Cancel", style: "cancel" },
+                                ]
+                            );
+                        }}
+                    />
+                    <Row
+                        icon="done-all"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Read Receipts"
+                        subtitle="Share blue seen ticks on messages you open"
+                        right={
+                            <Switch
+                                value={privacyPrefs.readReceipts}
+                                onValueChange={async (val) => {
+                                    hapticTap("medium");
+                                    const next = { ...privacyPrefs, readReceipts: val };
+                                    setPrivacyPrefs(next);
+                                    await persistPreferencesPatch({ privacy: next }, { userId: user?.id });
+                                    if (isSocketConnected()) updatePrivacy({ readReceipts: val });
+                                }}
+                                trackColor={{ false: colors.neutral300, true: "#16a34a" }}
+                                thumbColor={colors.white}
+                                disabled={loadingPrefs}
+                            />
+                        }
+                    />
+                    <Row
+                        icon="keyboard"
+                        iconColor="#16a34a"
+                        iconBg="#16a34a1F"
+                        label="Typing Indicators"
+                        subtitle="Show when you are typing in conversations"
+                        right={
+                            <Switch
+                                value={privacyPrefs.typingIndicators}
+                                onValueChange={async (val) => {
+                                    hapticTap("medium");
+                                    const next = { ...privacyPrefs, typingIndicators: val };
+                                    setPrivacyPrefs(next);
+                                    await persistPreferencesPatch({ privacy: next }, { userId: user?.id });
+                                    if (isSocketConnected()) updatePrivacy({ typingIndicators: val });
+                                }}
+                                trackColor={{ false: colors.neutral300, true: "#16a34a" }}
+                                thumbColor={colors.white}
+                                disabled={loadingPrefs}
+                            />
+                        }
+                    />
+                    <Row
                         icon="visibility-off"
                         iconColor="#16a34a"
                         iconBg="#16a34a1F"
@@ -1217,10 +1391,11 @@ export default function SettingsScreen() {
                                     hapticTap("medium");
                                     const next = { ...privacyShield, hideNotificationPreview: val };
                                     setPrivacyShield(next);
-                                    await savePrivacyShield(next);
+                                    await persistPreferencesPatch({ privacyShield: next }, { userId: user?.id });
                                 }}
                                 trackColor={{ false: colors.neutral300, true: "#16a34a" }}
                                 thumbColor={colors.white}
+                                disabled={loadingPrefs}
                             />
                         }
                     />
@@ -1241,9 +1416,9 @@ export default function SettingsScreen() {
                                 "Auto-Lock Grace Period",
                                 "Choose how quickly App Lock engages in background:",
                                 [
-                                    { text: "Immediately (0s)", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 0 as const }; setPrivacyShield(n); await savePrivacyShield(n); } },
-                                    { text: "1 Minute", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 60000 as const }; setPrivacyShield(n); await savePrivacyShield(n); } },
-                                    { text: "5 Minutes", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 300000 as const }; setPrivacyShield(n); await savePrivacyShield(n); } },
+                                    { text: "Immediately (0s)", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 0 as const }; setPrivacyShield(n); await persistPreferencesPatch({ privacyShield: n }, { userId: user?.id }); } },
+                                    { text: "1 Minute", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 60000 as const }; setPrivacyShield(n); await persistPreferencesPatch({ privacyShield: n }, { userId: user?.id }); } },
+                                    { text: "5 Minutes", onPress: async () => { const n = { ...privacyShield, autoLockDelayMs: 300000 as const }; setPrivacyShield(n); await persistPreferencesPatch({ privacyShield: n }, { userId: user?.id }); } },
                                     { text: "Cancel", style: "cancel" },
                                 ]
                             );
@@ -1400,6 +1575,15 @@ export default function SettingsScreen() {
                                             setPrivacyShield(DEFAULT_PRIVACY_SHIELD);
                                             setQuietHours(DEFAULT_QUIET_HOURS);
                                             setFavoriteReactions(DEFAULT_FAVORITE_REACTIONS);
+                                            await persistPreferencesPatch(
+                                                {
+                                                    appearance: DEFAULT_APPEARANCE,
+                                                    privacyShield: DEFAULT_PRIVACY_SHIELD,
+                                                    quietHours: DEFAULT_QUIET_HOURS,
+                                                    favoriteReactions: DEFAULT_FAVORITE_REACTIONS,
+                                                },
+                                                { userId: user?.id }
+                                            );
                                             hapticTap("success");
                                             BubblyAlert.alert("Restored", "All local customizations reset to defaults.");
                                         },
@@ -1435,7 +1619,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.footer}>
                     <Typo size={12} color={colors.neutral400} fontWeight="600">
-                        Bubbly v4.1.5 · Flagship Edition
+                        Bubbly v{APP_VERSION} · Flagship Edition
                     </Typo>
                     <Typo size={11} color={colors.neutral400} style={{ marginTop: 2 }}>
                         Made with care for seamless connection

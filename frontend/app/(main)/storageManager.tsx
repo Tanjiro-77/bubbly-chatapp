@@ -14,6 +14,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import * as Icons from "phosphor-react-native";
 import { hapticTap } from "../../utils/haptics";
+import { useAuth } from "../../contexts/authContext";
+import { persistPreferencesPatch } from "../../services/preferencesService";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import Typo from "../../components/Typo";
 import BackButton from "../../components/BackButton";
@@ -44,6 +46,7 @@ const defaultPrefs: StoragePreferences = {
 
 export default function StorageManagerScreen() {
     const router = useRouter();
+    const { user } = useAuth();
 
     const [prefs, setPrefs] = useState<StoragePreferences>(defaultPrefs);
     const [clearingCache, setClearingCache] = useState(false);
@@ -97,10 +100,15 @@ export default function StorageManagerScreen() {
         hapticTap("medium");
         setPrefs((prev) => {
             const next = { ...prev, [key]: val };
-            AsyncStorage.setItem(STORAGE_PREFS_KEY, JSON.stringify(next)).catch(() => {});
+            persistPreferencesPatch(
+                { storagePrefs: next as unknown as Record<string, boolean> },
+                { userId: user?.id }
+            ).catch(() => {
+                AsyncStorage.setItem(STORAGE_PREFS_KEY, JSON.stringify(next)).catch(() => {});
+            });
             return next;
         });
-    }, []);
+    }, [user?.id]);
 
     const totalStorage = (
         storageData.photos +

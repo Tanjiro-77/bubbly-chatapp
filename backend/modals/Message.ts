@@ -59,6 +59,10 @@ const messageSchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
+    transcript: {
+        type: String,
+        default: "",
+    },
     isDeleted: {
         type: Boolean,
         default: false,

@@ -14,6 +14,9 @@ import { registerGroupEvents } from "../socket/groupEvents";
 import { registerAppEvents } from "../socket/appEvents";
 import SavedMessage from "../modals/SavedMessage";
 import { areBlocked } from "../utils/permissions";
+import { getAgoraUid } from "../controllers/call.controller";
+import { getUserPreferences, updateUserPreferences } from "../controllers/preferences.controller";
+import { isAllowedAudioUrl, resolveGeminiEndpoints, transcribeAudio } from "../controllers/transcribe.controller";
 
 class MockSocket extends EventEmitter {
     id = "sock_test_1";
@@ -460,5 +463,177 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
         sock.data.privacy.typingIndicators = true;
         await sock.trigger("typing", { conversationId: convId, senderId: sock.data.userId, senderName: "Tester" });
         assert.equal(sock.emitted.some((e: any) => e.event === "room:typing"), true);
+    });
+
+    test("getAgoraUid always returns a deterministic positive signed 31-bit integer", () => {
+        const sampleIds = Array.from({ length: 40 }, (_, i) => `507f1f77bcf86cd7994390${String(i).padStart(2, "0")}`);
+        for (const id of sampleIds) {
+            const uid = getAgoraUid(id);
+            assert.equal(Number.isInteger(uid), true);
+            assert.ok(uid >= 1 && uid <= 0x7fffffff, `Expected 31-bit signed int for ${id}, got ${uid}`);
+            assert.equal(getAgoraUid(id), uid);
+        }
+    });
+
+    test("updateUserPreferences persists settings across reloads via User model", async () => {
+        const origFindById = User.findById;
+        const origFindByIdAndUpdate = User.findByIdAndUpdate;
+        let savedState: any = {
+            notificationsEnabled: true,
+            callRingtone: "incoming_call",
+            theme: { mode: "system", accent: "#facc15", wallpaper: "", bubbleStyle: "rounded" },
+            privacy: { lastSeen: "everyone", readReceipts: true, typingIndicators: true, storyPrivacy: "everyone" },
+            appPreferences: {},
+        };
+        cleanups.push(() => {
+            (User as any).findById = origFindById;
+            (User as any).findByIdAndUpdate = origFindByIdAndUpdate;
+        });
+
+        (User as any).findById = () => ({
+            select: () => ({ lean: async () => savedState }),
+        });
+        (User as any).findByIdAndUpdate = (_id: string, update: any) => {
+            const $set = update?.$set || {};
+            if ($set.notificationsEnabled !== undefined) savedState.notificationsEnabled = $set.notificationsEnabled;
+            if ($set.callRingtone) savedState.callRingtone = $set.callRingtone;
+            if ($set["theme.bubbleStyle"]) savedState.theme.bubbleStyle = $set["theme.bubbleStyle"];
+            if ($set["theme.accent"]) savedState.theme.accent = $set["theme.accent"];
+            if ($set["privacy.lastSeen"]) savedState.privacy.lastSeen = $set["privacy.lastSeen"];
+            if ($set["privacy.readReceipts"] !== undefined) savedState.privacy.readReceipts = $set["privacy.readReceipts"];
+            if ($set.appPreferences) savedState.appPreferences = $set.appPreferences;
+            return {
+                select: () => ({ lean: async () => savedState }),
+            };
+        };
+
+        let responseJson: any = null;
+        const mockRes: any = {
+            status() { return this; },
+            json(data: any) { responseJson = data; },
+        };
+
+        await updateUserPreferences(
+            {
+                userId: "507f1f77bcf86cd799439011",
+                body: {
+                    notificationsEnabled: false,
+                    soundEnabled: false,
+                    hapticStrength: "ultra",
+                    callRingtone: "incoming_call_3",
+                    appearance: { bubbleStyle: "sharp", fontScale: "large", accentColor: "#8b5cf6" },
+                    privacy: { lastSeen: "contacts", readReceipts: false, typingIndicators: true },
+                    updatedAt: 1700000000000,
+                },
+            } as any,
+            mockRes
+        );
+
+        assert.equal(responseJson?.success, true);
+        assert.equal(responseJson?.data?.notificationsEnabled, false);
+        assert.equal(responseJson?.data?.soundEnabled, false);
+        assert.equal(responseJson?.data?.hapticStrength, "ultra");
+        assert.equal(responseJson?.data?.appearance?.bubbleStyle, "sharp");
+        assert.equal(responseJson?.data?.privacy?.lastSeen, "contacts");
+        assert.equal(responseJson?.data?.privacy?.readReceipts, false);
+
+        responseJson = null;
+        await getUserPreferences({ userId: "507f1f77bcf86cd799439011" } as any, mockRes);
+        assert.equal(responseJson?.success, true);
+        assert.equal(responseJson?.data?.notificationsEnabled, false);
+        assert.equal(responseJson?.data?.callRingtone, "incoming_call_3");
+        assert.equal(responseJson?.data?.appearance?.fontScale, "large");
+    });
+
+    test("transcribeAudio enforces SSRF allowlist, returns cached transcripts, and reports unconfigured STT honestly", async () => {
+        const vertexTargets = resolveGeminiEndpoints("AQ.sampleVertexKey");
+        assert.ok(vertexTargets[0].url.startsWith("https://aiplatform.googleapis.com/"));
+        assert.equal(vertexTargets[0].headers["x-goog-api-key"], "AQ.sampleVertexKey");
+        assert.ok(vertexTargets[0].url.includes("gemini-3.8-flash"));
+        assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.6-flash")));
+        assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.5-flash-lite")));
+        assert.equal(vertexTargets.some((t) => /gemini-2\.(0|5)/i.test(t.url)), false);
+
+        const aiStudioTargets = resolveGeminiEndpoints("AIzaSampleStudioKey");
+        assert.ok(aiStudioTargets[0].url.startsWith("https://generativelanguage.googleapis.com/"));
+        assert.ok(aiStudioTargets[0].url.includes("gemini-3.8-flash"));
+        assert.equal(aiStudioTargets.some((t) => /gemini-2\.(0|5)/i.test(t.url)), false);
+
+        const overrideTargets = resolveGeminiEndpoints("AIzaSampleStudioKey", "gemini-3.5-flash-lite");
+        assert.ok(overrideTargets[0].url.includes("gemini-3.5-flash-lite"));
+        assert.equal(overrideTargets.length, 6);
+
+        assert.equal(isAllowedAudioUrl("https://res.cloudinary.com/demo/video/upload/voice.m4a"), true);
+        assert.equal(isAllowedAudioUrl("http://res.cloudinary.com/demo/voice.m4a"), false);
+        assert.equal(isAllowedAudioUrl("http://127.0.0.1:5000/secret"), false);
+        assert.equal(isAllowedAudioUrl("https://evil.example.com/audio.m4a"), false);
+
+        const origMsgFindById = Message.findById;
+        const origConvFindById = Conversation.findById;
+        const prevGroq = process.env.GROQ_API_KEY;
+        const prevGemini = process.env.GEMINI_API_KEY;
+        const prevOpenAi = process.env.OPENAI_API_KEY;
+        const prevDeepgram = process.env.DEEPGRAM_API_KEY;
+
+        cleanups.push(() => {
+            (Message as any).findById = origMsgFindById;
+            (Conversation as any).findById = origConvFindById;
+            if (prevGroq !== undefined) process.env.GROQ_API_KEY = prevGroq; else delete process.env.GROQ_API_KEY;
+            if (prevGemini !== undefined) process.env.GEMINI_API_KEY = prevGemini; else delete process.env.GEMINI_API_KEY;
+            if (prevOpenAi !== undefined) process.env.OPENAI_API_KEY = prevOpenAi; else delete process.env.OPENAI_API_KEY;
+            if (prevDeepgram !== undefined) process.env.DEEPGRAM_API_KEY = prevDeepgram; else delete process.env.DEEPGRAM_API_KEY;
+        });
+
+        let statusCode = 200;
+        let responseJson: any = null;
+        const mockRes: any = {
+            status(code: number) { statusCode = code; return this; },
+            json(data: any) { responseJson = data; },
+        };
+
+        // Case 1: Cached DB transcript returned cleanly
+        (Conversation as any).findById = async () => ({
+            _id: "507f1f77bcf86cd799439013",
+            participants: ["507f1f77bcf86cd799439011"],
+            admins: [],
+        });
+        (Message as any).findById = () => ({
+            select: async () => ({
+                _id: "507f1f77bcf86cd799439099",
+                conversationId: "507f1f77bcf86cd799439013",
+                voiceUrl: "https://res.cloudinary.com/demo/voice.m4a",
+                transcript: "Hey Arnav, checking in on v4.2.1!",
+                isDeleted: false,
+            }),
+        });
+
+        await transcribeAudio(
+            { userId: "507f1f77bcf86cd799439011", body: { messageId: "507f1f77bcf86cd799439099" } } as any,
+            mockRes
+        );
+        assert.equal(statusCode, 200);
+        assert.equal(responseJson?.success, true);
+        assert.equal(responseJson?.data?.transcript, "Hey Arnav, checking in on v4.2.1!");
+        assert.equal(responseJson?.data?.cached, true);
+
+        // Case 2: Unconfigured server STT returns honest 503 instead of fake placeholder
+        delete process.env.GROQ_API_KEY;
+        delete process.env.GEMINI_API_KEY;
+        delete process.env.GOOGLE_AI_API_KEY;
+        delete process.env.OPENAI_API_KEY;
+        delete process.env.DEEPGRAM_API_KEY;
+        statusCode = 200;
+        responseJson = null;
+
+        await transcribeAudio(
+            {
+                userId: "507f1f77bcf86cd799439011",
+                body: { audioUrl: "https://res.cloudinary.com/demo/voice.m4a" },
+            } as any,
+            mockRes
+        );
+        assert.equal(statusCode, 503);
+        assert.equal(responseJson?.success, false);
+        assert.equal(responseJson?.code, "STT_NOT_CONFIGURED");
     });
 });

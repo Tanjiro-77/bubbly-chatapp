@@ -728,7 +728,7 @@ const Home = () => {
                             <View style={styles.brandRow}>
                                 <View style={styles.brandBadge}>
                                     <Typo size={9.5} fontWeight="800" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
-                                        V4.1.5
+                                        V4.2.1
                                     </Typo>
                                 </View>
                                 <View
@@ -1002,7 +1002,7 @@ const Home = () => {
                                                         name: vip.name,
                                                         avatar: vip.avatar,
                                                         type: vip.type,
-                                                        participants: JSON.stringify(vip.participants),
+                                                        participants: JSON.stringify(Array.isArray(vip.participants) ? vip.participants : []),
                                                         admins: JSON.stringify(vip.admins || []),
                                                         createdBy: vip.createdBy ? String(vip.createdBy) : "",
                                                         disappearingSeconds: String(vip.disappearingSeconds || 0),
@@ -1036,7 +1036,7 @@ const Home = () => {
                                                 textProps={{ numberOfLines: 1 }}
                                                 style={styles.vipName}
                                             >
-                                                {vipName.split(" ")[0]}
+                                                {(vipName || "VIP").trim().split(" ")[0] || "VIP"}
                                             </Typo>
                                         </TouchableOpacity>
                                     );

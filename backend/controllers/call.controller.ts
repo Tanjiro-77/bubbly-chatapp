@@ -6,12 +6,13 @@ import Call from "../modals/Call";
 import { getIO } from "../socket/io";
 import { acceptCallById, rejectCallById } from "../socket/callEvents";
 
-const getAgoraUid = (userId: string): number => {
+export const getAgoraUid = (userId: string): number => {
     const hash = createHash("sha256")
         .update(userId)
         .digest();
 
-    const uid = hash.readUInt32BE(0);
+    // Mask to positive signed 31-bit integer so Agora's int32 SDK UID matches across client & token
+    const uid = hash.readUInt32BE(0) & 0x7fffffff;
 
     return uid === 0 ? 1 : uid;
 };

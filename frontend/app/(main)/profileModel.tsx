@@ -3,7 +3,7 @@ import {
     TouchableOpacity, View, Pressable,
 } from 'react-native';
 import { BubblyAlert } from "../../components/BubblyAlert";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { colors, radius, spacingX, spacingY } from "../../constants/theme";
 import { scale, verticalScale } from "../../utils/styling";
 import { hapticTap } from "../../utils/haptics";
@@ -17,6 +17,7 @@ import { useAuth } from "../../contexts/authContext";
 import { UserDataProps } from "../../types";
 import Button from "../../components/Button";
 import { useRouter } from "expo-router";
+import Constants from "expo-constants";
 import { updateProfile, isSocketConnected } from "../../socket/socketEvents";
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -32,10 +33,13 @@ import {
     STATUS_PRESETS,
 } from "../../utils/featureStorage";
 
+const APP_VERSION: string = Constants.expoConfig?.version ?? "4.2.1";
+
 const ProfileModal = () => {
     const { user, signOut, updateToken, updateUserPhone } = useAuth();
     const [loading, setLoading] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
+    const isSubmittingRef = useRef(false);
     const router = useRouter();
 
     const [userData, setUserData] = useState<UserDataProps>({
@@ -60,15 +64,28 @@ const ProfileModal = () => {
 
     useEffect(() => {
         updateProfile(processUpdateProfile);
-        return () => { updateProfile(processUpdateProfile, true); };
+        return () => {
+            isSubmittingRef.current = false;
+            updateProfile(processUpdateProfile, true);
+        };
     }, []);
 
     const processUpdateProfile = async (res: any) => {
+        if (!isSubmittingRef.current) {
+            if (res?.success && res?.data?.token) {
+                await updateToken(res.data.token).catch(() => {});
+            }
+            return;
+        }
+        isSubmittingRef.current = false;
         setLoading(false);
         if (res.success) {
             hapticTap("success");
-            await updateToken(res.data.token);
-            router.back();
+            if (res.data?.token) {
+                await updateToken(res.data.token);
+            }
+            if (router.canGoBack()) router.back();
+            else router.replace("/(main)/home");
         } else {
             hapticTap("error");
             BubblyAlert.alert('Profile Update', res.msg || 'Failed to update profile');
@@ -171,6 +188,7 @@ const ProfileModal = () => {
         await saveMyBio(bio);
         data.customStatus = { emoji: nextStatus.emoji, text: nextStatus.text };
 
+        isSubmittingRef.current = true;
         updateProfile(data);
     };
 
@@ -192,7 +210,7 @@ const ProfileModal = () => {
                             Account & Profile
                         </Typo>
                         <Typo size={11} color={colors.neutral400} fontWeight="500" textProps={{ numberOfLines: 1 }}>
-                            Bubbly v4.1.5 Profile
+                            Bubbly v{APP_VERSION} Profile
                         </Typo>
                     </View>
                     <View style={{ width: verticalScale(36) }} />
@@ -581,7 +599,7 @@ const ProfileModal = () => {
                                 </View>
                                 <View style={styles.actionTextWrap}>
                                     <Typo size={15} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
-                                        About Bubbly v4.1.5
+                                        About Bubbly v{APP_VERSION}
                                     </Typo>
                                     <Typo size={12} color={colors.neutral400} textProps={{ numberOfLines: 1 }}>
                                         Build info, credits & terms

@@ -4,21 +4,18 @@ import {
     StyleSheet,
     TouchableOpacity,
     Platform,
-    Dimensions,
     Image,
-    FlatList,
-    ListRenderItemInfo,
     StatusBar,
     ScrollView,
     useWindowDimensions,
     AppState,
     AppStateStatus,
 } from "react-native";
-import { BubblyAlert } from "../components/BubblyAlert";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MaterialIcons from "@react-native-vector-icons/material-icons";
-
+import { Image as ExpoImage } from "expo-image";
+import * as Icons from "phosphor-react-native";
+import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -28,9 +25,10 @@ import Animated, {
     SharedValue,
     withSpring,
     withSequence,
+    FadeInUp,
 } from "react-native-reanimated";
-
 import { LinearGradient } from "expo-linear-gradient";
+import { BubblyAlert } from "../components/BubblyAlert";
 import { colors, radius, spacingX, spacingY } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import Typo from "../components/Typo";
@@ -44,363 +42,289 @@ import {
     PermissionKey,
     PERMISSION_METADATA,
 } from "../services/permissionService";
+import { registerForPushNotificationsAsync } from "../services/notificationService";
 
-type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
-const DOT_SMALL_WIDTH = scale(7);
-const DOT_ACTIVE_WIDTH = scale(22);
-const ARROW_SHIFT = scale(4);
+interface GuideRow {
+    icon: "slash" | "bellSlash" | "handTap" | "microphone" | "sparkle" | "lock" | "palette" | "grid";
+    title: string;
+    detail: string;
+}
 
 interface Slide {
     id: string;
-    icon: IconName;
+    badge: string;
     title: string;
     subtitle: string;
-    type?: "intro" | "permissions" | "complete";
-    accentColor: string;
-    bgGradient: [string, string, string];
-    illustrationBg: string;
-    badge?: string;
+    type: "welcome" | "messaging" | "calls" | "features" | "permissions" | "complete";
+    accent: string;
+    guides?: GuideRow[];
 }
 
 const SLIDES: Slide[] = [
     {
         id: "welcome",
-        icon: "chat-bubble",
+        badge: "FLAGSHIP MESSENGER",
         title: "Welcome to Bubbly",
         subtitle:
-            "A modern, warm, real-time messaging space built for personal, genuine connection.",
-        type: "intro",
-        accentColor: "#facc15",
-        bgGradient: ["#fffbeb", "#fef9c3", "#fef08a"],
-        illustrationBg: "#fef08a",
-        badge: "✨ Welcome",
+            "Obsidian craft meets instant connection. Fast chats, high-definition calls, and thoughtful controls in one cohesive home.",
+        type: "welcome",
+        accent: "#FACC15",
     },
     {
         id: "messaging",
-        icon: "send",
-        title: "Instant Messaging",
+        badge: "HOW TO CHAT FASTER",
+        title: "Smart Messaging & Gestures",
         subtitle:
-            "Send messages in real time with typing indicators, delivery receipts, replies, and 1-tap Spanish translations.",
-        type: "intro",
-        accentColor: "#f59e0b",
-        bgGradient: ["#fffbeb", "#fef3c7", "#fde68a"],
-        illustrationBg: "#fde68a",
-        badge: "⚡ Real-Time",
+            "Every bubble hides helpful tools designed for effortless daily conversations:",
+        type: "messaging",
+        accent: "#F59E0B",
+        guides: [
+            { icon: "slash", title: "Type / for Quick Replies", detail: "Insert saved snippets like /omw, /busy, or /thx instantly." },
+            { icon: "bellSlash", title: "Hold Send for Silent Mode", detail: "Deliver late-night messages without pinging the other phone." },
+            { icon: "handTap", title: "Hold or Swipe Any Bubble", detail: "Swipe to reply, react cleanly, copy, star, or 1-tap translate." },
+            { icon: "microphone", title: "Voice Speed & Transcribe", detail: "Skip -5s/+5s, toggle 1x/1.5x/2x, or read voice notes as text." },
+        ],
     },
     {
         id: "calls",
-        icon: "call",
-        title: "Voice & Video Calls",
+        badge: "AGORA HD VOICE & VIDEO",
+        title: "Calls That Never Miss",
         subtitle:
-            "Crystal-clear audio and video calls powered by Agora — connect face-to-face with your contacts anywhere.",
-        type: "intro",
-        accentColor: "#eab308",
-        bgGradient: ["#fefce8", "#fef9c3", "#fef08a"],
-        illustrationBg: "#fef08a",
-        badge: "📞 HD Calls",
+            "Crystal-clear voice and video calls with custom ringtones, speaker routing, and high-priority wake alerts even when Bubbly is closed.",
+        type: "calls",
+        accent: "#38BDF8",
     },
     {
-        id: "stories",
-        icon: "auto-awesome",
-        title: "Stories, Polls & Groups",
+        id: "features",
+        badge: "EXPLORE MORE TOOLS",
+        title: "Stories, Vault & Studio",
         subtitle:
-            "Share 24-hour visual stories, run group polls, and browse shared media galleries effortlessly.",
-        type: "intro",
-        accentColor: "#d97706",
-        bgGradient: ["#fffbeb", "#fef9c3", "#fef08a"],
-        illustrationBg: "#fef08a",
-        badge: "📸 Moments",
+            "Tap + inside any chat or explore Settings to unlock Bubbly's complete toolkit:",
+        type: "features",
+        accent: "#FB923C",
+        guides: [
+            { icon: "sparkle", title: "24h Story Studio", detail: "Share rich photo & gradient stories from the Home bar." },
+            { icon: "lock", title: "Secret PIN Vault", detail: "Long-press a conversation on Home to hide it behind your Vault PIN." },
+            { icon: "grid", title: "Live Interactive Cards", detail: "Send polls, shared checklists, bill splits, doodles & countdowns." },
+            { icon: "palette", title: "Bubble Corner Studio", detail: "Customize corner styles, text size & accent swatches in Settings." },
+        ],
     },
     {
         id: "permissions",
-        icon: "security",
-        title: "Permission Setup",
+        badge: "SYSTEM ACCESS",
+        title: "Enable Key Permissions",
         subtitle:
-            "Choose the permissions you want to enable for calling, voice notes, media sharing, and instant alerts.",
+            "Grant access below so calling, voice messages, media sharing, and closed-app notifications work seamlessly.",
         type: "permissions",
-        accentColor: "#ca8a04",
-        bgGradient: ["#fefce8", "#fef3c7", "#fde68a"],
-        illustrationBg: "#fde68a",
-        badge: "🔒 Permissions",
+        accent: "#FACC15",
     },
     {
         id: "complete",
-        icon: "check-circle",
-        title: "You're All Set!",
+        badge: "ALL SYSTEMS READY",
+        title: "You're Ready to Connect",
         subtitle:
-            "Your Bubbly space is prepared and ready. Let's jump in and start connecting.",
+            "Your Bubbly workspace is tuned and ready. Jump right into real-time messaging and HD calling.",
         type: "complete",
-        accentColor: "#16a34a",
-        bgGradient: ["#f0fdf4", "#dcfce7", "#bbf7d0"],
-        illustrationBg: "#bbf7d0",
-        badge: "🚀 Ready",
+        accent: "#22C55E",
     },
 ];
 
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<Slide>);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Floating Particle
-// ─────────────────────────────────────────────────────────────────────────────
-
-const FloatingParticle: React.FC<{
-    size: number;
-    left: number;
-    top: number;
-    delay: number;
-    scrollX: SharedValue<number>;
-    index: number;
-}> = ({ size, left, top, delay, scrollX }) => {
-    const animStyle = useAnimatedStyle(() => {
-        const progress = (scrollX.value / SCREEN_WIDTH) % 1;
-        const floatY = Math.sin(scrollX.value / 100 + delay) * 8;
-        const opacity = interpolate(
-            progress,
-            [0, 0.5, 1],
-            [0.15, 0.4, 0.15],
-            Extrapolation.CLAMP
-        );
-        return { transform: [{ translateY: floatY }], opacity };
-    });
-
-    return (
-        <Animated.View
-            style={[
-                styles.particle,
-                {
-                    width: size,
-                    height: size,
-                    borderRadius: size / 2,
-                    left,
-                    top,
-                    backgroundColor: colors.primary,
-                },
-                animStyle,
-            ]}
-        />
-    );
+const renderGuideIcon = (kind: GuideRow["icon"], accent: string) => {
+    const size = scale(16);
+    switch (kind) {
+        case "slash":
+            return <Icons.Lightning size={size} color={accent} weight="fill" />;
+        case "bellSlash":
+            return <Icons.BellSlash size={size} color={accent} weight="fill" />;
+        case "handTap":
+            return <Icons.ChatsCircle size={size} color={accent} weight="fill" />;
+        case "microphone":
+            return <Icons.Waveform size={size} color={accent} weight="bold" />;
+        case "sparkle":
+            return <Icons.Sparkle size={size} color={accent} weight="fill" />;
+        case "lock":
+            return <Icons.LockKey size={size} color={accent} weight="fill" />;
+        case "palette":
+            return <Icons.Palette size={size} color={accent} weight="fill" />;
+        case "grid":
+            return <Icons.SquaresFour size={size} color={accent} weight="fill" />;
+    }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Background Gradient
-// ─────────────────────────────────────────────────────────────────────────────
-
-const BackgroundGradient: React.FC<{ scrollX: SharedValue<number> }> = ({
-    scrollX,
-}) => {
-    const animStyle = useAnimatedStyle(() => {
-        const index = scrollX.value / SCREEN_WIDTH;
-        const opacity = interpolate(
-            index % 1,
-            [0, 0.5, 1],
-            [1, 0.85, 1],
-            Extrapolation.CLAMP
-        );
-        return { opacity };
-    });
-
-    return (
-        <Animated.View style={[StyleSheet.absoluteFill, animStyle]}>
-            <LinearGradient
-                colors={["#fffbeb", "#fef9c3", "#fefce8"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-            />
-        </Animated.View>
-    );
+const renderPermissionIcon = (key: PermissionKey, granted: boolean) => {
+    const color = granted ? "#22C55E" : "#FACC15";
+    const size = scale(17);
+    switch (key) {
+        case "camera":
+            return <Icons.Camera size={size} color={color} weight="fill" />;
+        case "microphone":
+            return <Icons.Microphone size={size} color={color} weight="fill" />;
+        case "mediaLibrary":
+            return <Icons.Images size={size} color={color} weight="fill" />;
+        case "notifications":
+            return <Icons.BellRinging size={size} color={color} weight="fill" />;
+        case "contacts":
+            return <Icons.AddressBook size={size} color={color} weight="fill" />;
+    }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Progress Bar
-// ─────────────────────────────────────────────────────────────────────────────
-
-const ProgressBar: React.FC<{
-    scrollX: SharedValue<number>;
-    total: number;
-    activeIndex: number;
-}> = ({ scrollX, total, activeIndex }) => {
-    const TRACK_WIDTH = SCREEN_WIDTH - scale(48);
-
-    const animatedFillStyle = useAnimatedStyle(() => {
-        const progress = interpolate(
-            scrollX.value,
-            [0, SCREEN_WIDTH * (total - 1)],
-            [0, TRACK_WIDTH],
-            Extrapolation.CLAMP
-        );
-        return { width: progress };
-    });
-
-    return (
-        <View style={styles.progressContainer}>
-            <View style={[styles.progressTrack, { width: TRACK_WIDTH }]}>
-                <Animated.View style={[styles.progressGlow, animatedFillStyle]} />
-                <Animated.View style={[styles.progressFill, animatedFillStyle]}>
-                    <LinearGradient
-                        colors={[
-                            colors.primaryLight,
-                            colors.primary,
-                            colors.primaryDark,
-                        ]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={StyleSheet.absoluteFill}
-                    />
-                </Animated.View>
-            </View>
-
-            <Typo
-                size={11}
-                fontWeight="600"
-                color={colors.neutral400}
-                style={styles.progressLabel}
-            >
-                {activeIndex + 1} / {total}
-            </Typo>
-        </View>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Dot Indicators
-// ─────────────────────────────────────────────────────────────────────────────
-
-const AnimatedDot: React.FC<{
-    index: number;
-    activeIndex: number;
-    scrollX: SharedValue<number>;
-}> = ({ index, scrollX }) => {
-    const animStyle = useAnimatedStyle(() => {
-        const inputRange = [
-            (index - 1) * SCREEN_WIDTH,
-            index * SCREEN_WIDTH,
-            (index + 1) * SCREEN_WIDTH,
-        ];
-        const widthVal = interpolate(
-            scrollX.value,
-            inputRange,
-            [DOT_SMALL_WIDTH, DOT_ACTIVE_WIDTH, DOT_SMALL_WIDTH],
-            Extrapolation.CLAMP
-        );
-        const opacityVal = interpolate(
-            scrollX.value,
-            inputRange,
-            [0.35, 1, 0.35],
-            Extrapolation.CLAMP
-        );
-        return { width: widthVal, opacity: opacityVal };
-    });
-
-    return (
-        <Animated.View
-            style={[
-                styles.dot,
-                animStyle,
-                { backgroundColor: colors.primary },
-            ]}
-        />
-    );
-};
-
-const Dots: React.FC<{
-    total: number;
-    activeIndex: number;
-    scrollX: SharedValue<number>;
-}> = ({ total, activeIndex, scrollX }) => (
-    <View style={styles.dotsRow}>
-        {Array.from({ length: total }).map((_, i) => (
-            <AnimatedDot
-                key={i}
-                index={i}
-                activeIndex={activeIndex}
-                scrollX={scrollX}
-            />
-        ))}
-    </View>
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Permission Item Card for Onboarding Slide 5
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface PermissionSetupCardProps {
+const SlideVisualCard: React.FC<{
+    item: Slide;
+    isCompactHeight: boolean;
     permissions: AllPermissionsStatus;
     onRequestPermission: (key: PermissionKey) => void;
     onEnableAll: () => void;
-}
+}> = ({ item, isCompactHeight, permissions, onRequestPermission, onEnableAll }) => {
+    if (item.type === "welcome") {
+        return (
+            <View style={styles.heroStage}>
+                <LinearGradient
+                    colors={["rgba(250, 204, 21, 0.55)", "rgba(245, 158, 11, 0.2)", "rgba(255,255,255,0.08)"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.welcomeLogoOuter}
+                >
+                    <View style={styles.welcomeLogoInner}>
+                        <ExpoImage
+                            source={require("@/assets/images/splash-icon.png")}
+                            style={styles.welcomeLogoImg}
+                            contentFit="contain"
+                        />
+                    </View>
+                </LinearGradient>
 
-const PermissionSetupCard: React.FC<PermissionSetupCardProps> = ({
-    permissions,
-    onRequestPermission,
-    onEnableAll,
-}) => {
-    const permKeys: PermissionKey[] = [
-        "camera",
-        "microphone",
-        "mediaLibrary",
-        "notifications",
-        "contacts",
-    ];
+                <View style={styles.welcomePillarsRow}>
+                    {[
+                        { icon: Icons.Lightning, label: "Instant Sync" },
+                        { icon: Icons.PhoneCall, label: "HD Calling" },
+                        { icon: Icons.ShieldCheck, label: "Vault PIN" },
+                    ].map(({ icon: IconCmp, label }) => (
+                        <View key={label} style={styles.welcomePillarChip}>
+                            <IconCmp size={scale(13)} color={colors.primary} weight="fill" />
+                            <Typo size={11} fontWeight="700" color="rgba(255,255,255,0.9)">
+                                {label}
+                            </Typo>
+                        </View>
+                    ))}
+                </View>
+            </View>
+        );
+    }
 
-    const allGranted = permKeys.every((k) => permissions[k]?.granted);
+    if (item.type === "calls") {
+        return (
+            <View style={styles.callStageCard}>
+                <View style={styles.callMockHeader}>
+                    <View style={styles.callStatusBadge}>
+                        <View style={styles.callLiveDot} />
+                        <Typo size={10.5} fontWeight="800" color="#38BDF8">
+                            HD AGORA CHANNEL
+                        </Typo>
+                    </View>
+                    <Typo size={11} fontWeight="600" color="rgba(255,255,255,0.55)">
+                        4 Ringtones
+                    </Typo>
+                </View>
 
-    return (
-        <View style={styles.permCardWrapper}>
+                <View style={styles.callMockCenter}>
+                    <View style={styles.callAvatarRing}>
+                        <Icons.PhoneCall size={scale(28)} color={colors.primary} weight="fill" />
+                    </View>
+                    <Typo size={14} fontWeight="700" color={colors.white} style={{ marginTop: verticalScale(8) }}>
+                        Crystal Voice & Face-to-Face Video
+                    </Typo>
+                    <Typo size={11.5} color="rgba(255,255,255,0.62)" style={{ textAlign: "center" }}>
+                        Smart audio handoff plays dial tones cleanly and keeps active calls steady across Wi-Fi & 4G switches.
+                    </Typo>
+                </View>
+
+                <View style={styles.callControlsPreview}>
+                    {[
+                        { icon: Icons.Microphone, label: "Mute" },
+                        { icon: Icons.SpeakerHigh, label: "Speaker" },
+                        { icon: Icons.VideoCamera, label: "Video" },
+                    ].map(({ icon: IconCmp, label }) => (
+                        <View key={label} style={styles.callPreviewChip}>
+                            <IconCmp size={scale(14)} color={colors.white} weight="bold" />
+                            <Typo size={10.5} fontWeight="600" color="rgba(255,255,255,0.8)">
+                                {label}
+                            </Typo>
+                        </View>
+                    ))}
+                </View>
+            </View>
+        );
+    }
+
+    if (item.type === "complete") {
+        return (
+            <View style={styles.completeStage}>
+                <LinearGradient
+                    colors={["rgba(34, 197, 94, 0.35)", "rgba(250, 204, 21, 0.25)"]}
+                    style={styles.completeHalo}
+                >
+                    <View style={styles.completeCircle}>
+                        <Icons.CheckCircle size={scale(54)} color="#22C55E" weight="fill" />
+                    </View>
+                </LinearGradient>
+
+                <View style={styles.completeChecklist}>
+                    {[
+                        "Background push notifications & call wake-ups wired",
+                        "Durable preferences saved safely across restarts",
+                        "Replay this guide anytime from Profile -> How to Use Bubbly",
+                    ].map((line) => (
+                        <View key={line} style={styles.completeCheckRow}>
+                            <Icons.Check size={scale(13)} color="#22C55E" weight="bold" />
+                            <Typo size={11.5} fontWeight="600" color="rgba(255,255,255,0.82)" style={{ flex: 1 }}>
+                                {line}
+                            </Typo>
+                        </View>
+                    ))}
+                </View>
+            </View>
+        );
+    }
+
+    if (item.type === "permissions") {
+        const permKeys: PermissionKey[] = ["camera", "microphone", "mediaLibrary", "notifications", "contacts"];
+        const allGranted = permKeys.every((k) => permissions[k]?.granted);
+
+        return (
             <View style={styles.permCard}>
-                {permKeys.map((key, i) => {
+                {permKeys.map((key, idx) => {
                     const meta = PERMISSION_METADATA[key];
                     const isGranted = permissions[key]?.granted;
                     const canAsk = permissions[key]?.canAskAgain;
-
-                    let iconName: IconName = "security";
-                    if (key === "camera") iconName = "camera-alt";
-                    if (key === "microphone") iconName = "mic";
-                    if (key === "mediaLibrary") iconName = "photo-library";
-                    if (key === "notifications") iconName = "notifications";
-                    if (key === "contacts") iconName = "contacts";
 
                     return (
                         <View
                             key={key}
                             style={[
                                 styles.permItemRow,
-                                i < permKeys.length - 1 && styles.permItemBorder,
+                                idx < permKeys.length - 1 && styles.permItemBorder,
                             ]}
                         >
                             <View
                                 style={[
                                     styles.permIconBadge,
-                                    {
-                                        backgroundColor: isGranted
-                                            ? "#dcfce7"
-                                            : "#fef3c7",
-                                    },
+                                    { backgroundColor: isGranted ? "rgba(34,197,94,0.16)" : "rgba(250,204,21,0.14)" },
                                 ]}
                             >
-                                <MaterialIcons
-                                    name={iconName}
-                                    size={scale(18)}
-                                    color={isGranted ? "#16a34a" : "#d97706"}
-                                />
+                                {renderPermissionIcon(key, isGranted)}
                             </View>
-
                             <View style={{ flex: 1, minWidth: 0 }}>
-                                <Typo size={13.5} fontWeight="700" color={colors.neutral900} textProps={{ numberOfLines: 1 }}>
+                                <Typo size={13} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>
                                     {meta.title}
                                 </Typo>
-                                <Typo size={11} color={colors.neutral500} textProps={{ numberOfLines: 2 }}>
+                                <Typo size={10.5} color="rgba(255,255,255,0.58)" textProps={{ numberOfLines: 2 }}>
                                     {meta.subtitle}
                                 </Typo>
                             </View>
-
                             {isGranted ? (
                                 <View style={styles.permGrantedBadge}>
-                                    <MaterialIcons name="check" size={13} color="#16a34a" />
-                                    <Typo size={11} fontWeight="700" color="#16a34a">
+                                    <Icons.Check size={12} color="#22C55E" weight="bold" />
+                                    <Typo size={10.5} fontWeight="700" color="#22C55E">
                                         Allowed
                                     </Typo>
                                 </View>
@@ -410,11 +334,7 @@ const PermissionSetupCard: React.FC<PermissionSetupCardProps> = ({
                                     onPress={() => onRequestPermission(key)}
                                     activeOpacity={0.75}
                                 >
-                                    <Typo
-                                        size={11}
-                                        fontWeight="700"
-                                        color={colors.neutral900}
-                                    >
+                                    <Typo size={10.5} fontWeight="800" color={colors.neutral900}>
                                         {canAsk ? "Allow" : "Settings"}
                                     </Typo>
                                 </TouchableOpacity>
@@ -422,376 +342,83 @@ const PermissionSetupCard: React.FC<PermissionSetupCardProps> = ({
                         </View>
                     );
                 })}
-            </View>
 
-            {!allGranted && (
-                <TouchableOpacity
-                    style={styles.enableAllBtn}
-                    onPress={onEnableAll}
-                    activeOpacity={0.8}
+                {!allGranted && (
+                    <TouchableOpacity style={styles.enableAllBtn} onPress={onEnableAll} activeOpacity={0.8}>
+                        <Icons.Checks size={scale(15)} color={colors.neutral900} weight="bold" />
+                        <Typo size={12.5} fontWeight="800" color={colors.neutral900}>
+                            Enable All Permissions
+                        </Typo>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
+    }
+
+    // Guide Deck slides (Messaging & Features)
+    return (
+        <View style={[styles.guideDeckCard, isCompactHeight && { padding: spacingX._12, gap: verticalScale(8) }]}>
+            {(item.guides || []).map((g, idx) => (
+                <View
+                    key={g.title}
+                    style={[
+                        styles.guideRow,
+                        idx < (item.guides?.length || 0) - 1 && styles.guideRowBorder,
+                    ]}
                 >
-                    <MaterialIcons
-                        name="check-circle"
-                        size={scale(16)}
-                        color={colors.neutral900}
-                    />
-                    <Typo size={13} fontWeight="700" color={colors.neutral900}>
-                        Enable All Permissions
-                    </Typo>
-                </TouchableOpacity>
-            )}
+                    <View style={[styles.guideIconWrap, { backgroundColor: `${item.accent}1A`, borderColor: `${item.accent}44` }]}>
+                        {renderGuideIcon(g.icon, item.accent)}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                        <Typo size={13} fontWeight="700" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                            {g.title}
+                        </Typo>
+                        <Typo size={11} color="rgba(255,255,255,0.65)" textProps={{ numberOfLines: 2 }}>
+                            {g.detail}
+                        </Typo>
+                    </View>
+                </View>
+            ))}
         </View>
     );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Slide Item
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SlideItem: React.FC<{
-    item: Slide;
+const AnimatedDot: React.FC<{
     index: number;
+    screenWidth: number;
     scrollX: SharedValue<number>;
-    permissions: AllPermissionsStatus;
-    onRequestPermission: (key: PermissionKey) => void;
-    onEnableAll: () => void;
-}> = ({
-    item,
-    index,
-    scrollX,
-    permissions,
-    onRequestPermission,
-    onEnableAll,
-}) => {
-    const inputRange = [
-        (index - 1) * SCREEN_WIDTH,
-        index * SCREEN_WIDTH,
-        (index + 1) * SCREEN_WIDTH,
-    ];
+}> = ({ index, screenWidth, scrollX }) => {
+    const dotSmall = scale(7);
+    const dotWide = scale(22);
 
-    const iconContainerStyle = useAnimatedStyle(() => {
-        const scaleVal = interpolate(
-            scrollX.value,
-            inputRange,
-            [0.6, 1, 0.6],
-            Extrapolation.CLAMP
-        );
-        const rotateVal = interpolate(
-            scrollX.value,
-            inputRange,
-            [-15, 0, 15],
-            Extrapolation.CLAMP
-        );
-        const opacity = interpolate(
-            scrollX.value,
-            inputRange,
-            [0, 1, 0],
-            Extrapolation.CLAMP
-        );
+    const animStyle = useAnimatedStyle(() => {
+        const w = Math.max(1, screenWidth);
+        const inputRange = [(index - 1) * w, index * w, (index + 1) * w];
         return {
-            transform: [{ scale: scaleVal }, { rotate: `${rotateVal}deg` }],
-            opacity,
+            width: interpolate(scrollX.value, inputRange, [dotSmall, dotWide, dotSmall], Extrapolation.CLAMP),
+            opacity: interpolate(scrollX.value, inputRange, [0.3, 1, 0.3], Extrapolation.CLAMP),
         };
     });
 
-    const titleStyle = useAnimatedStyle(() => {
-        const translateY = interpolate(
-            scrollX.value,
-            inputRange,
-            [30, 0, -30],
-            Extrapolation.CLAMP
-        );
-        const opacity = interpolate(
-            scrollX.value,
-            inputRange,
-            [0, 1, 0],
-            Extrapolation.CLAMP
-        );
-        return { transform: [{ translateY }], opacity };
-    });
-
-    const subtitleStyle = useAnimatedStyle(() => {
-        const translateY = interpolate(
-            scrollX.value,
-            inputRange,
-            [50, 0, -50],
-            Extrapolation.CLAMP
-        );
-        const opacity = interpolate(
-            scrollX.value,
-            inputRange,
-            [0, 1, 0],
-            Extrapolation.CLAMP
-        );
-        return { transform: [{ translateY }], opacity };
-    });
-
-    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-    const isCompactHeight = screenHeight < 700;
-    const ICON_SIZE = isCompactHeight ? scale(76) : scale(96);
-
-    return (
-        <ScrollView
-            style={{ width: screenWidth, flex: 1 }}
-            contentContainerStyle={styles.slideScroll}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-        >
-            {/* Main Visual */}
-            <Animated.View style={[iconContainerStyle, styles.iconWrapper]}>
-                <View
-                    style={[
-                        styles.iconCard,
-                        { width: ICON_SIZE, height: ICON_SIZE },
-                    ]}
-                >
-                    <LinearGradient
-                        colors={["#fffbeb", "#fef3c7"]}
-                        style={[
-                            StyleSheet.absoluteFill,
-                            { borderRadius: radius._30 },
-                        ]}
-                    />
-                    <View
-                        style={[
-                            styles.iconInnerGlow,
-                            { backgroundColor: item.accentColor + "25" },
-                        ]}
-                    />
-                    <MaterialIcons
-                        name={item.icon}
-                        size={isCompactHeight ? scale(36) : scale(44)}
-                        color={item.accentColor}
-                    />
-                </View>
-            </Animated.View>
-
-            {/* Badge */}
-            {item.badge && (
-                <View style={styles.badge}>
-                    <LinearGradient
-                        colors={[colors.primaryLight, colors.primary]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.badgeGradient}
-                    >
-                        <Typo size={11} fontWeight="700" color={colors.neutral800}>
-                            {item.badge}
-                        </Typo>
-                    </LinearGradient>
-                </View>
-            )}
-
-            {/* Header Text */}
-            <View style={styles.textContainer}>
-                <Animated.View style={titleStyle}>
-                    <Typo
-                        size={isCompactHeight ? 22 : 25}
-                        fontWeight="800"
-                        color={colors.neutral900}
-                        style={styles.slideTitle}
-                    >
-                        {item.title}
-                    </Typo>
-                </Animated.View>
-
-                <Animated.View style={subtitleStyle}>
-                    <Typo
-                        size={14}
-                        color={colors.neutral500}
-                        fontWeight="400"
-                        style={styles.slideSubtitle}
-                    >
-                        {item.subtitle}
-                    </Typo>
-                </Animated.View>
-            </View>
-
-            {/* Interactive Permissions List on Slide 5 */}
-            {item.type === "permissions" && (
-                <PermissionSetupCard
-                    permissions={permissions}
-                    onRequestPermission={onRequestPermission}
-                    onEnableAll={onEnableAll}
-                />
-            )}
-        </ScrollView>
-    );
+    return <Animated.View style={[styles.dot, animStyle]} />;
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Next Button
-// ─────────────────────────────────────────────────────────────────────────────
-
-const NextButton: React.FC<{
-    isLast: boolean;
-    isReplay: boolean;
-    onPress: () => void;
-    scrollX: SharedValue<number>;
-    total: number;
-}> = ({ isLast, isReplay, onPress, scrollX, total }) => {
-    const buttonScale = useSharedValue(1);
-
-    const handlePress = () => {
-        hapticTap(isLast ? "celebration" : "heavy");
-        buttonScale.value = withSequence(
-            withSpring(0.95, { damping: 10 }),
-            withSpring(1, { damping: 10 })
-        );
-        onPress();
-    };
-
-    const animStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: buttonScale.value }],
-    }));
-
-    const arrowStyle = useAnimatedStyle(() => {
-        const progress = interpolate(
-            scrollX.value,
-            [0, SCREEN_WIDTH * (total - 1)],
-            [0, 1],
-            Extrapolation.CLAMP
-        );
-        const translateX = interpolate(
-            progress,
-            [0.85, 1],
-            [0, ARROW_SHIFT],
-            Extrapolation.CLAMP
-        );
-        return { transform: [{ translateX }] };
-    });
-
-    return (
-        <Animated.View style={[styles.nextBtnWrapper, animStyle]}>
-            <TouchableOpacity
-                onPress={handlePress}
-                activeOpacity={0.9}
-                style={styles.nextBtnTouchable}
-            >
-                <LinearGradient
-                    colors={[
-                        colors.primaryLight,
-                        colors.primary,
-                        colors.primaryDark,
-                    ]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.nextBtnGradient}
-                >
-                    <Typo
-                        size={16}
-                        fontWeight="800"
-                        color={colors.neutral900}
-                        style={styles.nextBtnText}
-                    >
-                        {isLast
-                            ? isReplay
-                                ? "Done ✓"
-                                : "Get Started 🚀"
-                            : "Continue"}
-                    </Typo>
-
-                    {!isLast && (
-                        <Animated.View style={arrowStyle}>
-                            <MaterialIcons
-                                name="arrow-forward"
-                                size={scale(20)}
-                                color={colors.neutral900}
-                            />
-                        </Animated.View>
-                    )}
-                </LinearGradient>
-            </TouchableOpacity>
-        </Animated.View>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Header
-// ─────────────────────────────────────────────────────────────────────────────
-
-const Header: React.FC<{
-    isReplay: boolean;
-    onSkip: () => void;
-    scrollX: SharedValue<number>;
-}> = ({ isReplay, onSkip, scrollX }) => {
-    const logoStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(
-            scrollX.value,
-            [0, SCREEN_WIDTH],
-            [1, 0.7],
-            Extrapolation.CLAMP
-        );
-        return { opacity };
-    });
-
-    return (
-        <View style={styles.header}>
-            <Animated.View style={[styles.logoContainer, logoStyle]}>
-                <LinearGradient
-                    colors={[colors.primary, colors.primaryDark]}
-                    style={styles.logoGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                >
-                    <MaterialIcons
-                        name="chat-bubble"
-                        size={scale(18)}
-                        color={colors.neutral900}
-                    />
-                </LinearGradient>
-
-                <Typo
-                    size={16}
-                    fontWeight="800"
-                    color={colors.neutral900}
-                    style={{ letterSpacing: 0.5 }}
-                >
-                    Bubbly
-                </Typo>
-            </Animated.View>
-
-            {!isReplay && (
-                <TouchableOpacity
-                    style={styles.skipBtn}
-                    onPress={onSkip}
-                    activeOpacity={0.65}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                    <View style={styles.skipBtnInner}>
-                        <Typo size={13} fontWeight="600" color={colors.neutral500}>
-                            Skip
-                        </Typo>
-                        <MaterialIcons
-                            name="chevron-right"
-                            size={scale(16)}
-                            color={colors.neutral400}
-                        />
-                    </View>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Screen
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const isCompactHeight = screenHeight < 700;
     const params = useLocalSearchParams<{ replay?: string }>();
     const isReplay = params.replay === "true";
 
     const [activeIndex, setActiveIndex] = useState(0);
-    const flatListRef = useRef<FlatList<Slide>>(null);
+    const scrollRef = useRef<any>(null);
     const scrollX = useSharedValue(0);
     const lastSlideRef = useRef(0);
+    const buttonScale = useSharedValue(1);
 
     const isLast = activeIndex === SLIDES.length - 1;
 
-    // Live permissions status
     const [permissions, setPermissions] = useState<AllPermissionsStatus>({
         camera: { granted: false, canAskAgain: true, status: "undetermined" },
         microphone: { granted: false, canAskAgain: true, status: "undetermined" },
@@ -804,17 +431,14 @@ export default function OnboardingScreen() {
         try {
             const status = await checkAllPermissions();
             setPermissions(status);
-        } catch (_) { }
+        } catch (_) {}
     }, []);
 
     useEffect(() => {
         refreshPermissions();
-        const sub = AppState.addEventListener(
-            "change",
-            (nextState: AppStateStatus) => {
-                if (nextState === "active") refreshPermissions();
-            }
-        );
+        const sub = AppState.addEventListener("change", (nextState: AppStateStatus) => {
+            if (nextState === "active") refreshPermissions();
+        });
         return () => sub.remove();
     }, [refreshPermissions]);
 
@@ -825,38 +449,34 @@ export default function OnboardingScreen() {
             if (!current.canAskAgain && !current.granted) {
                 BubblyAlert.alert(
                     `${PERMISSION_METADATA[key].title} Permission`,
-                    `Permission was previously denied. Please open Settings to grant access.`,
+                    "Permission was previously denied. Open device Settings to grant access.",
                     [
                         { text: "Cancel", style: "cancel" },
-                        {
-                            text: "Open Settings",
-                            onPress: () => openDeviceSettings(),
-                        },
+                        { text: "Open Settings", onPress: () => openDeviceSettings() },
                     ]
                 );
                 return;
             }
-
             const updated = await requestPermissionByKey(key);
             setPermissions((prev) => ({ ...prev, [key]: updated }));
             hapticTap(updated.granted ? "success" : "warning");
+            if (key === "notifications" && updated.granted) {
+                registerForPushNotificationsAsync().catch(() => {});
+            }
         },
         [permissions]
     );
 
     const handleEnableAllPermissions = useCallback(async () => {
         hapticTap("heavy");
-        const keys: PermissionKey[] = [
-            "camera",
-            "microphone",
-            "mediaLibrary",
-            "notifications",
-            "contacts",
-        ];
+        const keys: PermissionKey[] = ["camera", "microphone", "mediaLibrary", "notifications", "contacts"];
         for (const k of keys) {
             if (!permissions[k].granted && permissions[k].canAskAgain) {
                 const res = await requestPermissionByKey(k);
                 setPermissions((prev) => ({ ...prev, [k]: res }));
+                if (k === "notifications" && res.granted) {
+                    registerForPushNotificationsAsync().catch(() => {});
+                }
             }
         }
         hapticTap("celebration");
@@ -868,93 +488,76 @@ export default function OnboardingScreen() {
         },
     });
 
-    const handleMomentumEnd = useCallback((e: any) => {
-        const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-        if (index !== lastSlideRef.current) {
-            lastSlideRef.current = index;
-            hapticTap("medium");
-        }
-        setActiveIndex(index);
-    }, []);
+    const handleMomentumEnd = useCallback(
+        (e: any) => {
+            const w = Math.max(1, screenWidth);
+            const rawIdx = Math.round(e.nativeEvent.contentOffset.x / w);
+            const clampedIdx = Math.max(0, Math.min(SLIDES.length - 1, rawIdx));
+            if (clampedIdx !== lastSlideRef.current) {
+                lastSlideRef.current = clampedIdx;
+                hapticTap("medium");
+            }
+            setActiveIndex(clampedIdx);
+        },
+        [screenWidth]
+    );
 
-    const handleFinish = useCallback(async () => {
+    const completeFlow = useCallback(async () => {
         await markOnboardingCompleted();
         if (isReplay) {
-            router.back();
+            if (router.canGoBack()) router.back();
+            else router.replace("/(main)/home");
         } else {
             router.replace("/(auth)/welcome");
         }
     }, [isReplay, router]);
 
     const handleNext = useCallback(() => {
+        hapticTap(isLast ? "celebration" : "heavy");
+        buttonScale.value = withSequence(withSpring(0.95, { damping: 10 }), withSpring(1, { damping: 10 }));
         if (isLast) {
-            handleFinish();
+            void completeFlow();
             return;
         }
-        const nextIndex = activeIndex + 1;
+        const nextIndex = Math.min(SLIDES.length - 1, activeIndex + 1);
         lastSlideRef.current = nextIndex;
         setActiveIndex(nextIndex);
-        flatListRef.current?.scrollToIndex({
-            index: nextIndex,
-            animated: true,
-        });
-    }, [isLast, activeIndex, handleFinish]);
+        scrollRef.current?.scrollTo?.({ x: nextIndex * screenWidth, animated: true });
+    }, [activeIndex, buttonScale, completeFlow, isLast, screenWidth]);
 
-    const handleSkip = useCallback(async () => {
+    const handleSkip = useCallback(() => {
         hapticTap("medium");
-        await markOnboardingCompleted();
-        if (isReplay) {
-            router.back();
-        } else {
-            router.replace("/(auth)/welcome");
-        }
-    }, [isReplay, router]);
+        void completeFlow();
+    }, [completeFlow]);
 
-    const particles = [
-        { size: scale(8), left: scale(20), top: verticalScale(120), delay: 0 },
-        { size: scale(5), left: scale(60), top: verticalScale(200), delay: 1 },
-        {
-            size: scale(10),
-            left: SCREEN_WIDTH - scale(40),
-            top: verticalScale(150),
-            delay: 2,
-        },
-        {
-            size: scale(6),
-            left: SCREEN_WIDTH - scale(80),
-            top: verticalScale(250),
-            delay: 0.5,
-        },
-        { size: scale(7), left: scale(40), top: verticalScale(320), delay: 1.5 },
-    ];
+    const btnAnimStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: buttonScale.value }],
+    }));
+
+    const progressRatio = (activeIndex + 1) / SLIDES.length;
 
     return (
-        <View
-            style={[
-                styles.container,
-                { paddingTop: insets.top, paddingBottom: insets.bottom },
-            ]}
-        >
-            <StatusBar
-                barStyle="dark-content"
-                backgroundColor="transparent"
-                translucent
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, verticalScale(12)) }]}>
+            <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+            <LinearGradient
+                colors={["#090807", "#14100B", "#1C140C", "#090807"]}
+                locations={[0, 0.35, 0.72, 1]}
+                style={StyleSheet.absoluteFill}
             />
 
-            <BackgroundGradient scrollX={scrollX} />
-
-            {/* Subtle floating particles */}
-            {particles.map((p, i) => (
-                <FloatingParticle
-                    key={i}
-                    size={p.size}
-                    left={p.left}
-                    top={p.top}
-                    delay={p.delay}
-                    scrollX={scrollX}
-                    index={i}
-                />
-            ))}
+            <View pointerEvents="none" style={styles.ambientSvgGlow}>
+                <Svg width="100%" height="100%" viewBox="0 0 360 360">
+                    <Defs>
+                        <RadialGradient id="onboardGlow" cx="50%" cy="40%" r="50%">
+                            <Stop offset="0%" stopColor="#FACC15" stopOpacity="0.24" />
+                            <Stop offset="55%" stopColor="#F59E0B" stopOpacity="0.08" />
+                            <Stop offset="100%" stopColor="#090807" stopOpacity="0" />
+                        </RadialGradient>
+                    </Defs>
+                    <Circle cx="180" cy="144" r="175" fill="url(#onboardGlow)" />
+                </Svg>
+            </View>
 
             <Image
                 source={require("@/assets/images/bgPattern.png")}
@@ -962,408 +565,493 @@ export default function OnboardingScreen() {
                 resizeMode="cover"
             />
 
-            <Header
-                isReplay={isReplay}
-                onSkip={handleSkip}
-                scrollX={scrollX}
-            />
+            {/* Header */}
+            <View style={styles.header}>
+                <View style={styles.headerBrandRow}>
+                    <View style={styles.headerLogoBadge}>
+                        <ExpoImage
+                            source={require("@/assets/images/splash-icon.png")}
+                            style={styles.headerLogoImg}
+                            contentFit="contain"
+                        />
+                    </View>
+                    <View>
+                        <Typo size={15.5} fontWeight="800" color={colors.white} style={{ letterSpacing: 0.4 }}>
+                            Bubbly
+                        </Typo>
+                        {isReplay && (
+                            <Typo size={10} fontWeight="700" color={colors.primary}>
+                                HOW TO USE GUIDE
+                            </Typo>
+                        )}
+                    </View>
+                </View>
 
-            <AnimatedFlatList
-                ref={flatListRef}
-                data={SLIDES}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item, index }: ListRenderItemInfo<Slide>) => (
-                    <SlideItem
-                        item={item}
-                        index={index}
-                        scrollX={scrollX}
-                        permissions={permissions}
-                        onRequestPermission={handleRequestPermission}
-                        onEnableAll={handleEnableAllPermissions}
-                    />
-                )}
+                <TouchableOpacity
+                    style={styles.skipBtn}
+                    onPress={handleSkip}
+                    activeOpacity={0.75}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <Typo size={12.5} fontWeight="700" color="rgba(255,255,255,0.78)">
+                        {isReplay ? "Close" : "Skip"}
+                    </Typo>
+                    <Icons.CaretRight size={scale(14)} color={colors.primary} weight="bold" />
+                </TouchableOpacity>
+            </View>
+
+            {/* Slides */}
+            <Animated.ScrollView
+                ref={scrollRef}
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 onScroll={scrollHandler}
                 onMomentumScrollEnd={handleMomentumEnd}
                 scrollEventThrottle={16}
-                getItemLayout={(_, index) => ({
-                    length: SCREEN_WIDTH,
-                    offset: SCREEN_WIDTH * index,
-                    index,
-                })}
-                onScrollToIndexFailed={({ index }) => {
-                    setTimeout(() => {
-                        flatListRef.current?.scrollToIndex({ index, animated: false });
-                    }, 100);
-                }}
                 bounces={false}
-                style={styles.flatList}
-            />
-
-            {/* Bottom Navigation Dock */}
-            <View style={styles.bottomBar}>
-                <View style={styles.bottomCard}>
-                    <LinearGradient
-                        colors={[
-                            "rgba(255,255,255,0.96)",
-                            "rgba(255,251,235,0.98)",
+                style={{ flex: 1 }}
+            >
+                {SLIDES.map((item) => (
+                    <ScrollView
+                        key={item.id}
+                        style={{ width: screenWidth, flex: 1 }}
+                        contentContainerStyle={[
+                            styles.slideScroll,
+                            isCompactHeight && { paddingVertical: verticalScale(8), gap: verticalScale(12) },
                         ]}
-                        style={StyleSheet.absoluteFill}
-                    />
+                        showsVerticalScrollIndicator={false}
+                        bounces={false}
+                    >
+                        <Animated.View entering={FadeInUp.duration(280)} style={styles.slideHeaderBlock}>
+                            <View style={[styles.badgePill, { borderColor: `${item.accent}44`, backgroundColor: `${item.accent}1A` }]}>
+                                <Typo size={10} fontWeight="800" color={item.accent} style={{ letterSpacing: 0.8 }}>
+                                    {item.badge}
+                                </Typo>
+                            </View>
 
-                    <ProgressBar
-                        scrollX={scrollX}
-                        total={SLIDES.length}
-                        activeIndex={activeIndex}
-                    />
+                            <Typo
+                                size={isCompactHeight ? 23 : 26}
+                                fontWeight="800"
+                                color={colors.white}
+                                style={styles.slideTitle}
+                            >
+                                {item.title}
+                            </Typo>
 
-                    <Dots
-                        total={SLIDES.length}
-                        activeIndex={activeIndex}
-                        scrollX={scrollX}
-                    />
+                            <Typo
+                                size={13}
+                                color="rgba(255,255,255,0.68)"
+                                style={styles.slideSubtitle}
+                            >
+                                {item.subtitle}
+                            </Typo>
+                        </Animated.View>
 
-                    <NextButton
-                        isLast={isLast}
-                        isReplay={isReplay}
-                        onPress={handleNext}
-                        scrollX={scrollX}
-                        total={SLIDES.length}
-                    />
+                        <SlideVisualCard
+                            item={item}
+                            isCompactHeight={isCompactHeight}
+                            permissions={permissions}
+                            onRequestPermission={handleRequestPermission}
+                            onEnableAll={handleEnableAllPermissions}
+                        />
+                    </ScrollView>
+                ))}
+            </Animated.ScrollView>
+
+            {/* Bottom Obsidian Navigation Dock */}
+            <View style={styles.bottomDock}>
+                <View style={styles.progressRow}>
+                    <View style={styles.progressTrack}>
+                        <LinearGradient
+                            colors={[colors.primaryLight, colors.primary, "#EA580C"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={[styles.progressFill, { width: `${Math.round(progressRatio * 100)}%` }]}
+                        />
+                    </View>
+                    <Typo size={11} fontWeight="700" color="rgba(255,255,255,0.55)">
+                        {activeIndex + 1} of {SLIDES.length}
+                    </Typo>
                 </View>
+
+                <View style={styles.dotsRow}>
+                    {SLIDES.map((s, idx) => (
+                        <AnimatedDot key={s.id} index={idx} screenWidth={screenWidth} scrollX={scrollX} />
+                    ))}
+                </View>
+
+                <Animated.View style={btnAnimStyle}>
+                    <TouchableOpacity onPress={handleNext} activeOpacity={0.88} style={styles.nextBtnTouchable}>
+                        <LinearGradient
+                            colors={["#FDE047", colors.primary, "#F59E0B"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.nextBtnGradient}
+                        >
+                            <Typo size={15.5} fontWeight="800" color={colors.neutral900}>
+                                {isLast ? (isReplay ? "Back to Bubbly" : "Get Started") : "Continue"}
+                            </Typo>
+                            {isLast ? (
+                                <Icons.Check size={scale(18)} color={colors.neutral900} weight="bold" />
+                            ) : (
+                                <Icons.ArrowRight size={scale(18)} color={colors.neutral900} weight="bold" />
+                            )}
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </Animated.View>
             </View>
         </View>
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#fffbeb",
+        backgroundColor: "#090807",
     },
-
-    bgPattern: {
+    ambientSvgGlow: {
         position: "absolute",
         top: 0,
         left: 0,
         right: 0,
-        height: "55%",
-        opacity: 0.04,
+        height: "62%",
     },
-
-    particle: {
+    bgPattern: {
         position: "absolute",
-        zIndex: 1,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        opacity: 0.055,
     },
-
     header: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
         paddingHorizontal: spacingX._20,
-        paddingVertical: spacingY._12,
-        zIndex: 10,
+        paddingVertical: verticalScale(10),
     },
-
-    logoContainer: {
+    headerBrandRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: spacingX._8,
+        gap: scale(10),
     },
-
-    logoGradient: {
-        width: scale(32),
-        height: scale(32),
-        borderRadius: radius._10,
+    headerLogoBadge: {
+        width: verticalScale(36),
+        height: verticalScale(36),
+        borderRadius: radius._12,
+        backgroundColor: "#14100B",
+        borderWidth: 1.5,
+        borderColor: "rgba(250,204,21,0.55)",
         alignItems: "center",
         justifyContent: "center",
-        ...Platform.select({
-            ios: {
-                shadowColor: colors.primaryDark,
-                shadowOffset: { width: 0, height: 3 },
-                shadowOpacity: 0.3,
-                shadowRadius: 6,
-            },
-            android: { elevation: 4 },
-        }),
     },
-
+    headerLogoImg: {
+        width: verticalScale(24),
+        height: verticalScale(24),
+    },
     skipBtn: {
-        zIndex: 10,
-    },
-
-    skipBtnInner: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: verticalScale(6),
-        paddingHorizontal: spacingX._10,
-        backgroundColor: colors.neutral100,
-        borderRadius: radius.full,
+        gap: scale(4),
+        backgroundColor: "rgba(255,255,255,0.08)",
         borderWidth: 1,
-        borderColor: colors.neutral200,
+        borderColor: "rgba(255,255,255,0.14)",
+        paddingHorizontal: scale(12),
+        paddingVertical: verticalScale(6),
+        borderRadius: radius.full,
     },
-
-    flatList: {
-        flex: 1,
-    },
-
     slideScroll: {
         flexGrow: 1,
-        alignItems: "center",
         justifyContent: "center",
-        paddingHorizontal: spacingX._25,
-        paddingVertical: spacingY._15,
-        gap: spacingY._12,
+        paddingHorizontal: spacingX._20,
+        paddingVertical: verticalScale(14),
+        gap: verticalScale(16),
     },
-
-    slide: {
-        flex: 1,
+    slideHeaderBlock: {
         alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: spacingX._25,
-        gap: spacingY._15,
+        gap: verticalScale(8),
     },
-
-    iconWrapper: {
-        alignItems: "center",
-        justifyContent: "center",
-    },
-
-    iconCard: {
-        borderRadius: radius._30,
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-        borderWidth: 1.5,
-        borderColor: colors.primary + "40",
-        ...Platform.select({
-            ios: {
-                shadowColor: colors.primaryDark,
-                shadowOffset: { width: 0, height: 12 },
-                shadowOpacity: 0.2,
-                shadowRadius: 20,
-            },
-            android: { elevation: 8 },
-        }),
-    },
-
-    iconInnerGlow: {
-        position: "absolute",
-        width: "70%",
-        height: "70%",
-        borderRadius: radius._20,
-    },
-
-    badge: {
-        alignSelf: "center",
-    },
-
-    badgeGradient: {
-        paddingHorizontal: spacingX._12,
-        paddingVertical: verticalScale(4),
-        borderRadius: radius.full,
+    badgePill: {
         borderWidth: 1,
-        borderColor: colors.primary + "40",
+        borderRadius: radius.full,
+        paddingHorizontal: scale(11),
+        paddingVertical: verticalScale(4),
     },
-
-    textContainer: {
-        alignItems: "center",
-        gap: spacingY._7,
-    },
-
     slideTitle: {
         textAlign: "center",
-        letterSpacing: 0.3,
-        lineHeight: verticalScale(30),
+        letterSpacing: 0.2,
     },
-
     slideSubtitle: {
         textAlign: "center",
-        lineHeight: verticalScale(21),
-        maxWidth: scale(300),
+        lineHeight: 20,
+        maxWidth: scale(320),
     },
-
-    // ── Permission Setup Card ──
-    permCardWrapper: {
-        width: "100%",
-        gap: spacingY._10,
-        marginTop: spacingY._5,
+    heroStage: {
+        alignItems: "center",
+        gap: verticalScale(18),
+        paddingVertical: verticalScale(8),
     },
-
-    permCard: {
-        backgroundColor: colors.white,
-        borderRadius: radius._20,
+    welcomeLogoOuter: {
+        width: scale(134),
+        height: scale(134),
+        borderRadius: scale(38),
+        padding: 2.5,
+        shadowColor: "#FACC15",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.32,
+        shadowRadius: 22,
+        elevation: 12,
+    },
+    welcomeLogoInner: {
+        flex: 1,
+        borderRadius: scale(36),
+        backgroundColor: "#14100B",
+        alignItems: "center",
+        justifyContent: "center",
         borderWidth: 1,
-        borderColor: colors.neutral200,
-        paddingHorizontal: spacingX._15,
-        paddingVertical: spacingY._8,
-        ...Platform.select({
-            ios: {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 3 },
-                shadowOpacity: 0.05,
-                shadowRadius: 8,
-            },
-            android: { elevation: 2 },
-        }),
+        borderColor: "rgba(255,255,255,0.08)",
     },
-
+    welcomeLogoImg: {
+        width: scale(92),
+        height: scale(92),
+    },
+    welcomePillarsRow: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "center",
+        gap: scale(8),
+    },
+    welcomePillarChip: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(5),
+        backgroundColor: "rgba(255,255,255,0.07)",
+        borderWidth: 1,
+        borderColor: "rgba(250,204,21,0.24)",
+        borderRadius: radius.full,
+        paddingHorizontal: scale(11),
+        paddingVertical: verticalScale(6),
+    },
+    guideDeckCard: {
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        borderRadius: radius._20,
+        padding: spacingX._15,
+        gap: verticalScale(10),
+    },
+    guideRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(12),
+        paddingBottom: verticalScale(10),
+    },
+    guideRowBorder: {
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: "rgba(255,255,255,0.1)",
+    },
+    guideIconWrap: {
+        width: scale(34),
+        height: scale(34),
+        borderRadius: radius._10,
+        borderWidth: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+    },
+    callStageCard: {
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderWidth: 1,
+        borderColor: "rgba(56,189,248,0.25)",
+        borderRadius: radius._24,
+        padding: spacingX._15,
+        gap: verticalScale(14),
+    },
+    callMockHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    callStatusBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        backgroundColor: "rgba(56,189,248,0.14)",
+        paddingHorizontal: scale(9),
+        paddingVertical: verticalScale(3.5),
+        borderRadius: radius.full,
+    },
+    callLiveDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: "#38BDF8",
+    },
+    callMockCenter: {
+        alignItems: "center",
+        gap: verticalScale(4),
+        paddingVertical: verticalScale(6),
+    },
+    callAvatarRing: {
+        width: scale(68),
+        height: scale(68),
+        borderRadius: radius.full,
+        backgroundColor: "rgba(250,204,21,0.14)",
+        borderWidth: 2,
+        borderColor: colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    callControlsPreview: {
+        flexDirection: "row",
+        gap: scale(8),
+    },
+    callPreviewChip: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: scale(5),
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderRadius: radius._12,
+        paddingVertical: verticalScale(8),
+    },
+    permCard: {
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        borderRadius: radius._20,
+        paddingHorizontal: spacingX._12,
+        paddingVertical: verticalScale(4),
+    },
     permItemRow: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: verticalScale(10),
         gap: scale(10),
+        paddingVertical: verticalScale(10),
     },
-
     permItemBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: colors.neutral200,
+        borderBottomColor: "rgba(255,255,255,0.1)",
     },
-
     permIconBadge: {
-        width: scale(32),
-        height: scale(32),
+        width: scale(34),
+        height: scale(34),
         borderRadius: radius._10,
         alignItems: "center",
         justifyContent: "center",
+        flexShrink: 0,
     },
-
     permGrantedBadge: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 3,
-        paddingVertical: verticalScale(3),
+        gap: 4,
+        backgroundColor: "rgba(34,197,94,0.16)",
         paddingHorizontal: scale(8),
+        paddingVertical: verticalScale(4),
         borderRadius: radius.full,
-        backgroundColor: "#dcfce7",
     },
-
     permAllowBtn: {
-        paddingVertical: verticalScale(5),
-        paddingHorizontal: scale(12),
-        borderRadius: radius.full,
         backgroundColor: colors.primary,
+        paddingHorizontal: scale(11),
+        paddingVertical: verticalScale(5),
+        borderRadius: radius.full,
     },
-
     enableAllBtn: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
         gap: scale(6),
+        backgroundColor: colors.primary,
+        borderRadius: radius._12,
         paddingVertical: verticalScale(10),
-        backgroundColor: colors.white,
-        borderRadius: radius.full,
-        borderWidth: 1,
-        borderColor: colors.primary,
+        marginTop: verticalScale(4),
+        marginBottom: verticalScale(10),
     },
-
-    // ── Bottom Dock ──
-    bottomBar: {
-        paddingHorizontal: spacingX._20,
-        paddingBottom: verticalScale(12),
-        paddingTop: verticalScale(8),
-    },
-
-    bottomCard: {
-        borderRadius: radius._20,
-        overflow: "hidden",
-        paddingHorizontal: spacingX._20,
-        paddingVertical: spacingY._15,
-        gap: spacingY._12,
+    completeStage: {
         alignItems: "center",
-        borderWidth: 1,
-        borderColor: colors.primary + "25",
-        ...Platform.select({
-            ios: {
-                shadowColor: colors.primaryDark,
-                shadowOffset: { width: 0, height: -4 },
-                shadowOpacity: 0.08,
-                shadowRadius: 16,
-            },
-            android: { elevation: 8 },
-        }),
+        gap: verticalScale(16),
     },
-
-    progressContainer: {
+    completeHalo: {
+        width: scale(116),
+        height: scale(116),
+        borderRadius: radius.full,
+        padding: 4,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    completeCircle: {
+        width: "100%",
+        height: "100%",
+        borderRadius: radius.full,
+        backgroundColor: "#12100E",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1.5,
+        borderColor: "rgba(34,197,94,0.45)",
+    },
+    completeChecklist: {
+        width: "100%",
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        borderRadius: radius._20,
+        padding: spacingX._15,
+        gap: verticalScale(10),
+    },
+    completeCheckRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: spacingX._10,
-        width: "100%",
+        gap: scale(9),
     },
-
+    bottomDock: {
+        marginHorizontal: spacingX._20,
+        marginBottom: verticalScale(4),
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        borderRadius: radius._24,
+        padding: spacingX._15,
+        gap: verticalScale(12),
+    },
+    progressRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(10),
+    },
     progressTrack: {
-        height: scale(4),
-        borderRadius: radius.full,
-        backgroundColor: colors.neutral200,
-        overflow: "visible",
         flex: 1,
+        height: 4,
+        borderRadius: radius.full,
+        backgroundColor: "rgba(255,255,255,0.12)",
+        overflow: "hidden",
     },
-
     progressFill: {
         height: "100%",
         borderRadius: radius.full,
-        overflow: "hidden",
     },
-
-    progressGlow: {
-        position: "absolute",
-        top: -scale(2),
-        height: scale(8),
-        borderRadius: radius.full,
-        backgroundColor: colors.primary + "30",
-        zIndex: 0,
-    },
-
-    progressLabel: {
-        minWidth: scale(32),
-        textAlign: "right",
-    },
-
     dotsRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: scale(5),
+        justifyContent: "center",
+        gap: scale(6),
     },
-
     dot: {
         height: scale(7),
         borderRadius: radius.full,
+        backgroundColor: colors.primary,
     },
-
-    nextBtnWrapper: {
-        width: "100%",
-    },
-
     nextBtnTouchable: {
-        borderRadius: radius.full,
+        borderRadius: radius._15,
         overflow: "hidden",
-        ...Platform.select({
-            ios: {
-                shadowColor: colors.primaryDark,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.35,
-                shadowRadius: 12,
-            },
-            android: { elevation: 6 },
-        }),
     },
-
     nextBtnGradient: {
-        height: verticalScale(54),
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: spacingX._8,
-        borderRadius: radius.full,
-    },
-
-    nextBtnText: {
-        letterSpacing: 0.5,
+        gap: scale(8),
+        paddingVertical: verticalScale(13),
     },
 });

@@ -144,7 +144,8 @@ const ContactProfileScreen = () => {
             calleeId: userIdStr,
             kind,
         });
-        router.back();
+        if (router.canGoBack()) router.back();
+        else router.replace("/(main)/home");
     };
 
     // ── Vault Lock Toggle ──

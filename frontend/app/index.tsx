@@ -22,7 +22,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Icons from "phosphor-react-native";
 import { colors, radius } from "../constants/theme";
 import { scale, verticalScale } from "../utils/styling";
 import { hapticTap } from "../utils/haptics";
@@ -33,34 +35,47 @@ import {
   WarmupSnapshot,
 } from "../utils/serverWarmup";
 
-const BUBBLES: {
+type BubbleSpec = {
   size: number;
   leftPct: `${number}%`;
   bottomPct: `${number}%`;
   delayMs: number;
   durationMs: number;
   driftY: number;
-  maxOpacity: number;
-}[] = [
-  { size: 74, leftPct: "6%", bottomPct: "14%", delayMs: 0, durationMs: 5400, driftY: -40, maxOpacity: 0.16 },
-  { size: 46, leftPct: "82%", bottomPct: "20%", delayMs: 450, durationMs: 4500, driftY: -32, maxOpacity: 0.2 },
-  { size: 28, leftPct: "20%", bottomPct: "68%", delayMs: 850, durationMs: 4900, driftY: -26, maxOpacity: 0.14 },
-  { size: 56, leftPct: "74%", bottomPct: "72%", delayMs: 250, durationMs: 5700, driftY: -34, maxOpacity: 0.17 },
-  { size: 20, leftPct: "48%", bottomPct: "10%", delayMs: 1100, durationMs: 4200, driftY: -28, maxOpacity: 0.18 },
-  { size: 38, leftPct: "12%", bottomPct: "44%", delayMs: 650, durationMs: 5100, driftY: -30, maxOpacity: 0.15 },
-  { size: 30, leftPct: "86%", bottomPct: "48%", delayMs: 950, durationMs: 4700, driftY: -28, maxOpacity: 0.15 },
-  { size: 16, leftPct: "34%", bottomPct: "82%", delayMs: 550, durationMs: 4300, driftY: -22, maxOpacity: 0.16 },
+  swayX: number;
+  tint: string;
+  borderTint: string;
+};
+
+const GLASS_BUBBLES: BubbleSpec[] = [
+  { size: 84, leftPct: "4%", bottomPct: "12%", delayMs: 0, durationMs: 5600, driftY: -38, swayX: 10, tint: "rgba(250, 204, 21, 0.08)", borderTint: "rgba(250, 204, 21, 0.24)" },
+  { size: 52, leftPct: "81%", bottomPct: "18%", delayMs: 380, durationMs: 4700, driftY: -34, swayX: -9, tint: "rgba(251, 146, 60, 0.09)", borderTint: "rgba(251, 146, 60, 0.26)" },
+  { size: 32, leftPct: "16%", bottomPct: "70%", delayMs: 750, durationMs: 5100, driftY: -26, swayX: 8, tint: "rgba(253, 224, 71, 0.1)", borderTint: "rgba(253, 224, 71, 0.3)" },
+  { size: 64, leftPct: "76%", bottomPct: "73%", delayMs: 220, durationMs: 5900, driftY: -32, swayX: -11, tint: "rgba(250, 204, 21, 0.07)", borderTint: "rgba(250, 204, 21, 0.22)" },
+  { size: 22, leftPct: "46%", bottomPct: "9%", delayMs: 980, durationMs: 4300, driftY: -24, swayX: 7, tint: "rgba(254, 240, 138, 0.12)", borderTint: "rgba(254, 240, 138, 0.34)" },
+  { size: 42, leftPct: "8%", bottomPct: "43%", delayMs: 560, durationMs: 5200, driftY: -30, swayX: 9, tint: "rgba(245, 158, 11, 0.08)", borderTint: "rgba(245, 158, 11, 0.26)" },
+  { size: 34, leftPct: "87%", bottomPct: "46%", delayMs: 840, durationMs: 4800, driftY: -28, swayX: -8, tint: "rgba(250, 204, 21, 0.09)", borderTint: "rgba(250, 204, 21, 0.28)" },
+  { size: 18, leftPct: "31%", bottomPct: "84%", delayMs: 480, durationMs: 4400, driftY: -22, swayX: 6, tint: "rgba(251, 191, 36, 0.12)", borderTint: "rgba(251, 191, 36, 0.36)" },
 ];
 
-const FloatingBubble = ({
+const CAPABILITIES = [
+  { key: "chats", label: "Rich Chats", Icon: Icons.ChatCircleDots },
+  { key: "calls", label: "HD Calls", Icon: Icons.PhoneCall },
+  { key: "realtime", label: "Live Sync", Icon: Icons.Lightning },
+] as const;
+
+/** Floating translucent bubble with subtle golden rim and specular crescent. */
+const GlassBubble = ({
   size,
   leftPct,
   bottomPct,
   delayMs,
   durationMs,
   driftY,
-  maxOpacity,
-}: (typeof BUBBLES)[number]) => {
+  swayX,
+  tint,
+  borderTint,
+}: BubbleSpec) => {
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -76,11 +91,15 @@ const FloatingBubble = ({
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [14, driftY]) },
-      { scale: interpolate(progress.value, [0, 0.5, 1], [0.86, 1.12, 0.9]) },
+      { translateY: interpolate(progress.value, [0, 1], [10, driftY]) },
+      { translateX: interpolate(progress.value, [0, 0.5, 1], [-swayX, swayX, -swayX * 0.4]) },
+      { scale: interpolate(progress.value, [0, 0.5, 1], [0.9, 1.08, 0.94]) },
     ],
-    opacity: interpolate(progress.value, [0, 0.5, 1], [0.04, maxOpacity, 0.04]),
+    opacity: interpolate(progress.value, [0, 0.5, 1], [0.35, 0.9, 0.45]),
   }));
+
+  const scaledSize = scale(size);
+  const highlightSize = Math.max(4, scaledSize * 0.24);
 
   return (
     <Animated.View
@@ -90,12 +109,107 @@ const FloatingBubble = ({
           position: "absolute",
           left: leftPct,
           bottom: bottomPct,
+          width: scaledSize,
+          height: scaledSize,
+          borderRadius: radius.full,
+          backgroundColor: tint,
+          borderWidth: 1,
+          borderColor: borderTint,
+          overflow: "hidden",
+        },
+        animStyle,
+      ]}
+    >
+      <View
+        style={{
+          position: "absolute",
+          top: scaledSize * 0.16,
+          left: scaledSize * 0.18,
+          width: highlightSize,
+          height: highlightSize * 0.62,
+          borderRadius: radius.full,
+          backgroundColor: "rgba(255, 252, 232, 0.42)",
+          transform: [{ rotate: "-26deg" }],
+        }}
+      />
+    </Animated.View>
+  );
+};
+
+/** Staggered three-dot live activity indicator bouncing in sequence. */
+const TypingWaveDot = ({ delayMs }: { delayMs: number }) => {
+  const lift = useSharedValue(0);
+
+  useEffect(() => {
+    lift.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 360, easing: Easing.out(Easing.quad) }),
+          withTiming(0, { duration: 420, easing: Easing.in(Easing.quad) }),
+          withDelay(420, withTiming(0, { duration: 1 }))
+        ),
+        -1,
+        false
+      )
+    );
+  }, [delayMs]);
+
+  const dotStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(lift.value, [0, 1], [0, -3.5]) },
+      { scale: interpolate(lift.value, [0, 1], [0.88, 1.18]) },
+    ],
+    opacity: interpolate(lift.value, [0, 1], [0.45, 1]),
+  }));
+
+  return <Animated.View style={[styles.microTypingDot, dotStyle]} />;
+};
+
+const SonarRing = ({
+  size,
+  delayMs,
+  durationMs,
+  maxScale,
+  borderColor,
+}: {
+  size: number;
+  delayMs: number;
+  durationMs: number;
+  maxScale: number;
+  borderColor: string;
+}) => {
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    pulse.value = withDelay(
+      delayMs,
+      withRepeat(
+        withTiming(1, { duration: durationMs, easing: Easing.out(Easing.cubic) }),
+        -1,
+        false
+      )
+    );
+  }, [delayMs, durationMs]);
+
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(pulse.value, [0, 1], [0.88, maxScale]) }],
+    opacity: interpolate(pulse.value, [0, 0.22, 1], [0, 0.65, 0]),
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: "absolute",
           width: scale(size),
           height: scale(size),
           borderRadius: radius.full,
-          backgroundColor: colors.primary,
+          borderWidth: 1.5,
+          borderColor,
         },
-        animStyle,
+        ringStyle,
       ]}
     />
   );
@@ -103,21 +217,20 @@ const FloatingBubble = ({
 
 const SplashScreen = () => {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   const [warmup, setWarmup] = useState<WarmupSnapshot>(() => getWarmupSnapshot());
 
   const auraBreath = useSharedValue(0);
-  const pulseOuter = useSharedValue(0);
-  const pulseInner = useSharedValue(0);
   const orbitOuter = useSharedValue(0);
   const orbitInner = useSharedValue(360);
   const shimmerProgress = useSharedValue(0);
   const logoSheen = useSharedValue(0);
   const emblemFloat = useSharedValue(0);
   const emblemTapScale = useSharedValue(1);
+  const tapRipple = useSharedValue(0);
   const dotPulse = useSharedValue(0);
-  const warmupProgress = useSharedValue(0.06);
+  const warmupProgress = useSharedValue(0.08);
 
   useEffect(() => {
     startServerWarmup();
@@ -126,34 +239,19 @@ const SplashScreen = () => {
 
   useEffect(() => {
     auraBreath.value = withRepeat(
-      withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 2800, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
 
-    pulseOuter.value = withRepeat(
-      withTiming(1, { duration: 2300, easing: Easing.out(Easing.cubic) }),
-      -1,
-      false
-    );
-
-    pulseInner.value = withDelay(
-      750,
-      withRepeat(
-        withTiming(1, { duration: 2300, easing: Easing.out(Easing.cubic) }),
-        -1,
-        false
-      )
-    );
-
     orbitOuter.value = withRepeat(
-      withTiming(360, { duration: 12000, easing: Easing.linear }),
+      withTiming(360, { duration: 11000, easing: Easing.linear }),
       -1,
       false
     );
 
     orbitInner.value = withRepeat(
-      withTiming(0, { duration: 16000, easing: Easing.linear }),
+      withTiming(0, { duration: 15000, easing: Easing.linear }),
       -1,
       false
     );
@@ -166,21 +264,21 @@ const SplashScreen = () => {
 
     logoSheen.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.cubic) }),
-        withDelay(1800, withTiming(0, { duration: 1 }))
+        withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.cubic) }),
+        withDelay(1700, withTiming(0, { duration: 1 }))
       ),
       -1,
       false
     );
 
     emblemFloat.value = withRepeat(
-      withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1, { duration: 2300, easing: Easing.inOut(Easing.sin) }),
       -1,
       true
     );
 
     dotPulse.value = withRepeat(
-      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 920, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
@@ -201,18 +299,8 @@ const SplashScreen = () => {
   }, [warmup.serverResponded, warmup.status]);
 
   const auraAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(auraBreath.value, [0, 1], [0.9, 1.14]) }],
-    opacity: interpolate(auraBreath.value, [0, 1], [0.3, 0.68]),
-  }));
-
-  const outerRingAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pulseOuter.value, [0, 1], [0.95, 1.75]) }],
-    opacity: interpolate(pulseOuter.value, [0, 0.2, 1], [0, 0.48, 0]),
-  }));
-
-  const innerRingAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pulseInner.value, [0, 1], [0.95, 1.52]) }],
-    opacity: interpolate(pulseInner.value, [0, 0.2, 1], [0, 0.56, 0]),
+    transform: [{ scale: interpolate(auraBreath.value, [0, 1], [0.92, 1.15]) }],
+    opacity: interpolate(auraBreath.value, [0, 1], [0.68, 1]),
   }));
 
   const orbitOuterStyle = useAnimatedStyle(() => ({
@@ -230,14 +318,19 @@ const SplashScreen = () => {
     ],
   }));
 
-  const sheenSpan = scale(140);
+  const tapRippleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(tapRipple.value, [0, 1], [0.85, 2.05]) }],
+    opacity: tapRipple.value === 0 ? 0 : interpolate(tapRipple.value, [0, 0.18, 1], [0, 0.78, 0]),
+  }));
+
+  const sheenSpan = scale(150);
 
   const sheenAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: interpolate(logoSheen.value, [0, 1], [-sheenSpan, sheenSpan]) },
       { rotate: "24deg" },
     ],
-    opacity: interpolate(logoSheen.value, [0, 0.5, 1], [0, 0.32, 0]),
+    opacity: interpolate(logoSheen.value, [0, 0.5, 1], [0, 0.36, 0]),
   }));
 
   const dotAnimatedStyle = useAnimatedStyle(() => ({
@@ -245,8 +338,8 @@ const SplashScreen = () => {
     opacity: interpolate(dotPulse.value, [0, 1], [0.65, 1]),
   }));
 
-  const trackWidth = Math.min(scale(220), width * 0.58);
-  const indicatorWidth = scale(72);
+  const trackWidth = Math.min(scale(232), width * 0.62);
+  const indicatorWidth = scale(76);
   const shimmerEndX = trackWidth + scale(12);
 
   const fillBarStyle = useAnimatedStyle(() => ({
@@ -265,16 +358,28 @@ const SplashScreen = () => {
     ],
   }));
 
-  const heroOrbSize = Math.min(scale(310), width * 0.82);
+  const heroOrbSize = Math.min(scale(320), width * 0.86);
+  const isCompactHeight = height < 690;
   const isReady = warmup.serverResponded || warmup.status === "ready";
+  const elapsedSecs = Math.max(1, Math.floor((warmup.elapsedMs || 0) / 1000));
+
+  const statusText = isReady
+    ? "Real-time channel ready"
+    : warmup.status === "bypassed"
+    ? "Continuing into Bubbly..."
+    : elapsedSecs >= 4
+    ? `Waking cloud server · ${elapsedSecs}s`
+    : "Connecting live engine...";
 
   const handleEmblemTap = () => {
     hapticTap("medium");
     emblemTapScale.value = withSequence(
-      withSpring(0.9, { damping: 10, stiffness: 300 }),
-      withSpring(1.06, { damping: 10, stiffness: 250 }),
+      withSpring(0.88, { damping: 9, stiffness: 320 }),
+      withSpring(1.08, { damping: 9, stiffness: 250 }),
       withSpring(1, { damping: 12, stiffness: 210 })
     );
+    tapRipple.value = 0;
+    tapRipple.value = withTiming(1, { duration: 720, easing: Easing.out(Easing.cubic) });
   };
 
   return (
@@ -285,85 +390,96 @@ const SplashScreen = () => {
         translucent
       />
 
-      {/* Deep Obsidian + Honey Amber Gradient Canvas */}
+      {/* Rich Obsidian + Warm Amber Mesh Gradient */}
       <LinearGradient
-        colors={["#070605", "#120f0d", "#1b1612", "#0b0908"]}
-        locations={[0, 0.35, 0.72, 1]}
+        colors={["#090807", "#14100B", "#1E160D", "#0A0908"]}
+        locations={[0, 0.34, 0.7, 1]}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Subtle Textured Pattern */}
+      {/* Subtle Warm Top-Right & Bottom-Left Radial Washes */}
+      <LinearGradient
+        colors={["rgba(250, 204, 21, 0.16)", "rgba(245, 158, 11, 0.06)", "transparent"]}
+        start={{ x: 0.85, y: 0 }}
+        end={{ x: 0.25, y: 0.7 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
       <Image
         source={require("../assets/images/bgPattern.png")}
         style={styles.patternOverlay}
         resizeMode="cover"
       />
 
-      {/* Floating Ambient Honey Bubbles */}
-      {BUBBLES.map((b, i) => (
-        <FloatingBubble key={i} {...b} />
+      {/* Translucent Specular Glass Bubbles */}
+      {GLASS_BUBBLES.map((b, i) => (
+        <GlassBubble key={i} {...b} />
       ))}
 
-      {/* Top Radial Honey-Gold Ambient Vignette */}
-      <LinearGradient
-        colors={[
-          "rgba(250, 204, 21, 0.16)",
-          "rgba(245, 158, 11, 0.05)",
-          "transparent",
-        ]}
-        style={styles.topGlowWash}
-        pointerEvents="none"
-      />
-
-      {/* Main Centered Brand Stage */}
+      {/* Main Kinetic Stage */}
       <View
         style={[
           styles.centerStage,
-          { paddingTop: Math.max(insets.top, verticalScale(16)) },
+          { paddingTop: Math.max(insets.top, verticalScale(12)) },
         ]}
       >
-        <View style={styles.emblemStage}>
-          <Animated.Image
-            source={require("../assets/images/logo-glow.png")}
+        <View style={[styles.emblemStage, isCompactHeight && { width: scale(210), height: scale(210) }]}>
+          {/* Warm Honey Gold SVG Radial Nebula (replaces clashing blue glow) */}
+          <Animated.View
+            pointerEvents="none"
             style={[
-              styles.radialGlowImage,
+              styles.svgAuraWrapper,
               { width: heroOrbSize, height: heroOrbSize },
               auraAnimatedStyle,
             ]}
-            resizeMode="contain"
-          />
-
-          <Animated.View style={[styles.pulseRingOuter, outerRingAnimatedStyle]} />
-          <Animated.View style={[styles.pulseRingInner, innerRingAnimatedStyle]} />
-
-          {/* Outer Orbital Halo */}
-          <Animated.View style={[styles.orbitHaloOuter, orbitOuterStyle]}>
-            <View style={styles.orbitSparkPrimary} />
+          >
+            <Svg width="100%" height="100%" viewBox="0 0 320 320">
+              <Defs>
+                <RadialGradient id="honeyAura" cx="50%" cy="50%" r="50%">
+                  <Stop offset="0%" stopColor="#FACC15" stopOpacity="0.46" />
+                  <Stop offset="38%" stopColor="#F59E0B" stopOpacity="0.22" />
+                  <Stop offset="70%" stopColor="#EA580C" stopOpacity="0.08" />
+                  <Stop offset="100%" stopColor="#090807" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Circle cx="160" cy="160" r="158" fill="url(#honeyAura)" />
+            </Svg>
           </Animated.View>
 
-          {/* Counter-Rotating Inner Orbital Halo */}
-          <Animated.View style={[styles.orbitHaloInner, orbitInnerStyle]}>
+          {/* Triple Sonar Ripple Waves */}
+          <SonarRing size={142} delayMs={0} durationMs={2600} maxScale={1.82} borderColor="rgba(250, 204, 21, 0.38)" />
+          <SonarRing size={142} delayMs={860} durationMs={2600} maxScale={1.68} borderColor="rgba(251, 146, 60, 0.34)" />
+          <SonarRing size={142} delayMs={1720} durationMs={2600} maxScale={1.52} borderColor="rgba(254, 240, 138, 0.32)" />
+
+          {/* Interactive Tap Ripple Burst */}
+          <Animated.View pointerEvents="none" style={[styles.tapRippleRing, tapRippleStyle]} />
+
+          {/* Counter-Rotating Dual Constellation Orbits */}
+          <Animated.View pointerEvents="none" style={[styles.orbitHaloOuter, orbitOuterStyle]}>
+            <View style={styles.orbitSparkPrimary} />
+            <View style={styles.orbitSparkFaint} />
+          </Animated.View>
+
+          <Animated.View pointerEvents="none" style={[styles.orbitHaloInner, orbitInnerStyle]}>
             <View style={styles.orbitSparkSecondary} />
           </Animated.View>
 
-          <Animated.View entering={FadeIn.duration(400)}>
-            <TouchableOpacity activeOpacity={0.95} onPress={handleEmblemTap}>
+          {/* Centerpiece Glass-Framed Emblem + Live Typing Wave Pill */}
+          <Animated.View entering={FadeIn.duration(420)} style={{ alignItems: "center" }}>
+            <TouchableOpacity activeOpacity={0.94} onPress={handleEmblemTap}>
               <Animated.View style={emblemAnimatedStyle}>
                 <LinearGradient
-                  colors={[
-                    "rgba(250, 204, 21, 0.78)",
-                    "rgba(245, 158, 11, 0.28)",
-                    "rgba(255, 255, 255, 0.14)",
-                  ]}
+                  colors={["#FDE047", "rgba(250, 204, 21, 0.55)", "rgba(234, 88, 12, 0.42)"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.logoFrameGradient}
                 >
                   <View style={styles.logoCardInner}>
                     <LinearGradient
-                      colors={["rgba(255,255,255,0.1)", "transparent"]}
+                      colors={["rgba(255,255,255,0.14)", "rgba(250,204,21,0.03)", "transparent"]}
                       start={{ x: 0, y: 0 }}
-                      end={{ x: 0.9, y: 0.9 }}
+                      end={{ x: 1, y: 1 }}
                       style={styles.logoCardGloss}
                     />
                     <Animated.View style={[styles.logoSheenBeam, sheenAnimatedStyle]} />
@@ -374,22 +490,25 @@ const SplashScreen = () => {
                     />
                   </View>
                 </LinearGradient>
+
+                {/* Floating Live 3-Dot Chat Bubble Wave */}
+                <View style={styles.microTypingPill}>
+                  <TypingWaveDot delayMs={0} />
+                  <TypingWaveDot delayMs={160} />
+                  <TypingWaveDot delayMs={320} />
+                </View>
               </Animated.View>
             </TouchableOpacity>
           </Animated.View>
         </View>
 
-        {/* Clean Minimal Brand Wordmark */}
+        {/* Bold Brand Wordmark, Tagline & Capability Pills */}
         <Animated.View
-          entering={FadeInUp.delay(80).duration(360)}
+          entering={FadeInUp.delay(90).duration(380)}
           style={styles.brandBlock}
         >
           <View style={styles.wordmarkRow}>
-            <Text
-              style={styles.brandTitle}
-              maxFontSizeMultiplier={1.25}
-              numberOfLines={1}
-            >
+            <Text style={styles.brandTitle} maxFontSizeMultiplier={1.25} numberOfLines={1}>
               BUBBLY
             </Text>
             <Animated.View
@@ -400,21 +519,47 @@ const SplashScreen = () => {
               ]}
             />
           </View>
+          <Text style={styles.brandTagline} maxFontSizeMultiplier={1.2} numberOfLines={1}>
+            Instant messages. Crystal-clear calls.
+          </Text>
+
+          <View style={styles.capabilitiesRow}>
+            {CAPABILITIES.map(({ key, label, Icon }) => (
+              <View key={key} style={styles.capabilityChip}>
+                <Icon size={scale(12)} color={colors.primary} weight="fill" />
+                <Text style={styles.capabilityText} maxFontSizeMultiplier={1.15}>
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
         </Animated.View>
       </View>
 
-      {/* Bottom Minimal Animated Progress Bar (Zero Text Clutter) */}
+      {/* Bottom Live Status Capsule & Shimmering Progress Track */}
       <Animated.View
-        entering={FadeInUp.delay(140).duration(340)}
+        entering={FadeInUp.delay(160).duration(360)}
         style={[
           styles.footerContainer,
-          { paddingBottom: Math.max(insets.bottom + verticalScale(24), verticalScale(36)) },
+          { paddingBottom: Math.max(insets.bottom + verticalScale(20), verticalScale(30)) },
         ]}
       >
+        <View style={[styles.statusCapsule, isReady && styles.statusCapsuleReady]}>
+          <View
+            style={[
+              styles.statusIndicatorDot,
+              isReady && { backgroundColor: "#22c55e" },
+            ]}
+          />
+          <Text style={styles.statusText} maxFontSizeMultiplier={1.15} numberOfLines={1}>
+            {statusText}
+          </Text>
+        </View>
+
         <View style={[styles.progressTrack, { width: trackWidth }]}>
           <Animated.View style={[styles.progressFillBar, fillBarStyle]}>
             <LinearGradient
-              colors={[colors.primaryDark, colors.primary, "#fde047"]}
+              colors={["#EA580C", colors.primary, "#FDE047"]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={StyleSheet.absoluteFill}
@@ -430,7 +575,7 @@ const SplashScreen = () => {
             <LinearGradient
               colors={[
                 "rgba(255, 255, 255, 0)",
-                "rgba(255, 255, 255, 0.65)",
+                "rgba(255, 255, 255, 0.72)",
                 "rgba(255, 255, 255, 0)",
               ]}
               start={{ x: 0, y: 0.5 }}
@@ -449,7 +594,7 @@ export default SplashScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#070605",
+    backgroundColor: "#090807",
     justifyContent: "space-between",
     alignItems: "center",
     overflow: "hidden",
@@ -460,106 +605,104 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    opacity: 0.055,
-  },
-  topGlowWash: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "48%",
+    opacity: 0.06,
   },
   centerStage: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: scale(24),
+    paddingHorizontal: scale(20),
     width: "100%",
   },
   emblemStage: {
     alignItems: "center",
     justifyContent: "center",
-    width: scale(220),
-    height: scale(220),
+    width: scale(240),
+    height: scale(240),
   },
-  radialGlowImage: {
+  svgAuraWrapper: {
     position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  pulseRingOuter: {
+  tapRippleRing: {
     position: "absolute",
-    width: scale(142),
-    height: scale(142),
+    width: scale(136),
+    height: scale(136),
     borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: "rgba(250, 204, 21, 0.36)",
-  },
-  pulseRingInner: {
-    position: "absolute",
-    width: scale(130),
-    height: scale(130),
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.46)",
+    borderWidth: 2,
+    borderColor: "#FDE047",
   },
   orbitHaloOuter: {
     position: "absolute",
-    width: scale(168),
-    height: scale(168),
+    width: scale(196),
+    height: scale(196),
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.18)",
-    borderStyle: "dashed",
+    borderColor: "rgba(250, 204, 21, 0.16)",
     alignItems: "center",
   },
   orbitHaloInner: {
     position: "absolute",
-    width: scale(194),
-    height: scale(194),
+    width: scale(158),
+    height: scale(158),
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.12)",
+    borderStyle: "dashed",
+    borderColor: "rgba(251, 146, 60, 0.22)",
     alignItems: "center",
   },
   orbitSparkPrimary: {
     width: scale(9),
     height: scale(9),
     borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: "#FDE047",
     marginTop: -scale(4.5),
-    shadowColor: colors.primary,
+    shadowColor: "#FACC15",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.95,
     shadowRadius: 8,
+    elevation: 6,
+  },
+  orbitSparkFaint: {
+    position: "absolute",
+    bottom: -scale(3),
+    width: scale(5),
+    height: scale(5),
+    borderRadius: radius.full,
+    backgroundColor: "rgba(250, 204, 21, 0.5)",
   },
   orbitSparkSecondary: {
-    width: scale(6),
-    height: scale(6),
+    width: scale(7),
+    height: scale(7),
     borderRadius: radius.full,
-    backgroundColor: "#fde047",
-    marginTop: -scale(3),
-    shadowColor: "#fde047",
+    backgroundColor: "#FB923C",
+    marginTop: -scale(3.5),
+    shadowColor: "#F97316",
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
+    shadowOpacity: 0.9,
     shadowRadius: 6,
   },
   logoFrameGradient: {
-    width: scale(120),
-    height: scale(120),
-    borderRadius: radius._30,
-    padding: 1.5,
-    shadowColor: "#facc15",
+    width: scale(122),
+    height: scale(122),
+    borderRadius: scale(35),
+    padding: 2,
+    shadowColor: "#FACC15",
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.36,
-    shadowRadius: 26,
-    elevation: 18,
+    shadowOpacity: 0.38,
+    shadowRadius: 24,
+    elevation: 16,
   },
   logoCardInner: {
     flex: 1,
-    borderRadius: radius._30,
-    backgroundColor: "#171412",
-    justifyContent: "center",
+    borderRadius: scale(33),
+    backgroundColor: "#14100B",
     alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   logoCardGloss: {
     position: "absolute",
@@ -570,67 +713,149 @@ const styles = StyleSheet.create({
   },
   logoSheenBeam: {
     position: "absolute",
-    width: scale(46),
-    height: scale(200),
-    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    width: scale(36),
+    height: scale(185),
+    backgroundColor: "rgba(255, 249, 214, 0.42)",
   },
   logo: {
-    width: scale(80),
-    height: scale(80),
+    width: scale(84),
+    height: scale(84),
+  },
+  microTypingPill: {
+    position: "absolute",
+    bottom: -scale(10),
+    right: -scale(6),
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(4),
+    backgroundColor: "#1C1712",
+    borderWidth: 1.5,
+    borderColor: "rgba(250, 204, 21, 0.65)",
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(6),
+    borderRadius: radius.full,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  microTypingDot: {
+    width: scale(5),
+    height: scale(5),
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
   },
   brandBlock: {
+    marginTop: verticalScale(10),
     alignItems: "center",
-    marginTop: verticalScale(14),
+    gap: verticalScale(8),
   },
   wordmarkRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: scale(9),
   },
   brandTitle: {
-    fontSize: scale(36),
+    fontSize: scale(34),
     fontWeight: "900",
-    color: colors.white,
-    letterSpacing: 8,
-    textShadowColor: "rgba(250, 204, 21, 0.2)",
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 16,
+    color: "#FFFFFF",
+    letterSpacing: 7,
+    textShadowColor: "rgba(250, 204, 21, 0.25)",
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 12,
   },
   amberLiveDot: {
     width: scale(9),
     height: scale(9),
     borderRadius: radius.full,
     backgroundColor: colors.primary,
-    marginLeft: scale(5),
-    marginBottom: verticalScale(18),
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.95,
+    shadowOpacity: 0.9,
     shadowRadius: 8,
-    elevation: 4,
+  },
+  brandTagline: {
+    fontSize: scale(13),
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.72)",
+    letterSpacing: 0.4,
+  },
+  capabilitiesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: scale(8),
+    marginTop: verticalScale(6),
+    flexWrap: "wrap",
+  },
+  capabilityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(5),
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(250, 204, 21, 0.2)",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderRadius: radius.full,
+  },
+  capabilityText: {
+    fontSize: scale(11),
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.88)",
+    letterSpacing: 0.2,
   },
   footerContainer: {
     width: "100%",
     alignItems: "center",
-    paddingHorizontal: scale(24),
+    gap: verticalScale(10),
+  },
+  statusCapsule: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(7),
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(5),
+    borderRadius: radius.full,
+  },
+  statusCapsuleReady: {
+    borderColor: "rgba(34, 197, 94, 0.4)",
+    backgroundColor: "rgba(34, 197, 94, 0.1)",
+  },
+  statusIndicatorDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+  },
+  statusText: {
+    fontSize: scale(11.5),
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.84)",
+    letterSpacing: 0.2,
   },
   progressTrack: {
-    height: verticalScale(5),
+    height: 4,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.11)",
     overflow: "hidden",
-    position: "relative",
+    justifyContent: "center",
   },
   progressFillBar: {
-    height: "100%",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
     borderRadius: radius.full,
     overflow: "hidden",
   },
   progressSweepWrapper: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
+    height: "100%",
+    opacity: 0.9,
   },
   progressSweepGradient: {
     flex: 1,

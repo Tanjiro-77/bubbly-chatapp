@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Image,
     Linking,
+    Modal,
     Platform,
+    Pressable,
     ScrollView,
     Share,
     StyleSheet,
@@ -11,6 +12,7 @@ import {
     useColorScheme,
     View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
 import * as Clipboard from "expo-clipboard";
@@ -28,12 +30,12 @@ import { HapticKind, hapticTap } from "../../utils/haptics";
 
 const GITHUB_URL = "https://github.com/Tanjiro-77/bubbly-chatapp";
 const BUG_REPORT_URL =
-    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.1.5%20Bug%20Report&body=Describe%20the%20bug%20you%20encountered%3A%0A%0A";
+    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.2.1%20Bug%20Report&body=Describe%20the%20bug%20you%20encountered%3A%0A%0A";
 const FEEDBACK_EMAIL =
-    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.1.5%20Feedback&body=Hi%20Arnav%2C%0A%0A";
+    "mailto:arnavkhari.77@gmail.com?subject=Bubbly%20v4.2.1%20Feedback&body=Hi%20Arnav%2C%0A%0A";
 
-const APP_VERSION: string = Constants.expoConfig?.version ?? "4.1.5";
-const BUILD_NUM = Platform.OS === "android" ? "11" : "10";
+const APP_VERSION: string = Constants.expoConfig?.version ?? "4.2.1";
+const BUILD_NUM = Platform.OS === "android" ? "12" : "11";
 
 interface TechItem {
     id: string;
@@ -360,6 +362,7 @@ export default function AboutScreen() {
     const [selectedTechId, setSelectedTechId] = useState<string>(TECH_STACK[0].id);
     const [copiedBuild, setCopiedBuild] = useState(false);
     const [celebrateCreator, setCelebrateCreator] = useState(false);
+    const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const creatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -437,9 +440,18 @@ export default function AboutScreen() {
             <View style={styles.topHeader}>
                 <BackButton color={colors.white} iconSize={21} />
                 <View style={styles.headerCenter}>
-                    <Typo size={17} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
-                        About Bubbly
-                    </Typo>
+                    <View style={styles.headerTitleRow}>
+                        <View style={styles.headerLogoBadge}>
+                            <ExpoImage
+                                source={require("@/assets/images/splash-icon.png")}
+                                style={styles.headerLogoImg}
+                                contentFit="contain"
+                            />
+                        </View>
+                        <Typo size={17} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                            About Bubbly
+                        </Typo>
+                    </View>
                     <Typo size={11} fontWeight="600" color="rgba(255,255,255,0.65)" textProps={{ numberOfLines: 1 }}>
                         Flagship v{APP_VERSION} · Build {BUILD_NUM}
                     </Typo>
@@ -473,14 +485,13 @@ export default function AboutScreen() {
 
                             <View style={styles.heroTopRow}>
                                 <View style={styles.heroBrandRow}>
-                                    <LinearGradient
-                                        colors={[colors.primaryLight, colors.primary, colors.primaryDark]}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 1 }}
-                                        style={styles.heroLogoBox}
-                                    >
-                                        <Icons.ChatsCircle size={verticalScale(22)} color={colors.neutral900} weight="fill" />
-                                    </LinearGradient>
+                                    <View style={styles.heroLogoBox}>
+                                        <ExpoImage
+                                            source={require("@/assets/images/splash-icon.png")}
+                                            style={styles.heroLogoImg}
+                                            contentFit="contain"
+                                        />
+                                    </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
                                         <Typo size={19} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
                                             Bubbly
@@ -498,37 +509,75 @@ export default function AboutScreen() {
                                 </View>
                             </View>
 
-                            <TouchableOpacity
-                                activeOpacity={0.85}
-                                onPress={handleCreatorPress}
-                                style={styles.heroCreatorRow}
-                            >
-                                <View style={styles.heroAvatarRing}>
-                                    <Image
-                                        source={require("@/assets/images/developer-photo.png")}
-                                        style={styles.heroAvatar}
-                                        resizeMode="cover"
-                                    />
-                                </View>
-                                <View style={{ flex: 1, minWidth: 0, gap: verticalScale(3) }}>
+                            <View style={styles.heroCreatorRow}>
+                                <TouchableOpacity
+                                    activeOpacity={0.9}
+                                    onPress={() => {
+                                        hapticTap("medium");
+                                        setPhotoModalVisible(true);
+                                    }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="View Arnav Khari full portrait"
+                                >
+                                    <LinearGradient
+                                        colors={[colors.primary, "#F59E0B", "#EA580C"]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={styles.heroPortraitFrame}
+                                    >
+                                        <View style={styles.heroPortraitInner}>
+                                            <ExpoImage
+                                                source={require("@/assets/images/developer-photo.png")}
+                                                style={styles.heroPortraitImg}
+                                                contentFit="cover"
+                                                contentPosition={{ top: "5%", left: "48%" }}
+                                                transition={220}
+                                            />
+                                            <LinearGradient
+                                                colors={["transparent", "rgba(12,10,8,0.8)"]}
+                                                style={styles.heroPortraitScrim}
+                                            />
+                                            <View style={styles.heroZoomPill}>
+                                                <Icons.CornersOut size={11} color={colors.primary} weight="bold" />
+                                            </View>
+                                        </View>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    activeOpacity={0.85}
+                                    onPress={handleCreatorPress}
+                                    style={styles.heroCreatorDetails}
+                                >
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                        <Typo size={16.5} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
-                                            Arnav Khari
-                                        </Typo>
+                                        <View style={styles.heroCreatorBadge}>
+                                            <Typo size={9.5} fontWeight="800" color={colors.primary} textProps={{ numberOfLines: 1 }}>
+                                                CREATOR & ARCHITECT
+                                            </Typo>
+                                        </View>
                                         {celebrateCreator && (
                                             <Animated.View entering={FadeIn.duration(160)} style={styles.thanksChip}>
-                                                <Typo size={10} fontWeight="800" color={colors.neutral900}>✨ Thanks!</Typo>
+                                                <Icons.Sparkle size={10} color={colors.neutral900} weight="fill" />
+                                                <Typo size={10} fontWeight="800" color={colors.neutral900}>Thanks!</Typo>
                                             </Animated.View>
                                         )}
                                     </View>
-                                    <Typo size={11} fontWeight="800" color={colors.primary} textProps={{ numberOfLines: 1 }}>
-                                        CREATOR & FULL-STACK ENGINEER
+                                    <Typo size={17.5} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                        Arnav Khari
                                     </Typo>
-                                    <Typo size={11.8} color="rgba(255,255,255,0.72)" textProps={{ numberOfLines: 2 }}>
+                                    <Typo size={11.5} color="rgba(255,255,255,0.75)" textProps={{ numberOfLines: 2 }}>
                                         Always-on push & HD calling, real-time sockets, and strong tactile haptics.
                                     </Typo>
-                                </View>
-                            </TouchableOpacity>
+                                    <View style={styles.heroMetaTagsRow}>
+                                        <View style={styles.heroMetaTag}>
+                                            <Typo size={10} fontWeight="700" color="rgba(255,255,255,0.85)">Full-Stack</Typo>
+                                        </View>
+                                        <View style={styles.heroMetaTag}>
+                                            <Typo size={10} fontWeight="700" color="rgba(255,255,255,0.85)">Expo + Agora</Typo>
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            </View>
 
                             {/* ── Hero Primary Action Dock ── */}
                             <View style={styles.heroActionRow}>
@@ -1011,6 +1060,52 @@ export default function AboutScreen() {
                     </View>
                 </ScrollView>
             </View>
+
+            <Modal
+                visible={photoModalVisible}
+                transparent
+                animationType="fade"
+                statusBarTranslucent
+                onRequestClose={() => setPhotoModalVisible(false)}
+            >
+                <Pressable
+                    style={styles.photoModalBackdrop}
+                    onPress={() => setPhotoModalVisible(false)}
+                >
+                    <Pressable style={styles.photoModalCard} onPress={() => {}}>
+                        <ExpoImage
+                            source={require("@/assets/images/developer-photo.png")}
+                            style={styles.photoModalImg}
+                            contentFit="cover"
+                            contentPosition={{ top: "4%", left: "48%" }}
+                            transition={200}
+                        />
+                        <LinearGradient
+                            colors={["transparent", "rgba(10,9,8,0.92)"]}
+                            style={styles.photoModalFooter}
+                        >
+                            <View style={{ flex: 1 }}>
+                                <Typo size={18} fontWeight="800" color={colors.white}>
+                                    Arnav Khari
+                                </Typo>
+                                <Typo size={12} fontWeight="600" color={colors.primary}>
+                                    Creator & Full-Stack Engineer · Bubbly v{APP_VERSION}
+                                </Typo>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.photoModalClose}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    hapticTap("light");
+                                    setPhotoModalVisible(false);
+                                }}
+                            >
+                                <Icons.X size={18} color={colors.white} weight="bold" />
+                            </TouchableOpacity>
+                        </LinearGradient>
+                    </Pressable>
+                </Pressable>
+            </Modal>
         </ScreenWrapper>
     );
 }
@@ -1028,6 +1123,26 @@ const styles = StyleSheet.create({
         flex: 1,
         minWidth: 0,
         alignItems: "center",
+    },
+    headerTitleRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(7),
+    },
+    headerLogoBadge: {
+        width: verticalScale(22),
+        height: verticalScale(22),
+        borderRadius: radius._8,
+        backgroundColor: "#14100B",
+        borderWidth: 1,
+        borderColor: "rgba(250,204,21,0.5)",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+    },
+    headerLogoImg: {
+        width: verticalScale(16),
+        height: verticalScale(16),
     },
     shareTopBtn: {
         width: verticalScale(38),
@@ -1093,12 +1208,20 @@ const styles = StyleSheet.create({
         minWidth: 0,
     },
     heroLogoBox: {
-        width: verticalScale(42),
-        height: verticalScale(42),
+        width: verticalScale(44),
+        height: verticalScale(44),
         borderRadius: radius._12,
+        backgroundColor: "#14100B",
+        borderWidth: 1.5,
+        borderColor: "rgba(250,204,21,0.55)",
         alignItems: "center",
         justifyContent: "center",
+        overflow: "hidden",
         flexShrink: 0,
+    },
+    heroLogoImg: {
+        width: verticalScale(31),
+        height: verticalScale(31),
     },
     heroVersionPill: {
         flexDirection: "row",
@@ -1119,27 +1242,127 @@ const styles = StyleSheet.create({
     heroCreatorRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: scale(12),
+        gap: scale(13),
         backgroundColor: "rgba(255,255,255,0.06)",
-        borderRadius: radius._17,
+        borderRadius: radius._20,
         padding: spacingX._12,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.12)",
+        borderColor: "rgba(250,204,21,0.22)",
     },
-    heroAvatarRing: {
-        width: verticalScale(58),
-        height: verticalScale(58),
-        borderRadius: radius.full,
+    heroPortraitFrame: {
+        width: scale(90),
+        height: verticalScale(114),
+        borderRadius: radius._17,
         padding: 2.5,
-        backgroundColor: colors.primary,
         flexShrink: 0,
     },
-    heroAvatar: {
+    heroPortraitInner: {
         width: "100%",
         height: "100%",
+        borderRadius: radius._15,
+        overflow: "hidden",
+        backgroundColor: "#14120F",
+        borderWidth: 1.5,
+        borderColor: "rgba(18,16,13,0.9)",
+    },
+    heroPortraitImg: {
+        width: "100%",
+        height: "100%",
+    },
+    heroPortraitScrim: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: verticalScale(36),
+    },
+    heroZoomPill: {
+        position: "absolute",
+        right: 6,
+        bottom: 6,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: "rgba(14,12,10,0.8)",
+        borderWidth: 1,
+        borderColor: "rgba(250,204,21,0.45)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    heroCreatorDetails: {
+        flex: 1,
+        minWidth: 0,
+        gap: verticalScale(5),
+    },
+    heroCreatorBadge: {
+        backgroundColor: "rgba(250,204,21,0.14)",
+        borderWidth: 1,
+        borderColor: "rgba(250,204,21,0.34)",
+        paddingHorizontal: scale(8),
+        paddingVertical: verticalScale(3),
         borderRadius: radius.full,
     },
+    heroMetaTagsRow: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: scale(6),
+        marginTop: verticalScale(2),
+    },
+    heroMetaTag: {
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        paddingHorizontal: scale(8),
+        paddingVertical: verticalScale(2.5),
+        borderRadius: radius.full,
+    },
+    photoModalBackdrop: {
+        flex: 1,
+        backgroundColor: "rgba(8,7,6,0.9)",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: spacingX._20,
+    },
+    photoModalCard: {
+        width: "100%",
+        maxWidth: 390,
+        aspectRatio: 1133 / 1432,
+        borderRadius: radius._24,
+        overflow: "hidden",
+        borderWidth: 2,
+        borderColor: colors.primary,
+        backgroundColor: "#14120F",
+    },
+    photoModalImg: {
+        width: "100%",
+        height: "100%",
+    },
+    photoModalFooter: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: spacingX._15,
+        paddingTop: verticalScale(34),
+        paddingBottom: verticalScale(16),
+        gap: scale(10),
+    },
+    photoModalClose: {
+        width: verticalScale(36),
+        height: verticalScale(36),
+        borderRadius: radius.full,
+        backgroundColor: "rgba(255,255,255,0.14)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.24)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
     thanksChip: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 3,
         backgroundColor: colors.primary,
         paddingHorizontal: scale(7),
         paddingVertical: 1,

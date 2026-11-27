@@ -5,7 +5,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { registerUserEvents } from "./useEvents";
 import { registerChatEvents } from "./chatEvents";
 import { registerGroupEvents } from "./groupEvents";
-import { registerCallEvents, handleUserDisconnectCalls } from "./callEvents";
+import { registerCallEvents, handleUserDisconnectCalls, clearDisconnectTimersForUser } from "./callEvents";
 import { registerAppEvents } from "./appEvents";
 import Conversation from "../modals/Conversation";
 import User from "../modals/User";
@@ -65,6 +65,7 @@ export function intializeSocket(server: any): SocketIOServer {
         console.log(`User connected: ${userId}, username: ${socket.data.name}`);
 
         socket.join(userRoom(userId));
+        clearDisconnectTimersForUser(userId);
 
         registerUserEvents(io, socket);
         registerChatEvents(io, socket);

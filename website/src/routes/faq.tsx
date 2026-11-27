@@ -22,7 +22,7 @@ export const Route = createFileRoute("/faq")({
       { property: "og:title", content: "Bubbly FAQ — All Questions Answered" },
       {
         property: "og:description",
-        content: "Common questions about installing and using Bubbly v4.1.5.",
+        content: "Common questions about installing and using Bubbly v4.2.1.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     q: "Why is Bubbly distributed as an APK rather than through Google Play?",
-    a: "Direct APK distribution alongside PhonePe Indus Appstore allows rapid v4.1.5 release iteration and gives users direct access to the newest features without gatekeeping.",
+    a: "Direct APK distribution alongside PhonePe Indus Appstore allows rapid v4.2.1 release iteration and gives users direct access to the newest features without gatekeeping.",
     category: "Installation",
     emoji: "📦",
   },
@@ -88,7 +88,7 @@ const faqs = [
   },
   {
     q: "Can I receive calls and messages when Bubbly is closed?",
-    a: "Yes! v4.1.5 supports time-sensitive high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline lock-screen actions even when Bubbly is closed or the screen is off — complete with custom alert chimes and 4 selectable incoming call ringtones in Settings.",
+    a: "Yes! v4.2.1 supports time-sensitive high-priority push notifications for new messages and incoming voice/video calls with Accept & Decline lock-screen actions even when Bubbly is closed or the screen is off — complete with two-phase call audio focus handoff, custom alert chimes, and 4 selectable incoming call ringtones persisted locally & in the cloud.",
     category: "Calls & Voice",
     emoji: "🔔",
   },

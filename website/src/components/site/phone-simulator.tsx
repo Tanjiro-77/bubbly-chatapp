@@ -52,10 +52,10 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
   >([
     {
       id: "1",
-      text: "Hey! Did you test Bubbly v4.1.5 yet?",
+      text: "Hey! Did you test Bubbly v4.2.1 yet?",
       sender: "them",
       time: "10:42 AM",
-      translated: "¡Hola! ¿Ya probaste Bubbly v4.1.5?",
+      translated: "¡Hola! ¿Ya probaste Bubbly v4.2.1?",
     },
     {
       id: "2",
@@ -83,7 +83,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
 
   // ── Story State ──
   const [selectedPreset, setSelectedPreset] = useState(0);
-  const [storyText, setStoryText] = useState("Just shipped Bubbly v4.1.5! 20 new features ✨");
+  const [storyText, setStoryText] = useState("Just shipped Bubbly v4.2.1! Real voice transcribe ✨");
   const [storyProgress, setStoryProgress] = useState(35);
   const [isPaused, setIsPaused] = useState(false);
   const [storyEmoji, setStoryEmoji] = useState<string | null>(null);
@@ -319,7 +319,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-bold leading-tight">Arnav Khari</p>
-                  <p className="text-[10px] text-emerald-500 font-medium">online · 🎧 Listening · v4.1.5</p>
+                  <p className="text-[10px] text-emerald-500 font-medium">online · 🎧 Listening · v4.2.1</p>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -365,7 +365,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 {/* Pinned Announcement Banner */}
                 <div className="rounded-xl border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] flex items-center justify-between">
                   <span className="font-semibold text-primary truncate">
-                    📌 v4.1.5 shipped with animated GIFs & faster chat!
+                    📌 v4.2.1 shipped with voice transcription & cloud settings sync!
                   </span>
                   <span className="text-[9px] text-muted-foreground shrink-0 ml-1">Today</span>
                 </div>
@@ -462,7 +462,7 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 <div className="pop-in rounded-2xl border border-border bg-surface p-2.5">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
                     <BarChart3 className="h-3 w-3 text-primary" />
-                    <span>Poll: Loving the v4.1.5 UI?</span>
+                    <span>Poll: Loving the v4.2.1 Obsidian UI?</span>
                   </div>
                   <div className="mt-2 space-y-1.5 text-[10px]">
                     <button

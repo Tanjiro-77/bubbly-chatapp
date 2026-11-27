@@ -75,10 +75,10 @@ export function AboutPage() {
     },
     {
       chapter: "04",
-      title: "v4.1.5: Persistent Auth, Speed & GIFs",
-      text: "Bubbly v4.1.5 removes 30-day session timeouts, optimizes startup, sockets, and scroll speed, sends animated GIFs seamlessly, enforces required email & phone discovery, and ships 4 selectable call ringtones.",
+      title: "v4.2.1: Voice Transcription, Durable Sync & Obsidian Craft",
+      text: "Bubbly v4.2.1 brings real Gemini/Whisper voice-note transcription, full device + cloud settings synchronization, rebuilt two-phase Agora calling with ringback audio & reconnect grace, redesigned Obsidian splash and interactive How-to-Use studio, and app-wide crash hardening.",
       emoji: "🚀",
-      tag: "Production Release",
+      tag: "Latest Release",
     },
   ];
 
@@ -206,7 +206,7 @@ export function AboutPage() {
               <Sparkles className="h-3.5 w-3.5 text-primary" /> Progression
             </span>
             <h2 className="font-display text-3xl font-extrabold sm:text-5xl">
-              From First Socket to v4.1.5 Release.
+              From First Socket to v4.2.1 Release.
             </h2>
           </div>
 

@@ -64,6 +64,7 @@ export function formatMessagePayload(message: any, extras?: {
             })),
         voiceUrl: isDeleted ? null : (message.voiceUrl || null),
         voiceDuration: isDeleted ? 0 : (message.voiceDuration || 0),
+        transcript: isDeleted ? "" : (message.transcript || ""),
         isDeleted,
         isEdited: message.isEdited || false,
         type: message.type || "text",

@@ -164,6 +164,10 @@ export async function sendExpoPushNotifications(
                     sent += 1;
                 } else {
                     failed += 1;
+                    console.warn(
+                        "Expo Push ticket error:",
+                        ticket?.details?.error || ticket?.message || "unknown"
+                    );
                     if (ticket?.details?.error === "DeviceNotRegistered" && chunk[idx]?.to) {
                         invalidTokens.push(chunk[idx].to);
                     }
@@ -276,6 +280,7 @@ export async function sendMessagePushNotifications(params: {
                 priority: "high",
                 interruptionLevel: "time-sensitive",
                 mutableContent: true,
+                _contentAvailable: true,
                 ttl: 86400,
                 channelId: "messages",
                 data: {
@@ -339,7 +344,7 @@ export async function sendCallPushNotification(params: {
         interruptionLevel: "time-sensitive",
         mutableContent: true,
         _contentAvailable: true,
-        ttl: 45,
+        ttl: 60,
         channelId: ringtoneMeta.channelId,
         categoryId: "incoming_call",
         data: {

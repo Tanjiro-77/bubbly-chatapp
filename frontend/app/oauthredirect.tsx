@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useRootNavigationState, useRouter } from "expo-router";
 import Typo from "../components/Typo";
 import { useAuth } from "../contexts/authContext";
 import { colors } from "../constants/theme";
@@ -11,19 +11,22 @@ import { colors } from "../constants/theme";
  */
 export default function OAuthRedirectFallback() {
     const router = useRouter();
+    const rootNavState = useRootNavigationState();
     const { user, isLoading } = useAuth();
 
     useEffect(() => {
-        if (isLoading) return;
+        if (isLoading || !rootNavState?.key) return;
         const timer = setTimeout(() => {
-            if (user) {
-                router.replace("/(main)/home");
-            } else {
-                router.replace("/(auth)/login");
-            }
+            try {
+                if (user) {
+                    router.replace("/(main)/home");
+                } else {
+                    router.replace("/(auth)/login");
+                }
+            } catch {}
         }, 1200);
         return () => clearTimeout(timer);
-    }, [isLoading, user, router]);
+    }, [isLoading, rootNavState?.key, user, router]);
 
     return (
         <View style={styles.container}>

@@ -53,7 +53,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       {
         id: "download",
         label: "Download Bubbly APK",
-        subtitle: "Get v4.1.5 for Android & Indus Appstore guide",
+        subtitle: "Get v4.2.1 for Android & Indus Appstore guide",
         group: "Pages",
         icon: Download,
         action: () => navigate({ to: "/download" }),

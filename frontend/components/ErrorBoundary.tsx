@@ -7,7 +7,6 @@ import {
     ScrollView,
     Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { captureAppException } from "../services/errorReporter";
 
 interface Props {
@@ -51,8 +50,10 @@ export class AppErrorBoundary extends Component<Props, State> {
                 return this.props.fallback;
             }
 
+            // Deliberately avoid react-native-safe-area-context here so the boundary
+            // never crashes if SafeAreaProvider is unavailable or failed upstream.
             return (
-                <SafeAreaView style={styles.container}>
+                <View style={styles.container}>
                     <ScrollView contentContainerStyle={styles.content}>
                         <View style={styles.iconContainer}>
                             <Text style={styles.icon}>⚠️</Text>
@@ -60,7 +61,7 @@ export class AppErrorBoundary extends Component<Props, State> {
 
                         <Text style={styles.title}>Something went wrong</Text>
                         <Text style={styles.subtitle}>
-                            We've encountered an unexpected problem. An error report has been automatically captured and sent to the developer so it can be fixed.
+                            Bubbly caught an unexpected error safely and sent a diagnostic report. Tap Try Again to continue.
                         </Text>
 
                         {this.state.error && (
@@ -80,7 +81,7 @@ export class AppErrorBoundary extends Component<Props, State> {
                             <Text style={styles.retryButtonText}>Try Again</Text>
                         </TouchableOpacity>
                     </ScrollView>
-                </SafeAreaView>
+                </View>
             );
         }
 
@@ -91,7 +92,9 @@ export class AppErrorBoundary extends Component<Props, State> {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#F8FAFC",
+        backgroundColor: "#0c0a09",
+        paddingTop: Platform.OS === "ios" ? 54 : 34,
+        paddingBottom: Platform.OS === "ios" ? 32 : 20,
     },
     content: {
         flexGrow: 1,
@@ -103,7 +106,9 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: "#FEE2E2",
+        backgroundColor: "rgba(250, 204, 21, 0.14)",
+        borderWidth: 1,
+        borderColor: "rgba(250, 204, 21, 0.35)",
         justifyContent: "center",
         alignItems: "center",
         marginBottom: 20,
@@ -114,13 +119,13 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 22,
         fontWeight: "700",
-        color: "#0F172A",
+        color: "#fafaf9",
         marginBottom: 10,
         textAlign: "center",
     },
     subtitle: {
         fontSize: 14,
-        color: "#64748B",
+        color: "#a8a29e",
         textAlign: "center",
         lineHeight: 20,
         marginBottom: 24,
@@ -128,27 +133,27 @@ const styles = StyleSheet.create({
     },
     errorBox: {
         width: "100%",
-        backgroundColor: "#F1F5F9",
+        backgroundColor: "#1c1917",
         borderRadius: 12,
         padding: 14,
         marginBottom: 24,
         borderWidth: 1,
-        borderColor: "#E2E8F0",
+        borderColor: "#292524",
     },
     errorLabel: {
         fontSize: 12,
         fontWeight: "600",
-        color: "#475569",
+        color: "#a8a29e",
         marginBottom: 4,
     },
     errorMessage: {
         fontSize: 12,
-        color: "#EF4444",
+        color: "#f87171",
         fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     },
     retryButton: {
         width: "100%",
-        backgroundColor: "#f59e0b",
+        backgroundColor: "#facc15",
         paddingVertical: 14,
         borderRadius: 999,
         alignItems: "center",

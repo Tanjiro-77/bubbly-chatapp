@@ -420,6 +420,8 @@ export interface MessageProps {
 
   voiceDuration?: number;
 
+  transcript?: string | null;
+
   callMeta?: CallMetaProps | null;
 
   poll?: PollProps | null;

@@ -49,6 +49,7 @@ export interface UserProps extends Document {
         wallpaper: string;
         bubbleStyle: "rounded" | "sharp" | "minimal";
     };
+    appPreferences?: Record<string, any>;
     customStatus?: {
         emoji?: string;
         text?: string;

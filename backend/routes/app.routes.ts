@@ -2,6 +2,8 @@ import { Router } from "express";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 import { searchAll, translateText } from "../controllers/search.controller";
+import { transcribeAudio } from "../controllers/transcribe.controller";
+import { getUserPreferences, updateUserPreferences } from "../controllers/preferences.controller";
 import {
   acceptCallHttp,
   endCallHttp,
@@ -49,8 +51,18 @@ const translateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const transcribeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 router.get("/search", searchLimiter, authMiddleware, searchAll);
 router.post("/translate", translateLimiter, authMiddleware, translateText);
+router.post("/transcribe", transcribeLimiter, authMiddleware, transcribeAudio);
+router.get("/preferences", authMiddleware, getUserPreferences);
+router.put("/preferences", authMiddleware, updateUserPreferences);
 
 // ── Call routes ──
 router.post("/call/token", callTokenLimiter, authMiddleware, generateAgoraToken);

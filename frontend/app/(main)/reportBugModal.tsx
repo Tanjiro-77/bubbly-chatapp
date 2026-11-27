@@ -115,7 +115,7 @@ export default function ReportBugModal() {
                 BubblyAlert.alert(
                     "Report Sent! 🚀",
                     "Thank you for reporting this issue. Our team has received the diagnostic details and will investigate.",
-                    [{ text: "OK", onPress: () => router.back() }]
+                    [{ text: "OK", onPress: () => { if (router.canGoBack()) router.back(); else router.replace("/(main)/home"); } }]
                 );
             } else {
                 hapticTap("error");
@@ -143,7 +143,8 @@ export default function ReportBugModal() {
                 <TouchableOpacity
                     onPress={() => {
                         hapticTap("light");
-                        router.back();
+                        if (router.canGoBack()) router.back();
+                        else router.replace("/(main)/home");
                     }}
                     style={styles.closeBtn}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}

@@ -110,11 +110,31 @@ const IncomingCall = () => {
     const vibrationRef = useRef<boolean>(true);
     const hasEndedRef = useRef<boolean>(false);
     const isAcceptingRef = useRef<boolean>(false);
+    const isMountedRef = useRef<boolean>(true);
+    const hasExitedRef = useRef<boolean>(false);
     const isVideo = kindStr === 'video';
 
+    const safeVibrate = (pattern: number[]) => {
+        if (Platform.OS === "web") return;
+        try {
+            Vibration.vibrate(pattern);
+        } catch {}
+    };
+
+    const safeCancelVibration = () => {
+        if (Platform.OS === "web") return;
+        try {
+            Vibration.cancel();
+        } catch {}
+    };
+
     const safeBack = () => {
-        if (router.canGoBack()) router.back();
-        else router.replace("/(main)/home");
+        if (hasExitedRef.current || !isMountedRef.current) return;
+        hasExitedRef.current = true;
+        try {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(main)/home");
+        } catch {}
     };
 
     // ── Pulse animation for accept button ──
@@ -134,8 +154,8 @@ const IncomingCall = () => {
 
         let timerId: any = null;
         const vibrate = () => {
-            if (vibrationRef.current && Platform.OS !== "web") {
-                Vibration.vibrate([0, 650, 350]);
+            if (vibrationRef.current && isMountedRef.current && Platform.OS !== "web") {
+                safeVibrate([0, 650, 350]);
                 timerId = setTimeout(vibrate, 1600);
             }
         };
@@ -147,14 +167,20 @@ const IncomingCall = () => {
         // Verify call is still ringing cleanly (guards against stale cold-starts or missed socket call:ended)
         let pollId: ReturnType<typeof setInterval> | null = null;
         const verifyStillRinging = () => {
-            if (!callIdStr || hasEndedRef.current || isAcceptingRef.current) return;
+            if (!callIdStr || !isMountedRef.current || hasEndedRef.current || isAcceptingRef.current) return;
             getCallStatus(callIdStr)
                 .then((res) => {
                     const status = res?.data?.status;
-                    if (status && !['ringing', 'connecting'].includes(status) && !hasEndedRef.current && !isAcceptingRef.current) {
+                    if (
+                        status &&
+                        !['ringing', 'connecting'].includes(status) &&
+                        isMountedRef.current &&
+                        !hasEndedRef.current &&
+                        !isAcceptingRef.current
+                    ) {
                         hasEndedRef.current = true;
                         vibrationRef.current = false;
-                        Vibration.cancel();
+                        safeCancelVibration();
                         stopIncomingRingtone();
                         clearDeliveredCallNotifications(callIdStr).catch(() => {});
                         safeBack();
@@ -169,10 +195,11 @@ const IncomingCall = () => {
         }
 
         return () => {
+            isMountedRef.current = false;
             vibrationRef.current = false;
             if (timerId) clearTimeout(timerId);
             if (pollId) clearInterval(pollId);
-            Vibration.cancel();
+            safeCancelVibration();
             stopIncomingRingtone();
             onCallEnded(handleCallEndedByOther, true);
         };
@@ -182,7 +209,7 @@ const IncomingCall = () => {
         if (String(data?.callId) !== callIdStr) return;
         hasEndedRef.current = true;
         vibrationRef.current = false;
-        Vibration.cancel();
+        safeCancelVibration();
         stopIncomingRingtone();
         clearDeliveredCallNotifications(callIdStr).catch(() => {});
         hapticTap("warning");
@@ -202,44 +229,46 @@ const IncomingCall = () => {
         if (isAcceptingRef.current || hasEndedRef.current) return;
         isAcceptingRef.current = true;
         vibrationRef.current = false;
-        Vibration.cancel();
+        safeCancelVibration();
         stopIncomingRingtone();
         clearDeliveredCallNotifications(callIdStr).catch(() => {});
         hapticTap("boom");
         try {
             callAccept(callIdStr);
             const res = await acceptCallHttp(callIdStr);
-            if (hasEndedRef.current || (res && res.success === false)) {
+            if (!isMountedRef.current || hasEndedRef.current || (res && res.success === false)) {
                 safeBack();
                 return;
             }
         } catch {
-            if (hasEndedRef.current) {
+            if (!isMountedRef.current || hasEndedRef.current) {
                 safeBack();
                 return;
             }
         }
-        if (hasEndedRef.current) {
+        if (!isMountedRef.current || hasEndedRef.current) {
             safeBack();
             return;
         }
-        router.replace({
-            pathname: '/(main)/callScreen',
-            params: {
-                callId: callIdStr,
-                kind: kindStr,
-                conversationId: conversationIdStr,
-                remoteUserName: callerNameStr,
-                remoteUserAvatar: callerAvatarStr || '',
-                isOutgoing: 'false',
-            },
-        });
+        try {
+            router.replace({
+                pathname: '/(main)/callScreen',
+                params: {
+                    callId: callIdStr,
+                    kind: kindStr,
+                    conversationId: conversationIdStr,
+                    remoteUserName: callerNameStr,
+                    remoteUserAvatar: callerAvatarStr || '',
+                    isOutgoing: 'false',
+                },
+            });
+        } catch {}
     };
 
     const handleReject = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
-        Vibration.cancel();
+        safeCancelVibration();
         stopIncomingRingtone();
         clearDeliveredCallNotifications(callIdStr).catch(() => {});
         hapticTap("boom");
@@ -251,7 +280,7 @@ const IncomingCall = () => {
     const handleDeclineWithMessage = () => {
         hasEndedRef.current = true;
         vibrationRef.current = false;
-        Vibration.cancel();
+        safeCancelVibration();
         stopIncomingRingtone();
         clearDeliveredCallNotifications(callIdStr).catch(() => {});
         hapticTap("rigid");

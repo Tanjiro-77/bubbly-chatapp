@@ -17,6 +17,13 @@ const getAuthHeaders = async () => {
 };
 
 let isSentryInitialized = false;
+let isRootUiMounted = false;
+let isHandlingGlobalError = false;
+const recentCapturedErrors = new Map<string, number>();
+
+export const markRootUiMounted = () => {
+    isRootUiMounted = true;
+};
 
 export interface DeviceDiagnostics {
     os: string;
@@ -44,7 +51,7 @@ export const getDeviceDiagnostics = (currentRoute?: string): DeviceDiagnostics =
     const osName = Device.osName || Platform.OS;
     const osVersion = Device.osVersion || `${Platform.Version}`;
     const modelName = Device.modelName || (Platform.OS === "android" ? "Android Device" : "iOS Device");
-    const appVersion = Constants.expoConfig?.version || "4.1.5";
+    const appVersion = Constants.expoConfig?.version || "4.2.1";
 
     return {
         os: `${osName} ${osVersion}`,
@@ -97,17 +104,22 @@ export const initSentry = () => {
  * Set user context in Sentry
  */
 export const setSentryUser = (user: { id?: string; _id?: string; name?: string; email?: string } | null) => {
-    if (!user) {
-        Sentry.setUser(null);
-        return;
-    }
+    if (!isSentryInitialized) return;
+    try {
+        if (!user) {
+            Sentry.setUser(null);
+            return;
+        }
 
-    const userId = user._id || user.id || "anonymous";
-    Sentry.setUser({
-        id: userId,
-        username: user.name || "User",
-        email: user.email || undefined,
-    });
+        const userId = user._id || user.id || "anonymous";
+        Sentry.setUser({
+            id: userId,
+            username: user.name || "User",
+            email: user.email || undefined,
+        });
+    } catch {
+        // Ignore Sentry errors if SDK is inactive
+    }
 };
 
 /**
@@ -122,6 +134,18 @@ export const captureAppException = async (
     }
 ) => {
     try {
+        const dedupeKey = `${context?.message || ""}|${error?.message || String(error)}`.slice(0, 240);
+        const now = Date.now();
+        const prevTs = recentCapturedErrors.get(dedupeKey) || 0;
+        if (now - prevTs < 4000) {
+            return;
+        }
+        recentCapturedErrors.set(dedupeKey, now);
+        if (recentCapturedErrors.size > 40) {
+            const firstKey = recentCapturedErrors.keys().next().value;
+            if (firstKey) recentCapturedErrors.delete(firstKey);
+        }
+
         console.error("[ErrorReporter] Capturing exception:", error);
 
         // 1. Send to Sentry
@@ -244,16 +268,51 @@ export const setupGlobalErrorHandlers = () => {
 
     if (g.ErrorUtils) {
         g.ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
-            console.error(`[Global Error] isFatal=${isFatal}:`, error);
-            captureAppException(error, {
-                message: isFatal ? "Fatal Global JS Error" : "Global JS Error",
-                isFatal,
-            });
+            if (isHandlingGlobalError) return;
+            isHandlingGlobalError = true;
+            try {
+                console.error(`[Global Error] isFatal=${isFatal}:`, error);
+                captureAppException(error, {
+                    message: isFatal ? "Fatal Global JS Error" : "Global JS Error",
+                    isFatal,
+                });
 
-            // Call default handler so standard Expo/React Native behavior persists
-            if (typeof defaultHandler === "function") {
-                defaultHandler(error, isFatal);
+                // In production once UI is mounted, downgrade uncaught runtime callback exceptions
+                // to non-fatal so native ExceptionsManager logs instead of hard-killing the app.
+                const devRuntime = typeof __DEV__ !== "undefined" && __DEV__;
+                const forwardFatal = devRuntime || !isRootUiMounted ? isFatal : false;
+                if (typeof defaultHandler === "function") {
+                    defaultHandler(error, forwardFatal);
+                }
+            } finally {
+                isHandlingGlobalError = false;
             }
         });
+    }
+
+    // Track unhandled promise rejections safely without terminating UI
+    try {
+        const hermesInternal = g.HermesInternal;
+        if (hermesInternal?.enablePromiseRejectionTracker) {
+            hermesInternal.enablePromiseRejectionTracker({
+                allRejections: true,
+                onUnhandled: (_id: number, rejection: any) => {
+                    captureAppException(rejection instanceof Error ? rejection : new Error(String(rejection)), {
+                        message: "Unhandled Promise Rejection",
+                        isFatal: false,
+                    });
+                },
+            });
+        } else if (typeof g.addEventListener === "function") {
+            g.addEventListener("unhandledrejection", (event: any) => {
+                const reason = event?.reason;
+                captureAppException(reason instanceof Error ? reason : new Error(String(reason || "Promise rejected")), {
+                    message: "Unhandled Promise Rejection",
+                    isFatal: false,
+                });
+            });
+        }
+    } catch {
+        // Ignore if runtime does not expose promise rejection hooks
     }
 };

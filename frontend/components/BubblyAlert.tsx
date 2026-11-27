@@ -41,7 +41,11 @@ const listeners = new Set<Listener>();
 let nextId = 1;
 
 function notify() {
-    listeners.forEach((fn) => fn());
+    listeners.forEach((fn) => {
+        try {
+            fn();
+        } catch {}
+    });
 }
 
 /**
@@ -215,7 +219,11 @@ export const BubblyAlertHost: React.FC = () => {
         queue.shift();
         notify();
         if (cb) {
-            requestAnimationFrame(() => cb());
+            requestAnimationFrame(() => {
+                try {
+                    cb();
+                } catch {}
+            });
         }
     };
 

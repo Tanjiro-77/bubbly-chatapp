@@ -19,6 +19,18 @@ interface ActiveCallEntry {
 }
 
 const activeCalls = new Map<string, ActiveCallEntry>();
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
+const CALL_DISCONNECT_GRACE_MS = 10_000;
+
+export function clearDisconnectTimersForUser(userId: string) {
+    const prefix = `${userId}:`;
+    for (const [key, timer] of disconnectTimers.entries()) {
+        if (key.startsWith(prefix)) {
+            clearTimeout(timer);
+            disconnectTimers.delete(key);
+        }
+    }
+}
 
 function cleanupCall(callId: string) {
     const entry = activeCalls.get(callId);
@@ -27,6 +39,13 @@ function cleanupCall(callId: string) {
     }
     if (entry?.connectingTimer) {
         clearTimeout(entry.connectingTimer);
+    }
+    const suffix = `:${callId}`;
+    for (const [key, timer] of disconnectTimers.entries()) {
+        if (key.endsWith(suffix)) {
+            clearTimeout(timer);
+            disconnectTimers.delete(key);
+        }
     }
     activeCalls.delete(callId);
 }
@@ -218,6 +237,71 @@ export async function rejectCallById(io: SocketIOServer, callId: string, userId:
     return updated;
 }
 
+async function finalizeDisconnectedCall(
+    io: SocketIOServer,
+    callId: string,
+    callData: ActiveCallEntry,
+    userId: string
+) {
+    try {
+        const stillHasSockets = Array.from(io.sockets.sockets.values()).some(
+            (s) => s.data.userId === userId
+        );
+        if (stillHasSockets || !activeCalls.has(callId)) return;
+
+        const call = await Call.findById(callId);
+        if (!call) {
+            cleanupCall(callId);
+            return;
+        }
+
+        // If the callee's stale background socket disconnects while the call is still ringing
+        // or connecting (e.g. pushed to wake up the closed app), keep it alive until timeout or answer.
+        if (callData.calleeId === userId && (call.status === "ringing" || call.status === "connecting")) {
+            return;
+        }
+
+        cleanupCall(callId);
+        const otherUserId = callData.callerId === userId ? callData.calleeId : callData.callerId;
+
+        if (["ringing", "connecting", "connected"].includes(call.status)) {
+            const wasConnected = call.status === "connected";
+            const now = new Date();
+            const duration = call.startedAt
+                ? Math.max(0, Math.floor((now.getTime() - call.startedAt.getTime()) / 1000))
+                : 0;
+            const finalStatus = wasConnected ? "ended" : "failed";
+            const finalized = await Call.findOneAndUpdate(
+                { _id: call._id, status: { $in: ["ringing", "connecting", "connected"] } },
+                { $set: { status: finalStatus, endedAt: now, duration } },
+                { new: true }
+            );
+            if (!finalized) return;
+
+            await createAndBroadcastMessage({
+                conversationId: finalized.conversationId.toString(),
+                senderId: finalized.callerId.toString(),
+                type: "call",
+                callMeta: {
+                    callId: finalized._id.toString(),
+                    kind: finalized.kind,
+                    status: finalStatus,
+                    duration,
+                },
+                skipRateLimit: true,
+                skipPermissionCheck: true,
+            });
+        }
+
+        io.to(userRoom(otherUserId)).emit("call:ended", {
+            callId,
+            reason: "disconnected",
+        });
+    } catch (err) {
+        console.error("Error finalizing call on disconnect:", err);
+    }
+}
+
 export async function handleUserDisconnectCalls(io: SocketIOServer, userId: string) {
     const remainingSockets = Array.from(io.sockets.sockets.values()).filter(
         (s) => s.data.userId === userId
@@ -226,63 +310,24 @@ export async function handleUserDisconnectCalls(io: SocketIOServer, userId: stri
 
     for (const [callId, callData] of Array.from(activeCalls.entries())) {
         if (callData.callerId === userId || callData.calleeId === userId) {
-            try {
-                const call = await Call.findById(callId);
-                if (!call) {
-                    cleanupCall(callId);
-                    continue;
-                }
+            const timerKey = `${userId}:${callId}`;
+            if (disconnectTimers.has(timerKey)) continue;
 
-                // If the callee's stale background socket disconnects while the call is still ringing
-                // or connecting (e.g. pushed to wake up the closed app), keep it alive until timeout or answer.
-                if (callData.calleeId === userId && (call.status === "ringing" || call.status === "connecting")) {
-                    continue;
-                }
-
-                cleanupCall(callId);
-                const otherUserId = callData.callerId === userId ? callData.calleeId : callData.callerId;
-
-                if (["ringing", "connecting", "connected"].includes(call.status)) {
-                    const wasConnected = call.status === "connected";
-                    const now = new Date();
-                    const duration = call.startedAt
-                        ? Math.max(0, Math.floor((now.getTime() - call.startedAt.getTime()) / 1000))
-                        : 0;
-                    const finalStatus = wasConnected ? "ended" : "failed";
-                    const finalized = await Call.findOneAndUpdate(
-                        { _id: call._id, status: { $in: ["ringing", "connecting", "connected"] } },
-                        { $set: { status: finalStatus, endedAt: now, duration } },
-                        { new: true }
-                    );
-                    if (!finalized) continue;
-
-                    await createAndBroadcastMessage({
-                        conversationId: finalized.conversationId.toString(),
-                        senderId: finalized.callerId.toString(),
-                        type: "call",
-                        callMeta: {
-                            callId: finalized._id.toString(),
-                            kind: finalized.kind,
-                            status: finalStatus,
-                            duration,
-                        },
-                        skipRateLimit: true,
-                        skipPermissionCheck: true,
-                    });
-                }
-
-                io.to(userRoom(otherUserId)).emit("call:ended", {
-                    callId,
-                    reason: "disconnected",
-                });
-            } catch (err) {
-                console.error("Error finalizing call on disconnect:", err);
-            }
+            // Give mobile clients a grace window to reconnect sockets across Wi-Fi/cellular handoffs
+            const timer = setTimeout(() => {
+                disconnectTimers.delete(timerKey);
+                void finalizeDisconnectedCall(io, callId, callData, userId);
+            }, CALL_DISCONNECT_GRACE_MS);
+            timer.unref?.();
+            disconnectTimers.set(timerKey, timer);
         }
     }
 }
 
 export function registerCallEvents(io: SocketIOServer, socket: Socket) {
+    if (socket.data?.userId) {
+        clearDisconnectTimersForUser(socket.data.userId);
+    }
     socket.on("call:invite", async (data: {
         conversationId: string;
         calleeId?: string;

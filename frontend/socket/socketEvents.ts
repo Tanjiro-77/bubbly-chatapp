@@ -53,6 +53,9 @@ export const testSocket = (payload: any, off: boolean = false) =>
 export const updateProfile = (payload: any, off: boolean = false) =>
     emitOrBind("updateProfile", payload, off);
 
+export const updatePrivacy = (payload: any, off: boolean = false) =>
+    emitOrBind("updatePrivacy", payload, off);
+
 export const getContacts = (payload: any, off: boolean = false) =>
     emitOrBind("getContacts", payload, off);
 

@@ -2130,8 +2130,11 @@ const Conversation = () => {
             if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
                 if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
                 if (recordingRef.current) {
-                    try { recordingRef.current.stop(); } catch {}
+                    const rec = recordingRef.current;
                     recordingRef.current = null;
+                    try {
+                        Promise.resolve(rec.stop()).catch(() => {});
+                    } catch {}
                 }
                 if (voiceReviewRef.current?.uri) {
                     try { reviewPlayer.pause(); } catch (_) {}
@@ -2314,8 +2317,11 @@ const Conversation = () => {
             if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
             if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
             if (recordingRef.current) {
-                try { recordingRef.current.stop(); } catch {}
+                const rec = recordingRef.current;
                 recordingRef.current = null;
+                try {
+                    Promise.resolve(rec.stop()).catch(() => {});
+                } catch {}
             }
             if (voiceReviewRef.current?.uri) {
                 try { reviewPlayer.pause(); } catch (_) {}
@@ -2549,7 +2555,8 @@ const Conversation = () => {
             setHasMore(res.hasMore ?? false);
             setIsLoadingMore(false);
             isLoadingMoreRef.current = false;
-            const pageMessages = (res.data as MessageProps[]).map(msg => ({
+            const rawMessages = Array.isArray(res.data) ? (res.data as MessageProps[]) : [];
+            const pageMessages = rawMessages.map(msg => ({
                 ...msg,
                 conversationId: msg.conversationId || (conversationId as string),
             }));
@@ -3034,7 +3041,7 @@ const Conversation = () => {
     // REPLY
     // ─────────────────────────────────────────────
     const handleReply = useCallback((item: MessageProps) => {
-        setReplyTo({ id: item.id, content: item.content, senderName: item.sender.name, voiceUrl: item.voiceUrl || null });
+        setReplyTo({ id: item.id, content: item.content, senderName: item.sender?.name || "User", voiceUrl: item.voiceUrl || null });
     }, []);
 
     const handleCancelReply = () => setReplyTo(null);
@@ -3612,8 +3619,14 @@ const Conversation = () => {
         const idx = messagesWithSeparators.findIndex(
             (m) => m.type === 'message' && m.message.id === messageId
         );
-        if (idx !== -1) {
-            flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+        if (idx >= 0 && idx < messagesWithSeparators.length) {
+            try {
+                flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+            } catch {
+                try {
+                    flatListRef.current?.scrollToOffset({ offset: idx * 76, animated: true });
+                } catch {}
+            }
         } else if (!isNotesToSelf && isSocketConnected()) {
             pendingJumpIdRef.current = messageId;
             getMessages({ conversationId, page: 0, limit: 30, aroundMessageId: messageId });
@@ -3939,22 +3952,30 @@ const Conversation = () => {
         return matches;
     }, [messagesWithSeparators, searchQuery, searchFilterKind]);
 
+    const scrollSearchMatch = (matchIndex: number) => {
+        const listIndex = searchMatches[matchIndex];
+        if (typeof listIndex !== 'number' || listIndex < 0 || listIndex >= messagesWithSeparators.length) return;
+        try {
+            flatListRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.5 });
+        } catch {
+            try {
+                flatListRef.current?.scrollToOffset({ offset: listIndex * 76, animated: true });
+            } catch {}
+        }
+    };
+
     const handleSearchPrev = () => {
         if (searchMatches.length === 0) return;
         const nextIdx = (activeSearchIndex - 1 + searchMatches.length) % searchMatches.length;
         setActiveSearchIndex(nextIdx);
-        try {
-            flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
-        } catch (_) {}
+        scrollSearchMatch(nextIdx);
     };
 
     const handleSearchNext = () => {
         if (searchMatches.length === 0) return;
         const nextIdx = (activeSearchIndex + 1) % searchMatches.length;
         setActiveSearchIndex(nextIdx);
-        try {
-            flatListRef.current?.scrollToIndex({ index: searchMatches[nextIdx], animated: true, viewPosition: 0.5 });
-        } catch (_) {}
+        scrollSearchMatch(nextIdx);
     };
 
     const canSend = message.trim().length > 0 || selectedFile !== null;

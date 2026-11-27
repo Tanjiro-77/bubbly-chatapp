@@ -11,7 +11,7 @@
 
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { AudioPlayer, createAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync } from "expo-audio";
 import { API_URL } from "../constants";
 
 export type IncomingRingtoneId =
@@ -153,24 +153,50 @@ export async function setIncomingRingtoneId(
 /**
  * Plays the custom notification chime (`assets/audio/notification.mp3`) for foreground alerts.
  */
+async function startAudioClip({
+    asset,
+    loop,
+    volume,
+    playsInSilentMode,
+    interruptionMode,
+    shouldRouteThroughEarpiece = false,
+}: {
+    asset: number;
+    loop: boolean;
+    volume: number;
+    playsInSilentMode: boolean;
+    interruptionMode: "mixWithOthers" | "doNotMix";
+    shouldRouteThroughEarpiece?: boolean;
+}): Promise<AudioPlayer | null> {
+    await setIsAudioActiveAsync(true).catch(() => {});
+    await setAudioModeAsync({
+        playsInSilentMode,
+        shouldPlayInBackground: false,
+        shouldRouteThroughEarpiece,
+        interruptionMode,
+    }).catch(() => {});
+
+    const player = createAudioPlayer(asset);
+    player.loop = loop;
+    player.volume = volume;
+    player.play();
+    return player;
+}
+
 export async function playNotificationSound(): Promise<void> {
     if (Platform.OS === "web") return;
     try {
         const pref = await AsyncStorage.getItem(SOUND_ENABLED_KEY);
         if (pref === "false") return;
 
-        await setAudioModeAsync({
-            playsInSilentMode: false,
-            shouldPlayInBackground: false,
-            interruptionMode: "mixWithOthers",
-        }).catch(() => {});
-
         notifPlayer = releasePlayer(notifPlayer);
-        const player = createAudioPlayer(NOTIFICATION_SOUND_ASSET);
-        player.loop = false;
-        player.volume = 0.85;
-        notifPlayer = player;
-        player.play();
+        notifPlayer = await startAudioClip({
+            asset: NOTIFICATION_SOUND_ASSET,
+            loop: false,
+            volume: 0.85,
+            playsInSilentMode: false,
+            interruptionMode: "mixWithOthers",
+        });
     } catch {
         // Ignore playback failures when device audio focus is locked
     }
@@ -186,18 +212,14 @@ export async function startIncomingRingtone(explicitId?: string | null): Promise
         await initIncomingRingtone();
         const option = getIncomingRingtoneOption(explicitId || cachedRingtoneId);
 
-        await setAudioModeAsync({
-            playsInSilentMode: true,
-            shouldPlayInBackground: false,
-            interruptionMode: "doNotMix",
-        }).catch(() => {});
-
         incomingPlayer = releasePlayer(incomingPlayer);
-        const player = createAudioPlayer(option.asset);
-        player.loop = true;
-        player.volume = 1.0;
-        incomingPlayer = player;
-        player.play();
+        incomingPlayer = await startAudioClip({
+            asset: option.asset,
+            loop: true,
+            volume: 1.0,
+            playsInSilentMode: true,
+            interruptionMode: "doNotMix",
+        });
     } catch {
         // Ignore audio focus failures
     }
@@ -213,18 +235,18 @@ export function stopIncomingRingtone(): void {
 export async function startOutgoingRingback(): Promise<void> {
     if (Platform.OS === "web") return;
     try {
-        await setAudioModeAsync({
-            playsInSilentMode: true,
-            shouldPlayInBackground: false,
-            interruptionMode: "mixWithOthers",
-        }).catch(() => {});
+        const pref = await AsyncStorage.getItem(SOUND_ENABLED_KEY);
+        if (pref === "false") return;
 
         outgoingPlayer = releasePlayer(outgoingPlayer);
-        const player = createAudioPlayer(OUTGOING_CALL_SOUND_ASSET);
-        player.loop = true;
-        player.volume = 0.7;
-        outgoingPlayer = player;
-        player.play();
+        outgoingPlayer = await startAudioClip({
+            asset: OUTGOING_CALL_SOUND_ASSET,
+            loop: true,
+            volume: 0.9,
+            playsInSilentMode: true,
+            interruptionMode: "doNotMix",
+            shouldRouteThroughEarpiece: false,
+        });
     } catch {
         // Ignore audio focus failures
     }
@@ -232,6 +254,17 @@ export async function startOutgoingRingback(): Promise<void> {
 
 export function stopOutgoingRingback(): void {
     outgoingPlayer = releasePlayer(outgoingPlayer);
+}
+
+/**
+ * Stops call ringback/ringtones and deactivates expo-audio focus before Agora enters communication mode.
+ */
+export async function releaseCallAudioSession(): Promise<void> {
+    stopIncomingRingtone();
+    stopOutgoingRingback();
+    stopPreviewRingtone();
+    if (Platform.OS === "web") return;
+    await setIsAudioActiveAsync(false).catch(() => {});
 }
 
 /**
@@ -243,17 +276,13 @@ export async function previewIncomingRingtone(id: IncomingRingtoneId): Promise<v
         stopPreviewRingtone();
         const option = getIncomingRingtoneOption(id);
 
-        await setAudioModeAsync({
+        previewPlayer = await startAudioClip({
+            asset: option.asset,
+            loop: true,
+            volume: 0.95,
             playsInSilentMode: true,
-            shouldPlayInBackground: false,
             interruptionMode: "doNotMix",
-        }).catch(() => {});
-
-        const player = createAudioPlayer(option.asset);
-        player.loop = true;
-        player.volume = 0.95;
-        previewPlayer = player;
-        player.play();
+        });
 
         previewTimer = setTimeout(() => {
             stopPreviewRingtone();

@@ -9,6 +9,7 @@ import { connectSocket, disconnectSocket, updateSocketAuth } from "../socket/soc
 import { markOnboardingCompleted } from "../hooks/useOnboarding";
 import { clearMemoryChatCache } from "../utils/chatCache";
 import { clearFeatureMemoryCache } from "../utils/featureStorage";
+import { bootstrapAndSyncPreferences } from "../services/preferencesService";
 import {
     registerForPushNotificationsAsync,
     unregisterPushTokenAsync,
@@ -48,6 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     setToken(storedToken);
                     setUser(decoded.user);
                     connectSocket().catch(() => {});
+                    bootstrapAndSyncPreferences(storedToken, decoded.user.id).catch(() => {});
                     registerForPushNotificationsAsync(storedToken).catch(() => {});
                 } else {
                     await AsyncStorage.removeItem('token');
@@ -61,29 +63,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const updateToken = useCallback(async (nextToken: string) => {
-        if (nextToken) {
+        if (!nextToken) return;
+        try {
+            const decoded = jwtDecode<DecodedTokenProps>(nextToken);
+            if (!decoded?.user?.id) return;
             setToken(nextToken);
             await AsyncStorage.setItem("token", nextToken);
             updateSocketAuth(nextToken);
-            const decoded = jwtDecode<DecodedTokenProps>(nextToken);
             setUser(decoded.user);
+        } catch (err) {
+            console.warn("updateToken decode error:", err);
         }
     }, []);
 
     const establishAuthenticatedSession = useCallback(async (authToken: string): Promise<UserProps | null> => {
+        const decoded = jwtDecode<DecodedTokenProps>(authToken);
+        if (!decoded?.user?.id) {
+            throw new Error("Invalid session token");
+        }
         setToken(authToken);
         await AsyncStorage.setItem("token", authToken);
         updateSocketAuth(authToken);
-        const decoded = jwtDecode<DecodedTokenProps>(authToken);
         await markOnboardingCompleted();
         setUser(decoded.user);
         connectSocket().catch(() => {});
+        bootstrapAndSyncPreferences(authToken, decoded.user.id).catch(() => {});
         registerForPushNotificationsAsync(authToken).catch(() => {});
         return decoded.user;
     }, []);
 
     const routeAfterAuth = useCallback((_authUser: UserProps | null) => {
-        router.replace("/(main)/home");
+        try {
+            router.replace("/(main)/home");
+        } catch {}
     }, [router]);
 
     const signIn = useCallback(async (email: string, password: string) => {
@@ -174,7 +186,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
         } catch {}
         disconnectSocket();
-        router.replace("/(auth)/welcome");
+        try {
+            router.replace("/(auth)/welcome");
+        } catch {}
     }, [token, router]);
 
     const value = useMemo<AuthContextProps>(() => ({

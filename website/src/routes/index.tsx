@@ -27,13 +27,13 @@ import { sounds } from "@/lib/sound";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Bubbly v4.1.5 — Connect Beyond Messages | Real-Time Chat & Calls" },
+      { title: "Bubbly v4.2.1 — Connect Beyond Messages | Real-Time Chat & Calls" },
       {
         name: "description",
         content:
-          "Bubbly is a full-stack, real-time messaging application with instant chat, 20 new flagship features (Checklists, Reminders, Focus Mode, Chat Insights, Archives, Games), Agora voice & video calls, Story Studio, and Biometric Vault.",
+          "Bubbly is a full-stack, real-time messaging application with AI voice note transcription, durable cloud settings sync, 20+ flagship chat tools, Agora voice & video calls, Story Studio, and Biometric Vault.",
       },
-      { property: "og:title", content: "Bubbly v4.1.5 — Connect Beyond Messages" },
+      { property: "og:title", content: "Bubbly v4.2.1 — Connect Beyond Messages" },
       {
         property: "og:description",
         content:
@@ -131,7 +131,7 @@ function IndexPage() {
             {/* Quick feature tick badges */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 20 New v4.1.5 Features
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> AI Voice Transcription
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora HD Calling
@@ -273,17 +273,17 @@ function IndexPage() {
                 </span>
                 <div>
                   <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-emerald-400">
-                    v4.1.5 Superpowers
+                    v4.2.1 Superpowers
                   </span>
                   <h3 className="font-display text-2xl font-extrabold text-foreground">
-                    6-Language Translation, Checklists & Chat Insights
+                    Voice Transcription, 6-Language Translation & Durable Sync
                   </h3>
                 </div>
               </div>
               <p className="mt-4 text-muted-foreground text-sm leading-relaxed max-w-lg">
-                Translate messages across 6 languages on the fly, run shared live checklists and
-                countdown timers in chat, roll icebreaker games, set message reminder alarms, and
-                customize every bubble shape and folder tag.
+                Transcribe voice messages into text cleanly, translate chats across 6 languages on
+                the fly, sync every preference between your device and the cloud, run live
+                checklists, and customize every bubble style.
               </p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="rounded-full bg-surface px-3 py-1 border border-border">

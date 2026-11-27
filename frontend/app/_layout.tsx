@@ -1,12 +1,12 @@
 import { StyleSheet, Platform } from 'react-native'
 import React, { useEffect, useRef, useState } from 'react'
-import { Stack, useRouter, useSegments } from "expo-router"
+import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router"
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import * as Sentry from '@sentry/react-native';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from "../contexts/authContext";
 import { isOnboardingCompleted } from '../hooks/useOnboarding';
-import { initSentry, setupGlobalErrorHandlers, setSentryUser } from '../services/errorReporter';
+import { initSentry, markRootUiMounted, setupGlobalErrorHandlers, setSentryUser } from '../services/errorReporter';
 import AppErrorBoundary from '../components/ErrorBoundary';
 import { BubblyAlertHost } from '../components/BubblyAlert';
 import { AppLockGate } from '../components/AppLockGate';
@@ -14,8 +14,10 @@ import { ContactCompletionModal } from '../components/ContactCompletionModal';
 import { RealtimeNotifier } from '../components/RealtimeNotifier';
 import { initHapticStrength } from '../utils/haptics';
 import { initIncomingRingtone } from '../services/soundService';
+import { bootstrapAndSyncPreferences } from '../services/preferencesService';
 import { onSocketConnectionChange } from '../socket/socketEvents';
 import {
+    forceBypassWarmup,
     getWarmupSnapshot,
     startServerWarmup,
     subscribeWarmupState,
@@ -47,6 +49,8 @@ const NavigationGuard = () => {
     const { user, isLoading } = useAuth();
     const router = useRouter();
     const segments = useSegments();
+    const rootNavState = useRootNavigationState();
+    const isNavReady = Boolean(rootNavState?.key);
 
     /**
      * Three-state loading:
@@ -73,40 +77,43 @@ const NavigationGuard = () => {
         setSentryUser(user);
     }, [user]);
 
-    // Route guard — runs when auth state and onboarding state are both determined
+    // Route guard — runs when auth state, onboarding state, and root navigator are all ready
     useEffect(() => {
+        if (!isNavReady) return;
         // Hold on splash screen while auth, onboarding, or server wake-up is running
         const onSplash = !segments[0];
         if (isLoading || onboardingDone === null) return;
         if (onSplash && warmup.status === "warming") return;
 
-        if (!onboardingDone) {
-            // First install — show onboarding
+        try {
+            if (!onboardingDone) {
+                // First install — show onboarding
+                const inOnboarding = segments[0] === "onboarding";
+                if (!inOnboarding) {
+                    router.replace("/onboarding");
+                }
+                return;
+            }
+
+            const inLegal = segments[0] === "(legal)";
             const inOnboarding = segments[0] === "onboarding";
-            if (!inOnboarding) {
-                router.replace("/onboarding");
-            }
-            return;
-        }
 
-        const inLegal = segments[0] === "(legal)";
-        const inOnboarding = segments[0] === "onboarding";
-
-        // Onboarding is done. Now check auth state.
-        if (user) {
-            // Authenticated — go to main app; if phone or email is missing, ContactCompletionModal prompts in-app
-            const inMain = segments[0] === "(main)";
-            if (!inMain && !inLegal && !inOnboarding) {
-                router.replace("/(main)/home");
+            // Onboarding is done. Now check auth state.
+            if (user) {
+                // Authenticated — go to main app; if phone or email is missing, ContactCompletionModal prompts in-app
+                const inMain = segments[0] === "(main)";
+                if (!inMain && !inLegal && !inOnboarding) {
+                    router.replace("/(main)/home");
+                }
+            } else {
+                // Not authenticated, onboarding done — go to auth
+                const inAuth = segments[0] === "(auth)";
+                if (!inAuth && !inLegal && segments[0] !== "oauthredirect") {
+                    router.replace("/(auth)/welcome");
+                }
             }
-        } else {
-            // Not authenticated, onboarding done — go to auth
-            const inAuth = segments[0] === "(auth)";
-            if (!inAuth && !inLegal && segments[0] !== "oauthredirect") {
-                router.replace("/(auth)/welcome");
-            }
-        }
-    }, [isLoading, onboardingDone, user, segments, warmup.status]);
+        } catch {}
+    }, [isNavReady, isLoading, onboardingDone, user, segments, warmup.status, router]);
 
     return null;
 };
@@ -116,13 +123,16 @@ const NavigationGuard = () => {
 const StackLayout = () => {
     const router = useRouter();
     const segments = useSegments();
+    const rootNavState = useRootNavigationState();
     const { user, token, isLoading } = useAuth();
     const lastHandledNotifIdRef = useRef<string | null>(null);
     const pendingResponseRef = useRef<Notifications.NotificationResponse | null>(null);
     const inMainRef = useRef<boolean>(false);
+    const isNavReadyRef = useRef<boolean>(false);
     const tokenRef = useRef<string | null>(token);
     tokenRef.current = token;
     inMainRef.current = segments[0] === "(main)";
+    isNavReadyRef.current = Boolean(rootNavState?.key);
     const lastNotificationResponse = Notifications.useLastNotificationResponse();
 
     const preClaimCallAction = (response: Notifications.NotificationResponse) => {
@@ -142,19 +152,22 @@ const StackLayout = () => {
         kind: string;
         conversationId: string;
     }) => {
+        if (!isNavReadyRef.current) return;
         if (!claimIncomingCallScreen(data.callId)) return;
 
-        router.push({
-            pathname: '/(main)/incomingCall',
-            params: {
-                callId: data.callId,
-                callerId: data.callerId || '',
-                callerName: data.callerName,
-                callerAvatar: data.callerAvatar || '',
-                kind: data.kind,
-                conversationId: data.conversationId,
-            },
-        });
+        try {
+            router.push({
+                pathname: '/(main)/incomingCall',
+                params: {
+                    callId: data.callId,
+                    callerId: data.callerId || '',
+                    callerName: data.callerName,
+                    callerAvatar: data.callerAvatar || '',
+                    kind: data.kind,
+                    conversationId: data.conversationId,
+                },
+            });
+        } catch {}
     };
 
     useEffect(() => {
@@ -176,6 +189,16 @@ const StackLayout = () => {
                     const id = launchResponse.notification.request.identifier;
                     if (lastHandledNotifIdRef.current === id) return;
                     preClaimCallAction(launchResponse);
+                    const data = (launchResponse.notification.request.content.data || {}) as Record<string, any>;
+                    if (data?.type === "call") {
+                        forceBypassWarmup();
+                        if (launchResponse.actionIdentifier === "DECLINE") {
+                            lastHandledNotifIdRef.current = id;
+                            handleNotificationResponse(launchResponse, router).catch(() => {});
+                            Notifications.clearLastNotificationResponseAsync().catch(() => {});
+                            return;
+                        }
+                    }
                     if (inMainRef.current) {
                         lastHandledNotifIdRef.current = id;
                         handleNotificationResponse(launchResponse, router).catch(() => {});
@@ -244,6 +267,9 @@ const StackLayout = () => {
         preClaimCallAction(response);
 
         const data = (response.notification.request.content.data || {}) as Record<string, any>;
+        if (data?.type === "call") {
+            forceBypassWarmup();
+        }
         if (response.actionIdentifier === "DECLINE" && data?.type === "call") {
             lastHandledNotifIdRef.current = id;
             pendingResponseRef.current = null;
@@ -252,14 +278,14 @@ const StackLayout = () => {
             return;
         }
 
-        if (segments[0] !== "(main)") return;
+        if (!isNavReadyRef.current || segments[0] !== "(main)") return;
 
         lastHandledNotifIdRef.current = id;
         pendingResponseRef.current = null;
 
         handleNotificationResponse(response, router).catch(() => {});
         Notifications.clearLastNotificationResponseAsync().catch(() => {});
-    }, [isLoading, user, segments, lastNotificationResponse]);
+    }, [rootNavState?.key, isLoading, user, segments, lastNotificationResponse, router]);
 
     return (
         <Stack
@@ -326,9 +352,14 @@ const StackLayout = () => {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 const RootLayout = () => {
+    useEffect(() => {
+        markRootUiMounted();
+        bootstrapAndSyncPreferences().catch(() => {});
+    }, []);
+
     return (
-        <AppErrorBoundary>
-            <SafeAreaProvider>
+        <SafeAreaProvider>
+            <AppErrorBoundary>
                 <AuthProvider>
                     <StackLayout />
                     <NavigationGuard />
@@ -337,8 +368,8 @@ const RootLayout = () => {
                     <ContactCompletionModal />
                     <BubblyAlertHost />
                 </AuthProvider>
-            </SafeAreaProvider>
-        </AppErrorBoundary>
+            </AppErrorBoundary>
+        </SafeAreaProvider>
     );
 };
 
