@@ -18,22 +18,58 @@ export function isAllowedAudioUrl(rawUrl: string): boolean {
     }
 }
 
+function cleanApiKey(raw?: string): string {
+    const trimmed = (raw || "").trim();
+    if (!trimmed || /^your_/i.test(trimmed) || /placeholder|changeme/i.test(trimmed)) {
+        return "";
+    }
+    return trimmed;
+}
+
+function getGeminiApiKey(): string {
+    return (
+        cleanApiKey(process.env.GEMINI_API_KEY) ||
+        cleanApiKey(process.env.GOOGLE_AI_API_KEY) ||
+        cleanApiKey(process.env.GOOGLE_API_KEY)
+    );
+}
+
 export function getConfiguredSttProvider(): "groq" | "gemini" | "openai" | "deepgram" | null {
-    if (process.env.GROQ_API_KEY?.trim()) return "groq";
-    if ((process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY)?.trim()) return "gemini";
-    if (process.env.OPENAI_API_KEY?.trim()) return "openai";
-    if (process.env.DEEPGRAM_API_KEY?.trim()) return "deepgram";
+    if (cleanApiKey(process.env.GROQ_API_KEY)) return "groq";
+    if (getGeminiApiKey()) return "gemini";
+    if (cleanApiKey(process.env.OPENAI_API_KEY)) return "openai";
+    if (cleanApiKey(process.env.DEEPGRAM_API_KEY)) return "deepgram";
     return null;
 }
 
 function resolveExtensionAndMime(audioUrl: string, contentType?: string | null): { ext: string; mime: string } {
     const lowerUrl = audioUrl.toLowerCase().split("?")[0];
     const cleanCt = (contentType || "").split(";")[0].trim().toLowerCase();
-    if (lowerUrl.endsWith(".mp3") || cleanCt === "audio/mpeg") return { ext: "mp3", mime: "audio/mpeg" };
-    if (lowerUrl.endsWith(".wav") || cleanCt === "audio/wav") return { ext: "wav", mime: "audio/wav" };
-    if (lowerUrl.endsWith(".webm") || cleanCt === "audio/webm") return { ext: "webm", mime: "audio/webm" };
-    if (lowerUrl.endsWith(".ogg") || cleanCt === "audio/ogg") return { ext: "ogg", mime: "audio/ogg" };
-    if (lowerUrl.endsWith(".aac") || cleanCt === "audio/aac") return { ext: "aac", mime: "audio/aac" };
+    if (lowerUrl.endsWith(".mp3") || cleanCt === "audio/mpeg" || cleanCt === "audio/mp3") {
+        return { ext: "mp3", mime: "audio/mpeg" };
+    }
+    if (lowerUrl.endsWith(".wav") || cleanCt === "audio/wav" || cleanCt === "audio/x-wav") {
+        return { ext: "wav", mime: "audio/wav" };
+    }
+    if (lowerUrl.endsWith(".webm") || cleanCt === "audio/webm" || cleanCt === "video/webm") {
+        return { ext: "webm", mime: "audio/webm" };
+    }
+    if (lowerUrl.endsWith(".ogg") || cleanCt === "audio/ogg") {
+        return { ext: "ogg", mime: "audio/ogg" };
+    }
+    if (lowerUrl.endsWith(".aac") || cleanCt === "audio/aac" || cleanCt === "audio/x-aac") {
+        return { ext: "aac", mime: "audio/aac" };
+    }
+    if (
+        lowerUrl.endsWith(".m4a") ||
+        lowerUrl.endsWith(".mp4") ||
+        cleanCt === "audio/mp4" ||
+        cleanCt === "audio/m4a" ||
+        cleanCt === "audio/x-m4a" ||
+        cleanCt === "video/mp4"
+    ) {
+        return { ext: "m4a", mime: "audio/mp4" };
+    }
     return { ext: "m4a", mime: cleanCt.startsWith("audio/") ? cleanCt : "audio/mp4" };
 }
 
@@ -73,6 +109,7 @@ async function callOpenAiCompatibleStt(params: {
 const DEFAULT_GEMINI_AUDIO_MODELS = [
     "gemini-3.8-flash",
     "gemini-3.6-flash",
+    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
 ] as const;
 
@@ -86,13 +123,18 @@ export function resolveGeminiEndpoints(
         ? [override, ...DEFAULT_GEMINI_AUDIO_MODELS.filter((m) => m !== override)]
         : [...DEFAULT_GEMINI_AUDIO_MODELS];
 
+    // Vertex AI Express Mode keys (`AQ.*` or Cloud Express keys) use the publishers/google global path.
     const vertexTargets = models.map((model) => ({
-        url: `https://aiplatform.googleapis.com/v1/models/${model}:generateContent`,
+        url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent`,
         headers: {
             "Content-Type": "application/json",
             "x-goog-api-key": cleanKey,
         },
     }));
+
+    if (cleanKey.startsWith("AQ.")) {
+        return vertexTargets;
+    }
 
     const aiStudioTargets = models.map((model) => ({
         url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`,
@@ -101,9 +143,19 @@ export function resolveGeminiEndpoints(
         },
     }));
 
-    return cleanKey.startsWith("AQ.")
-        ? [...vertexTargets, ...aiStudioTargets]
-        : [...aiStudioTargets, ...vertexTargets];
+    return [...aiStudioTargets, ...vertexTargets];
+}
+
+export function extractGeminiTranscript(data: any): string {
+    const parts = data?.candidates?.[0]?.content?.parts;
+    if (!Array.isArray(parts)) return "";
+    const text = parts
+        .filter((p: any) => p && !p.thought && typeof p.text === "string")
+        .map((p: any) => p.text)
+        .join(" ")
+        .trim();
+    if (text === '""' || text === "''") return "";
+    return text;
 }
 
 async function callGeminiStt(apiKey: string, buffer: ArrayBuffer, mime: string): Promise<string> {
@@ -124,9 +176,14 @@ async function callGeminiStt(apiKey: string, buffer: ArrayBuffer, mime: string):
     });
 
     let lastErrMsg = "Gemini transcription failed";
+    const unauthorizedOrigins = new Set<string>();
     for (const target of targets) {
+        const origin = new URL(target.url).origin;
+        if (unauthorizedOrigins.has(origin)) {
+            continue;
+        }
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 22_000);
+        const timeout = setTimeout(() => controller.abort(), 12_000);
         try {
             const resp = await fetch(target.url, {
                 method: "POST",
@@ -137,10 +194,12 @@ async function callGeminiStt(apiKey: string, buffer: ArrayBuffer, mime: string):
             const data: any = await resp.json().catch(() => null);
             if (!resp.ok) {
                 lastErrMsg = data?.error?.message || `Gemini STT failed (${resp.status})`;
+                if (resp.status === 401 || resp.status === 403) {
+                    unauthorizedOrigins.add(origin);
+                }
                 continue;
             }
-            const parts = data?.candidates?.[0]?.content?.parts;
-            return Array.isArray(parts) ? parts.map((p: any) => p?.text || "").join(" ").trim() : "";
+            return extractGeminiTranscript(data);
         } catch (err: any) {
             lastErrMsg = err?.name === "AbortError" ? "Gemini request timed out" : (err?.message || lastErrMsg);
         } finally {
@@ -277,7 +336,7 @@ export async function transcribeAudio(req: AuthRequest, res: Response): Promise<
             });
         } else if (provider === "gemini") {
             transcript = await callGeminiStt(
-                (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY)!.trim(),
+                getGeminiApiKey(),
                 audioBuffer,
                 mime
             );

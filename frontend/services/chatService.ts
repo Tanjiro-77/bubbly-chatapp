@@ -48,7 +48,7 @@ export const transcribeVoiceNote = async (params: {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
-                timeout: 30000,
+                timeout: 45000,
             }
         );
         return response.data;

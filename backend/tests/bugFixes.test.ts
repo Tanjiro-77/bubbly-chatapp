@@ -19,7 +19,7 @@ import { getAgoraServerConfig } from "../utils/agora";
 import { registerCallEvents } from "../socket/callEvents";
 import Call from "../modals/Call";
 import { getUserPreferences, updateUserPreferences } from "../controllers/preferences.controller";
-import { isAllowedAudioUrl, resolveGeminiEndpoints, transcribeAudio } from "../controllers/transcribe.controller";
+import { extractGeminiTranscript, isAllowedAudioUrl, resolveGeminiEndpoints, transcribeAudio } from "../controllers/transcribe.controller";
 
 class MockSocket extends EventEmitter {
     id = "sock_test_1";
@@ -550,11 +550,13 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
 
     test("transcribeAudio enforces SSRF allowlist, returns cached transcripts, and reports unconfigured STT honestly", async () => {
         const vertexTargets = resolveGeminiEndpoints("AQ.sampleVertexKey");
-        assert.ok(vertexTargets[0].url.startsWith("https://aiplatform.googleapis.com/"));
+        assert.ok(vertexTargets[0].url.startsWith("https://aiplatform.googleapis.com/v1/publishers/google/models/"));
         assert.equal(vertexTargets[0].headers["x-goog-api-key"], "AQ.sampleVertexKey");
         assert.ok(vertexTargets[0].url.includes("gemini-3.8-flash"));
         assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.6-flash")));
+        assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.5-flash")));
         assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.5-flash-lite")));
+        assert.equal(vertexTargets.some((t) => t.url.includes("generativelanguage.googleapis.com")), false);
         assert.equal(vertexTargets.some((t) => /gemini-2\.(0|5)/i.test(t.url)), false);
 
         const aiStudioTargets = resolveGeminiEndpoints("AIzaSampleStudioKey");
@@ -564,7 +566,29 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
 
         const overrideTargets = resolveGeminiEndpoints("AIzaSampleStudioKey", "gemini-3.5-flash-lite");
         assert.ok(overrideTargets[0].url.includes("gemini-3.5-flash-lite"));
-        assert.equal(overrideTargets.length, 6);
+        assert.equal(overrideTargets.length, 8);
+
+        assert.equal(
+            extractGeminiTranscript({
+                candidates: [
+                    {
+                        content: {
+                            parts: [
+                                { thought: true, text: "Internal reasoning" },
+                                { text: "Hello there!" },
+                            ],
+                        },
+                    },
+                ],
+            }),
+            "Hello there!"
+        );
+        assert.equal(
+            extractGeminiTranscript({
+                candidates: [{ content: { parts: [{ text: '""' }] } }],
+            }),
+            ""
+        );
 
         assert.equal(isAllowedAudioUrl("https://res.cloudinary.com/demo/video/upload/voice.m4a"), true);
         assert.equal(isAllowedAudioUrl("http://res.cloudinary.com/demo/voice.m4a"), false);
@@ -575,6 +599,8 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
         const origConvFindById = Conversation.findById;
         const prevGroq = process.env.GROQ_API_KEY;
         const prevGemini = process.env.GEMINI_API_KEY;
+        const prevGoogleAi = process.env.GOOGLE_AI_API_KEY;
+        const prevGoogleApi = process.env.GOOGLE_API_KEY;
         const prevOpenAi = process.env.OPENAI_API_KEY;
         const prevDeepgram = process.env.DEEPGRAM_API_KEY;
 
@@ -583,6 +609,8 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
             (Conversation as any).findById = origConvFindById;
             if (prevGroq !== undefined) process.env.GROQ_API_KEY = prevGroq; else delete process.env.GROQ_API_KEY;
             if (prevGemini !== undefined) process.env.GEMINI_API_KEY = prevGemini; else delete process.env.GEMINI_API_KEY;
+            if (prevGoogleAi !== undefined) process.env.GOOGLE_AI_API_KEY = prevGoogleAi; else delete process.env.GOOGLE_AI_API_KEY;
+            if (prevGoogleApi !== undefined) process.env.GOOGLE_API_KEY = prevGoogleApi; else delete process.env.GOOGLE_API_KEY;
             if (prevOpenAi !== undefined) process.env.OPENAI_API_KEY = prevOpenAi; else delete process.env.OPENAI_API_KEY;
             if (prevDeepgram !== undefined) process.env.DEEPGRAM_API_KEY = prevDeepgram; else delete process.env.DEEPGRAM_API_KEY;
         });
@@ -623,6 +651,7 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
         delete process.env.GROQ_API_KEY;
         delete process.env.GEMINI_API_KEY;
         delete process.env.GOOGLE_AI_API_KEY;
+        delete process.env.GOOGLE_API_KEY;
         delete process.env.OPENAI_API_KEY;
         delete process.env.DEEPGRAM_API_KEY;
         statusCode = 200;
