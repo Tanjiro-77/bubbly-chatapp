@@ -55,7 +55,8 @@ import { sounds } from "@/lib/sound";
 
 export const APP_VERSION = "v4.2.1";
 export const PACKAGE_ID = "com.arnav5569.chat";
-export const APK_DOWNLOAD_LINK = "https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest";
+export const APK_DOWNLOAD_LINK =
+  "https://github.com/Tanjiro-77/bubbly-chatapp/releases/download/Bubbly_v4.2.1/Bubbly_v4.2.1.apk";
 export const APK_BACKUP_DOWNLOAD_LINK =
   "https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest";
 export const GITHUB_URL = "https://github.com/Tanjiro-77/bubbly-chatapp";
