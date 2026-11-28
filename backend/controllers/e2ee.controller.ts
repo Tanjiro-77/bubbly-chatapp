@@ -152,6 +152,39 @@ export async function getE2EEKeyBackup(req: Request, res: Response) {
     }
 }
 
+export async function getConversationKeys(req: Request, res: Response) {
+    try {
+        const userId = (req as any).user?.id;
+        const conversationId = String(req.params.conversationId || "");
+        if (!userId) return res.status(401).json({ success: false, msg: "Unauthorized" });
+        if (!isValidObjectId(conversationId)) {
+            return res.status(400).json({ success: false, msg: "Invalid conversation ID" });
+        }
+
+        const conversation = await Conversation.findById(conversationId)
+            .select("participants encryptedKeys e2eeKeyVersion")
+            .lean();
+        if (!conversation) return res.status(404).json({ success: false, msg: "Conversation not found" });
+
+        const isMember = (conversation.participants || []).some((p: any) => p.toString() === userId.toString());
+        if (!isMember) {
+            return res.status(403).json({ success: false, msg: "Not a member of this conversation" });
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                conversationId,
+                e2eeKeyVersion: conversation.e2eeKeyVersion || 1,
+                encryptedKeys: conversation.encryptedKeys || [],
+            },
+        });
+    } catch (error: any) {
+        console.error("getConversationKeys error:", error);
+        return res.status(500).json({ success: false, msg: "Failed to fetch conversation keys" });
+    }
+}
+
 export async function setConversationKeys(req: Request, res: Response) {
     try {
         const userId = (req as any).user?.id;

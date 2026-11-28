@@ -313,31 +313,76 @@ export function seedPublicKeyCache(participants: any[]) {
     }
 }
 
+export async function clearCachedConversationKey(
+    conversationId: string,
+    myUserId: string,
+    keyVersion: number = 1
+): Promise<void> {
+    const cacheKey = `${CONV_KEY_PREFIX}${myUserId}_${conversationId}_v${keyVersion}`;
+    convKeyCache.delete(cacheKey);
+    await AsyncStorage.removeItem(cacheKey).catch(() => {});
+}
+
+export async function fetchConversationKeysFromServer(
+    conversationId: string
+): Promise<{ e2eeKeyVersion: number; encryptedKeys: E2EEConversationKeyEntry[] } | null> {
+    const token = await AsyncStorage.getItem("token");
+    if (!token) return null;
+    try {
+        const res = await axios.get(`${API_URL}/api/e2ee/conversations/${conversationId}/keys`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000,
+        });
+        if (res.data?.success && res.data?.data) {
+            return {
+                e2eeKeyVersion: res.data.data.e2eeKeyVersion || 1,
+                encryptedKeys: Array.isArray(res.data.data.encryptedKeys) ? res.data.data.encryptedKeys : [],
+            };
+        }
+    } catch {
+        // ignore network errors
+    }
+    return null;
+}
+
 export async function getOrCreateConversationKey(
     conversationId: string,
     myUserId: string,
     participants: any[],
     existingEncryptedKeys?: E2EEConversationKeyEntry[],
-    keyVersion: number = 1
+    keyVersion: number = 1,
+    forceRefresh: boolean = false
 ): Promise<string | null> {
     ensurePrng();
     const cacheKey = `${CONV_KEY_PREFIX}${myUserId}_${conversationId}_v${keyVersion}`;
-    const mem = convKeyCache.get(cacheKey);
-    if (mem) return mem;
+    if (!forceRefresh) {
+        const mem = convKeyCache.get(cacheKey);
+        if (mem) return mem;
 
-    const stored = await AsyncStorage.getItem(cacheKey);
-    if (stored) {
-        convKeyCache.set(cacheKey, stored);
-        return stored;
+        const stored = await AsyncStorage.getItem(cacheKey);
+        if (stored) {
+            convKeyCache.set(cacheKey, stored);
+            return stored;
+        }
     }
 
     const myKeys = await ensureIdentityKeyPair(myUserId);
 
+    // If caller didn't pass existingEncryptedKeys, fetch authoritative keys from server first
+    // so we never overwrite a peer's existing conversation key with a brand-new random key.
+    let resolvedEncryptedKeys = existingEncryptedKeys;
+    if (!Array.isArray(resolvedEncryptedKeys)) {
+        const serverKeys = await fetchConversationKeysFromServer(conversationId);
+        if (serverKeys) {
+            resolvedEncryptedKeys = serverKeys.encryptedKeys;
+        }
+    }
+
     // 1. Try unwrapping an existing encrypted key for me
-    if (Array.isArray(existingEncryptedKeys)) {
-        const myEntry = existingEncryptedKeys.find(
+    if (Array.isArray(resolvedEncryptedKeys)) {
+        const myEntry = resolvedEncryptedKeys.find(
             (e) => String(e.userId) === String(myUserId) && (e.keyVersion || 1) === keyVersion
-        ) || existingEncryptedKeys.find((e) => String(e.userId) === String(myUserId));
+        ) || resolvedEncryptedKeys.find((e) => String(e.userId) === String(myUserId));
 
         if (myEntry) {
             try {
@@ -359,7 +404,7 @@ export async function getOrCreateConversationKey(
         }
         // If other participants already have encryptedKeys for this conversation,
         // do NOT overwrite them with a brand-new key — wait for a peer to wrap the existing key for us.
-        if (existingEncryptedKeys.length > 0) {
+        if (resolvedEncryptedKeys.length > 0) {
             return null;
         }
     }

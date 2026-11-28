@@ -5,7 +5,6 @@ import {
     PanResponder, Animated as RNAnimated, Platform,
     KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BubblyAlert } from './BubblyAlert'
 import React, { useState, useMemo, useEffect, useRef } from 'react'
@@ -27,7 +26,7 @@ import ImageViewing from "react-native-image-viewing"
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 import { deleteMessage, editMessage, votePoll, closePoll, toggleStarMessage, pinMessage, unpinMessage, openViewOnce, toggleChecklistItem } from "../socket/socketEvents"
 import { getFileIcon, formatFileSize } from "../services/imageService"
-import { translateMessage, transcribeVoiceNote } from "../services/chatService"
+import { translateMessage } from "../services/chatService"
 import FormattedText from "./FormattedText"
 import { ChecklistCardBubble, CountdownCardBubble, DoodleCardBubble, EventCardBubble, GameCardBubble, SplitBillCardBubble, WyrCardBubble } from "./RichChatFeatures"
 import {
@@ -419,25 +418,17 @@ const VoiceMessageBubble = ({
     voiceUrl,
     voiceDuration = 0,
     isMe,
-    content,
-    initialTranscript,
 }: {
     messageId?: string;
     voiceUrl: string;
     voiceDuration: number;
     isMe: boolean;
-    content?: string;
-    initialTranscript?: string | null;
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [loadFailed, setLoadFailed] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [totalDuration, setTotalDuration] = useState(voiceDuration);
-    const [showTranscript, setShowTranscript] = useState(false);
-    const [transcriptText, setTranscriptText] = useState<string>(() => (initialTranscript || content || "").trim());
-    const [isTranscribing, setIsTranscribing] = useState(false);
-    const [transcriptError, setTranscriptError] = useState<string | null>(null);
     const safeVoiceSource = typeof voiceUrl === "string" && voiceUrl.trim().length > 0 ? { uri: voiceUrl.trim() } : null;
     const player = useAudioPlayer(safeVoiceSource, { updateInterval: 200 });
     const status = useAudioPlayerStatus(player);
@@ -447,18 +438,6 @@ const VoiceMessageBubble = ({
     const dot1 = useSharedValue(1);
     const dot2 = useSharedValue(1);
     const dot3 = useSharedValue(1);
-
-    useEffect(() => {
-        if (initialTranscript?.trim()) {
-            setTranscriptText(initialTranscript.trim());
-        } else if (messageId) {
-            AsyncStorage.getItem(`@bubbly_transcript_${messageId}`)
-                .then((cached) => {
-                    if (cached?.trim()) setTranscriptText(cached.trim());
-                })
-                .catch(() => {});
-        }
-    }, [initialTranscript, messageId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -497,54 +476,6 @@ const VoiceMessageBubble = ({
                 await (player as any).seekTo(clamped);
             }
         } catch {}
-    };
-
-    const runTranscription = async () => {
-        if (isTranscribing) return;
-        setShowTranscript(true);
-        setTranscriptError(null);
-        setIsTranscribing(true);
-        try {
-            if (!safeVoiceSource) {
-                setTranscriptError("Voice clip URL is missing or still uploading.");
-                return;
-            }
-            const res = await transcribeVoiceNote({
-                messageId,
-                audioUrl: safeVoiceSource.uri,
-            });
-            if (res.success) {
-                const cleaned = (res.data?.transcript || "").trim();
-                if (cleaned) {
-                    setTranscriptText(cleaned);
-                    if (messageId) {
-                        AsyncStorage.setItem(`@bubbly_transcript_${messageId}`, cleaned).catch(() => {});
-                    }
-                } else {
-                    setTranscriptError("No clear spoken words detected in this audio.");
-                }
-            } else {
-                setTranscriptError(res.msg || "Could not transcribe voice note right now.");
-            }
-        } catch {
-            setTranscriptError("Transcription request failed. Please try again.");
-        } finally {
-            setIsTranscribing(false);
-        }
-    };
-
-    const handleToggleTranscript = () => {
-        hapticTap("light");
-        if (showTranscript && !transcriptError) {
-            setShowTranscript(false);
-            return;
-        }
-        if (transcriptText) {
-            setTranscriptError(null);
-            setShowTranscript(true);
-            return;
-        }
-        void runTranscription();
     };
 
     useEffect(() => {
@@ -672,45 +603,6 @@ const VoiceMessageBubble = ({
                         </TouchableOpacity>
                     </View>
                 </View>
-                <TouchableOpacity
-                    onPress={handleToggleTranscript}
-                    activeOpacity={0.75}
-                    style={[voiceStyles.transcribeBtn, { backgroundColor: pillBg }]}
-                >
-                    {isTranscribing ? (
-                        <ActivityIndicator size={10} color={colors.neutral800} />
-                    ) : (
-                        <Icons.TextAa size={11} color={colors.neutral800} weight="bold" />
-                    )}
-                    <Typo size={9.5} fontWeight="700" color={colors.neutral800} textProps={{ numberOfLines: 1 }}>
-                        {isTranscribing ? "Transcribing..." : showTranscript && !transcriptError ? "Hide Transcript" : "Transcribe"}
-                    </Typo>
-                </TouchableOpacity>
-                {showTranscript && (
-                    <View style={[voiceStyles.transcriptWrap, transcriptError && voiceStyles.transcriptErrorWrap]}>
-                        {isTranscribing ? (
-                            <Typo size={11} color={colors.neutral600} style={{ fontStyle: 'italic', flex: 1 }}>
-                                Converting speech to text...
-                            </Typo>
-                        ) : transcriptError ? (
-                            <TouchableOpacity onPress={() => void runTranscription()} activeOpacity={0.7} style={{ flex: 1, gap: 2 }}>
-                                <Typo size={11} fontWeight="600" color="#b91c1c" style={{ lineHeight: 15 }}>
-                                    {transcriptError}
-                                </Typo>
-                                <Typo size={10} fontWeight="700" color={colors.neutral700}>
-                                    Tap to retry
-                                </Typo>
-                            </TouchableOpacity>
-                        ) : (
-                            <>
-                                <Icons.Quotes size={11} color={colors.primaryDark} weight="fill" />
-                                <Typo size={11.5} color={colors.neutral800} style={{ flex: 1, lineHeight: 16 }}>
-                                    {transcriptText}
-                                </Typo>
-                            </>
-                        )}
-                    </View>
-                )}
             </View>
         </View>
     );
@@ -865,31 +757,6 @@ const voiceStyles = StyleSheet.create({
     metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: scale(6) },
     metaActions: { flexDirection: "row", alignItems: "center", gap: scale(4), flexShrink: 1 },
     speedBtn: { paddingHorizontal: spacingX._6, paddingVertical: verticalScale(2), borderRadius: radius.full },
-    transcribeBtn: {
-        alignSelf: "flex-start",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: scale(4),
-        paddingHorizontal: spacingX._10,
-        paddingVertical: verticalScale(4),
-        borderRadius: radius.full,
-        maxWidth: "100%",
-    },
-    transcriptWrap: {
-        marginTop: verticalScale(3),
-        padding: spacingX._8,
-        backgroundColor: "rgba(0,0,0,0.045)",
-        borderRadius: radius._8,
-        flexDirection: "row",
-        alignItems: "flex-start",
-        gap: scale(5),
-        borderWidth: 1,
-        borderColor: "rgba(0,0,0,0.06)",
-    },
-    transcriptErrorWrap: {
-        backgroundColor: "rgba(239,68,68,0.08)",
-        borderColor: "rgba(239,68,68,0.25)",
-    },
 });
 
 const CallMessageBubble = ({
@@ -2803,8 +2670,6 @@ const MessageItem = ({
                                     voiceUrl={item.voiceUrl!}
                                     voiceDuration={item.voiceDuration || 0}
                                     isMe={isMe}
-                                    content={item.content}
-                                    initialTranscript={item.transcript}
                                 />
                             )}
 

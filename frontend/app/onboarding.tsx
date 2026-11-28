@@ -82,7 +82,7 @@ const SLIDES: Slide[] = [
             { icon: "slash", title: "Type / for Quick Replies", detail: "Insert saved snippets like /omw, /busy, or /thx instantly." },
             { icon: "bellSlash", title: "Hold Send for Silent Mode", detail: "Deliver late-night messages without pinging the other phone." },
             { icon: "handTap", title: "Hold or Swipe Any Bubble", detail: "Swipe to reply, react cleanly, copy, star, or 1-tap translate." },
-            { icon: "microphone", title: "Voice Speed & Transcribe", detail: "Skip -5s/+5s, toggle 1x/1.5x/2x, or read voice notes as text." },
+            { icon: "microphone", title: "Voice Speed & Seeking", detail: "Skip -5s/+5s or toggle 1x/1.5x/2x playback speed." },
         ],
     },
     {

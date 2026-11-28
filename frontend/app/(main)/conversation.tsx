@@ -54,6 +54,7 @@ import {
     requestConversationKey,
 } from "../../socket/socketEvents"
 import {
+    clearCachedConversationKey,
     getOrCreateConversationKey,
     encryptMessagePayload,
     decryptMessagePayload,
@@ -1477,9 +1478,12 @@ const Conversation = () => {
             currentUser.id,
             participants
         ).then((key) => {
-            if (!cancelled && key) {
+            if (cancelled) return;
+            if (key) {
                 convKeyRef.current = key;
                 setIsE2EEActive(true);
+            } else {
+                requestConversationKey(conversationId as string);
             }
         }).catch(() => {});
 
@@ -1490,7 +1494,8 @@ const Conversation = () => {
                 currentUser.id,
                 participants,
                 res.data.encryptedKeys,
-                res.data.e2eeKeyVersion || 1
+                res.data.e2eeKeyVersion || 1,
+                true
             ).then((key) => {
                 if (!cancelled && key) {
                     convKeyRef.current = key;
@@ -1551,11 +1556,32 @@ const Conversation = () => {
 
     const decryptMessageForUI = useCallback(async (msg: MessageProps): Promise<MessageProps> => {
         if (!msg?.isEncrypted || !msg?.e2ee) return msg;
-        const convKey = await ensureConvKey();
-        if (!convKey) return { ...msg, content: msg.content || "🔒 Unable to decrypt message" };
+        let convKey = await ensureConvKey();
+        let plain = convKey ? decryptMessagePayload(msg.e2ee, convKey) : null;
 
-        const plain = decryptMessagePayload(msg.e2ee, convKey);
-        if (!plain) return { ...msg, content: msg.content || "🔒 Unable to decrypt message" };
+        if (!plain && conversationId && currentUserRef.current?.id) {
+            const msgKeyVer = msg.e2ee.keyVersion || 1;
+            convKeyRef.current = null;
+            await clearCachedConversationKey(conversationId as string, currentUserRef.current.id, msgKeyVer);
+            const freshKey = await getOrCreateConversationKey(
+                conversationId as string,
+                currentUserRef.current.id,
+                participants,
+                undefined,
+                msgKeyVer,
+                true
+            );
+            if (freshKey) {
+                convKey = freshKey;
+                convKeyRef.current = freshKey;
+                setIsE2EEActive(true);
+                plain = decryptMessagePayload(msg.e2ee, freshKey);
+            } else {
+                requestConversationKey(conversationId as string);
+            }
+        }
+
+        if (!convKey || !plain) return { ...msg, content: msg.content || "🔒 Unable to decrypt message" };
 
         let resolvedAttachment = plain.attachement ?? msg.attachement ?? null;
         let resolvedMeta = (plain.attachmentMeta ?? msg.attachmentMeta ?? null) as MessageProps["attachmentMeta"];

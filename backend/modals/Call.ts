@@ -27,6 +27,8 @@ const callSchema = new mongoose.Schema({
     startedAt: Date,
     endedAt: Date,
     duration: { type: Number, default: 0 },
+    e2eeMediaKey: { type: String, default: undefined },
+    e2eeMediaSalt: { type: String, default: undefined },
 }, { timestamps: true });
 
 callSchema.index({ callerId: 1, createdAt: -1 });

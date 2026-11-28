@@ -19,7 +19,6 @@ import { getAgoraServerConfig } from "../utils/agora";
 import { registerCallEvents } from "../socket/callEvents";
 import Call from "../modals/Call";
 import { getUserPreferences, updateUserPreferences } from "../controllers/preferences.controller";
-import { extractGeminiTranscript, isAllowedAudioUrl, resolveGeminiEndpoints, transcribeAudio } from "../controllers/transcribe.controller";
 
 class MockSocket extends EventEmitter {
     id = "sock_test_1";
@@ -546,127 +545,6 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
         assert.equal(responseJson?.data?.notificationsEnabled, false);
         assert.equal(responseJson?.data?.callRingtone, "incoming_call_3");
         assert.equal(responseJson?.data?.appearance?.fontScale, "large");
-    });
-
-    test("transcribeAudio enforces SSRF allowlist, returns cached transcripts, and reports unconfigured STT honestly", async () => {
-        const vertexTargets = resolveGeminiEndpoints("AQ.sampleVertexKey");
-        assert.ok(vertexTargets[0].url.startsWith("https://aiplatform.googleapis.com/v1/publishers/google/models/"));
-        assert.equal(vertexTargets[0].headers["x-goog-api-key"], "AQ.sampleVertexKey");
-        assert.ok(vertexTargets[0].url.includes("gemini-3.8-flash"));
-        assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.6-flash")));
-        assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.5-flash")));
-        assert.ok(vertexTargets.some((t) => t.url.includes("gemini-3.5-flash-lite")));
-        assert.equal(vertexTargets.some((t) => t.url.includes("generativelanguage.googleapis.com")), false);
-        assert.equal(vertexTargets.some((t) => /gemini-2\.(0|5)/i.test(t.url)), false);
-
-        const aiStudioTargets = resolveGeminiEndpoints("AIzaSampleStudioKey");
-        assert.ok(aiStudioTargets[0].url.startsWith("https://generativelanguage.googleapis.com/"));
-        assert.ok(aiStudioTargets[0].url.includes("gemini-3.8-flash"));
-        assert.equal(aiStudioTargets.some((t) => /gemini-2\.(0|5)/i.test(t.url)), false);
-
-        const overrideTargets = resolveGeminiEndpoints("AIzaSampleStudioKey", "gemini-3.5-flash-lite");
-        assert.ok(overrideTargets[0].url.includes("gemini-3.5-flash-lite"));
-        assert.equal(overrideTargets.length, 8);
-
-        assert.equal(
-            extractGeminiTranscript({
-                candidates: [
-                    {
-                        content: {
-                            parts: [
-                                { thought: true, text: "Internal reasoning" },
-                                { text: "Hello there!" },
-                            ],
-                        },
-                    },
-                ],
-            }),
-            "Hello there!"
-        );
-        assert.equal(
-            extractGeminiTranscript({
-                candidates: [{ content: { parts: [{ text: '""' }] } }],
-            }),
-            ""
-        );
-
-        assert.equal(isAllowedAudioUrl("https://res.cloudinary.com/demo/video/upload/voice.m4a"), true);
-        assert.equal(isAllowedAudioUrl("http://res.cloudinary.com/demo/voice.m4a"), false);
-        assert.equal(isAllowedAudioUrl("http://127.0.0.1:5000/secret"), false);
-        assert.equal(isAllowedAudioUrl("https://evil.example.com/audio.m4a"), false);
-
-        const origMsgFindById = Message.findById;
-        const origConvFindById = Conversation.findById;
-        const prevGroq = process.env.GROQ_API_KEY;
-        const prevGemini = process.env.GEMINI_API_KEY;
-        const prevGoogleAi = process.env.GOOGLE_AI_API_KEY;
-        const prevGoogleApi = process.env.GOOGLE_API_KEY;
-        const prevOpenAi = process.env.OPENAI_API_KEY;
-        const prevDeepgram = process.env.DEEPGRAM_API_KEY;
-
-        cleanups.push(() => {
-            (Message as any).findById = origMsgFindById;
-            (Conversation as any).findById = origConvFindById;
-            if (prevGroq !== undefined) process.env.GROQ_API_KEY = prevGroq; else delete process.env.GROQ_API_KEY;
-            if (prevGemini !== undefined) process.env.GEMINI_API_KEY = prevGemini; else delete process.env.GEMINI_API_KEY;
-            if (prevGoogleAi !== undefined) process.env.GOOGLE_AI_API_KEY = prevGoogleAi; else delete process.env.GOOGLE_AI_API_KEY;
-            if (prevGoogleApi !== undefined) process.env.GOOGLE_API_KEY = prevGoogleApi; else delete process.env.GOOGLE_API_KEY;
-            if (prevOpenAi !== undefined) process.env.OPENAI_API_KEY = prevOpenAi; else delete process.env.OPENAI_API_KEY;
-            if (prevDeepgram !== undefined) process.env.DEEPGRAM_API_KEY = prevDeepgram; else delete process.env.DEEPGRAM_API_KEY;
-        });
-
-        let statusCode = 200;
-        let responseJson: any = null;
-        const mockRes: any = {
-            status(code: number) { statusCode = code; return this; },
-            json(data: any) { responseJson = data; },
-        };
-
-        // Case 1: Cached DB transcript returned cleanly
-        (Conversation as any).findById = async () => ({
-            _id: "507f1f77bcf86cd799439013",
-            participants: ["507f1f77bcf86cd799439011"],
-            admins: [],
-        });
-        (Message as any).findById = () => ({
-            select: async () => ({
-                _id: "507f1f77bcf86cd799439099",
-                conversationId: "507f1f77bcf86cd799439013",
-                voiceUrl: "https://res.cloudinary.com/demo/voice.m4a",
-                transcript: "Hey Arnav, checking in on v4.2.1!",
-                isDeleted: false,
-            }),
-        });
-
-        await transcribeAudio(
-            { userId: "507f1f77bcf86cd799439011", body: { messageId: "507f1f77bcf86cd799439099" } } as any,
-            mockRes
-        );
-        assert.equal(statusCode, 200);
-        assert.equal(responseJson?.success, true);
-        assert.equal(responseJson?.data?.transcript, "Hey Arnav, checking in on v4.2.1!");
-        assert.equal(responseJson?.data?.cached, true);
-
-        // Case 2: Unconfigured server STT returns honest 503 instead of fake placeholder
-        delete process.env.GROQ_API_KEY;
-        delete process.env.GEMINI_API_KEY;
-        delete process.env.GOOGLE_AI_API_KEY;
-        delete process.env.GOOGLE_API_KEY;
-        delete process.env.OPENAI_API_KEY;
-        delete process.env.DEEPGRAM_API_KEY;
-        statusCode = 200;
-        responseJson = null;
-
-        await transcribeAudio(
-            {
-                userId: "507f1f77bcf86cd799439011",
-                body: { audioUrl: "https://res.cloudinary.com/demo/voice.m4a" },
-            } as any,
-            mockRes
-        );
-        assert.equal(statusCode, 503);
-        assert.equal(responseJson?.success, false);
-        assert.equal(responseJson?.code, "STT_NOT_CONFIGURED");
     });
 
     test("getAgoraServerConfig rejects placeholders and supports both certificate and explicit appId-only mode", () => {

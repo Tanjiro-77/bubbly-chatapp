@@ -2,7 +2,6 @@ import { Router } from "express";
 import { authMiddleware } from "../middleware/auth";
 import rateLimit from "express-rate-limit";
 import { searchAll, translateText } from "../controllers/search.controller";
-import { transcribeAudio } from "../controllers/transcribe.controller";
 import { getUserPreferences, updateUserPreferences } from "../controllers/preferences.controller";
 import {
   acceptCallHttp,
@@ -22,6 +21,7 @@ import {
 } from "../controllers/notification.controller";
 import {
   getBatchPublicKeys,
+  getConversationKeys,
   getE2EEKeyBackup,
   getUserPublicKey,
   publishE2EEKey,
@@ -58,16 +58,8 @@ const translateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const transcribeLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 router.get("/search", searchLimiter, authMiddleware, searchAll);
 router.post("/translate", translateLimiter, authMiddleware, translateText);
-router.post("/transcribe", transcribeLimiter, authMiddleware, transcribeAudio);
 router.get("/preferences", authMiddleware, getUserPreferences);
 router.put("/preferences", authMiddleware, updateUserPreferences);
 
@@ -96,6 +88,7 @@ router.put("/e2ee/keys", authMiddleware, publishE2EEKey);
 router.get("/e2ee/backup", authMiddleware, getE2EEKeyBackup);
 router.get("/e2ee/keys/:userId", authMiddleware, getUserPublicKey);
 router.post("/e2ee/keys/batch", authMiddleware, getBatchPublicKeys);
+router.get("/e2ee/conversations/:conversationId/keys", authMiddleware, getConversationKeys);
 router.put("/e2ee/conversations/:conversationId/keys", authMiddleware, setConversationKeys);
 
 export default router;

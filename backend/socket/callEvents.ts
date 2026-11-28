@@ -430,6 +430,8 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 calleeId: resolvedCalleeId,
                 kind: data.kind,
                 status: "ringing",
+                e2eeMediaKey: typeof (data as any).e2eeMediaKey === "string" ? (data as any).e2eeMediaKey : undefined,
+                e2eeMediaSalt: typeof (data as any).e2eeMediaSalt === "string" ? (data as any).e2eeMediaSalt : undefined,
             });
 
             const callerName = socket.data.name || "Someone";

@@ -107,6 +107,12 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
                 channelName,
                 uid,
                 appIdOnly: agora.appIdOnly,
+                ...(call.e2eeMediaKey && call.e2eeMediaSalt
+                    ? {
+                          e2eeMediaKey: call.e2eeMediaKey,
+                          e2eeMediaSalt: call.e2eeMediaSalt,
+                      }
+                    : {}),
             },
         });
     } catch (error: any) {

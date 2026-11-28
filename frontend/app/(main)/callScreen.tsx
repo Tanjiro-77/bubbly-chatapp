@@ -168,7 +168,7 @@ const CallScreen = () => {
     const isRemoteJoinedRef = useRef(false);
     const isSpeakerOnRef = useRef(true);
     const callStateRef = useRef<CallState>(isOutgoingCall ? 'ringing' : 'connecting');
-    const credentialsRef = useRef<{ token: string; appId: string; channelName: string; uid: number; appIdOnly?: boolean } | null>(null);
+    const credentialsRef = useRef<{ token: string; appId: string; channelName: string; uid: number; appIdOnly?: boolean; e2eeMediaKey?: string; e2eeMediaSalt?: string } | null>(null);
     const permissionsRef = useRef<{ granted: boolean; videoAllowed: boolean } | null>(null);
 
     const [callState, setCallState] = useState<CallState>(
@@ -330,7 +330,10 @@ const CallScreen = () => {
                 },
                 onJoinChannelSuccess: () => {
                     if (hasCleanedUp.current || !engineRef.current) return;
-                    try { engine.setEnableSpeakerphone(isSpeakerOnRef.current); } catch {}
+                    try {
+                        engine.muteAllRemoteAudioStreams(false);
+                        engine.setEnableSpeakerphone(isSpeakerOnRef.current);
+                    } catch {}
                     setCallState((prev) => (prev === "connected" ? "connected" : "connecting"));
                 },
                 onUserJoined: (_connection, rUid) => {
@@ -340,7 +343,11 @@ const CallScreen = () => {
                     setRemoteUid(rUid);
                     setCallState("connected");
                     callConnected(currentCallId);
-                    try { engine.setEnableSpeakerphone(isSpeakerOnRef.current); } catch {}
+                    try {
+                        engine.muteAllRemoteAudioStreams(false);
+                        if (isVideo) engine.muteAllRemoteVideoStreams(false);
+                        engine.setEnableSpeakerphone(isSpeakerOnRef.current);
+                    } catch {}
                     startDurationTimer();
                 },
                 onUserOffline: () => {
@@ -411,15 +418,20 @@ const CallScreen = () => {
 
             engine.setDefaultAudioRouteToSpeakerphone(isSpeakerOnRef.current);
 
-            if (e2eeMediaKeyStr && e2eeMediaSaltStr && typeof (engine as any).enableEncryption === "function") {
+            const mediaKey = creds.e2eeMediaKey || e2eeMediaKeyStr;
+            const mediaSalt = creds.e2eeMediaSalt || e2eeMediaSaltStr;
+            if (mediaKey && mediaSalt && typeof (engine as any).enableEncryption === "function") {
                 try {
-                    const saltBytes = Array.from(base64ToBytes(e2eeMediaSaltStr));
+                    const saltBytes = Array.from(base64ToBytes(mediaSalt));
                     if (saltBytes.length === 32) {
-                        (engine as any).enableEncryption(true, {
+                        const encCode = (engine as any).enableEncryption(true, {
                             encryptionMode: 7, // EncryptionMode.Aes128Gcm2
-                            encryptionKey: e2eeMediaKeyStr,
+                            encryptionKey: mediaKey,
                             encryptionKdfSalt: saltBytes,
                         });
+                        if (typeof encCode === "number" && encCode < 0) {
+                            console.warn("Agora enableEncryption returned error code:", encCode);
+                        }
                     }
                 } catch (encErr) {
                     console.log("Agora media encryption setup skipped:", encErr);
@@ -533,7 +545,7 @@ const CallScreen = () => {
                 return;
             }
 
-            const { token, appId, channelName, uid, appIdOnly } = tokenRes.data;
+            const { token, appId, channelName, uid, appIdOnly, e2eeMediaKey: serverMediaKey, e2eeMediaSalt: serverMediaSalt } = tokenRes.data;
             const hasValidToken = typeof token === "string" && (token.length > 0 || appIdOnly === true);
             if (!hasValidToken || !appId || !channelName || typeof uid !== "number") {
                 console.error("Invalid Agora response:", tokenRes.data);
@@ -544,7 +556,15 @@ const CallScreen = () => {
                 return;
             }
 
-            credentialsRef.current = { token, appId, channelName, uid, appIdOnly };
+            credentialsRef.current = {
+                token,
+                appId,
+                channelName,
+                uid,
+                appIdOnly,
+                e2eeMediaKey: typeof serverMediaKey === "string" ? serverMediaKey : undefined,
+                e2eeMediaSalt: typeof serverMediaSalt === "string" ? serverMediaSalt : undefined,
+            };
             void startAgoraSession();
         } catch (error: any) {
             if (hasCleanedUp.current) return;
