@@ -9,7 +9,7 @@ A full‑stack, real‑time messaging application for conversations, groups, sto
 <p align="center">
   <a href="https://github.com/Tanjiro-77/bubbly-chatapp"><img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub repository" /></a>
   <a href="https://bubbly-chatapp.vercel.app/"><img src="https://img.shields.io/badge/Website-Visit-2563EB?style=for-the-badge&logo=vercel&logoColor=white" alt="Bubbly website" /></a>
-  <a href="https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest"><img src="https://img.shields.io/badge/Latest_Release-v4.1.5-F59E0B?style=for-the-badge" alt="Latest release v4.1.5" /></a>
+  <a href="https://github.com/Tanjiro-77/bubbly-chatapp/releases/latest"><img src="https://img.shields.io/badge/Latest_Release-v4.2.1-F59E0B?style=for-the-badge" alt="Latest release v4.2.1" /></a>
 </p>
 
 <p align="center">
@@ -24,12 +24,22 @@ A full‑stack, real‑time messaging application for conversations, groups, sto
 
 ---
 
-## ✨ What's New in v4.1.5
+## ✨ What's New in v4.2.1
 
 > [!IMPORTANT]
-> v4.1.5 is the most significant performance and UX release since launch. It introduces a two-tier caching architecture, instant optimistic messaging, GIF support, a smart invite system, and a credential-completion flow for existing users.
+> v4.2.1 brings **End-to-End Encryption (E2EE)** for messages and media, **Agora AES-128-GCM2 encrypted HD Voice & Video calls** with server-synced media keys, **60-digit Safety Number verification**, and **Biometric App Lock & PIN Vault**, building on the two-tier caching and instant optimistic messaging introduced in v4.1.5.
 
-### 🚀 Performance & Caching
+### 🔐 End-to-End Encryption & Call Security (v4.2.1)
+
+| Feature | Detail |
+|---|---|
+| **E2EE Messaging & Media** | Messages, attachments, and voice notes are encrypted on-device with **X25519 + XSalsa20-Poly1305** (`tweetnacl`). |
+| **Authoritative Key Sync** | `GET /api/e2ee/conversations/:conversationId/keys` and `requestConversationKey` ensure devices unwrap existing conversation keys rather than overwriting them, with automatic stale-key recovery. |
+| **Encrypted HD Calls** | Agora voice and video calls use **AES-128-GCM2** media encryption with `e2eeMediaKey` / `e2eeMediaSalt` persisted on the `Call` record and delivered via `/api/call/token` so both caller and callee stay in sync. |
+| **Safety Numbers & Vault** | 60-digit Safety Number verification per chat alongside Biometric App Lock and PIN Vault. |
+| **Voice Playback Controls** | Variable playback speed (1×, 1.5×, 2×) and -5s/+5s seeking directly in voice note bubbles. |
+
+### 🚀 Performance & Caching (v4.1.5+)
 
 | Improvement | Detail |
 |---|---|
@@ -395,6 +405,7 @@ bubbly/
 │   ├── controllers/
 │   │   ├── auth.controller.ts
 │   │   ├── call.controller.ts
+│   │   ├── e2ee.controller.ts
 │   │   └── search.controller.ts
 │   ├── middleware/
 │   │   └── auth.ts                      # JWT verification middleware
@@ -497,7 +508,7 @@ bubbly/
 │   │   │   ├── incoming_call.mp3
 │   │   │   └── notification.mp3
 │   │   └── images/
-│   ├── app.json                         # version: 4.1.5
+│   ├── app.json                         # version: 4.2.1
 │   ├── eas.json
 │   └── package.json
 │
@@ -681,8 +692,24 @@ EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:3000
 |---|---|---|
 | `GET` | `/api/search` | Search users, conversations, messages |
 | `POST` | `/api/translate` | Translate message text |
-| `POST` | `/api/call/token` | Generate Agora RTC token |
+| `POST` | `/api/call/token` | Generate Agora RTC token & synced call E2EE media keys |
 | `GET` | `/api/call/history` | Retrieve call history |
+| `GET` | `/api/call/pending` | Check pending incoming call |
+| `GET` | `/api/call/:callId/status` | Get call status |
+| `POST` | `/api/call/:callId/accept` | Accept incoming call |
+| `POST` | `/api/call/:callId/reject` | Reject incoming call |
+| `POST` | `/api/call/:callId/end` | End active call |
+
+### End-to-End Encryption — `/api/e2ee`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `PUT` | `/api/e2ee/keys` | Publish user's X25519 public key & optional encrypted backup |
+| `GET` | `/api/e2ee/backup` | Fetch encrypted identity key backup |
+| `GET` | `/api/e2ee/keys/:userId` | Get a user's public key & fingerprint |
+| `POST` | `/api/e2ee/keys/batch` | Batch-fetch participant public keys |
+| `GET` | `/api/e2ee/conversations/:conversationId/keys` | Fetch wrapped conversation keys for participants |
+| `PUT` | `/api/e2ee/conversations/:conversationId/keys` | Store/update wrapped conversation keys |
 
 ### Stories — `/api/stories`
 
@@ -758,14 +785,14 @@ eas build --platform ios --profile production
 ```
 
 > [!NOTE]
-> iOS builds require Apple Developer signing configuration in `eas.json`. The app bundle ID is `com.arnav5569.chat`, build number `10`, version code `11`.
+> iOS builds require Apple Developer signing configuration in `eas.json`. The app bundle ID is `com.arnav5569.chat`, build number `11`, version code `12`.
 
 ### OTA Updates
 
 Bubbly is configured for Expo OTA updates (`runtimeVersion: appVersion`). Push JS-layer updates without a full store release:
 
 ```bash
-eas update --branch production --message "v4.1.5 hotfix"
+eas update --branch production --message "v4.2.1 hotfix"
 ```
 
 ---
@@ -775,10 +802,9 @@ eas update --branch production --message "v4.1.5 hotfix"
 | Check | Result |
 |---|---|
 | Frontend TypeScript (`tsc --noEmit`) | ✅ Passed — 0 errors |
-| Backend TypeScript | ✅ Passed — 0 errors |
-| Backend test suite | ✅ Passed — 15 tests |
-| Website TypeScript | ✅ Passed — 0 errors |
-| App version | `4.1.5` (Android versionCode 11, iOS build 10) |
+| Backend TypeScript (`tsc --noEmit`) | ✅ Passed — 0 errors |
+| Backend test suite (`npm test`) | ✅ Passed — 53 tests (8 suites) |
+| App version | `4.2.1` (Android versionCode 12, iOS build 11) |
 
 ---
 
@@ -814,7 +840,7 @@ Include the following when filing a bug report:
 - Expected vs actual behaviour.
 - Steps to reproduce (minimal reproduction preferred).
 - Error messages & stack traces.
-- Device model, OS version, and Bubbly version (`4.1.5`).
+- Device model, OS version, and Bubbly version (`4.2.1`).
 
 Submit via the [GitHub Issues page](https://github.com/Tanjiro-77/bubbly-chatapp/issues).
 
