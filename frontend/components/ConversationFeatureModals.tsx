@@ -1734,7 +1734,7 @@ export const ChatScratchpadModal = ({
     );
 };
 
-// ── 11. Daily Activity & Streak Digest Modal (Home) ───────────────────────────
+// ── 11. Daily Activity Digest Modal (Home) ────────────────────────────────────
 export const DailyDigestModal = ({
     visible,
     activity,
@@ -1776,14 +1776,13 @@ export const DailyDigestModal = ({
                             <ScrollView contentContainerStyle={modalStyles.body}>
                                 <View style={modalStyles.statGrid}>
                                     {[
-                                        { label: "Day Streak", val: `${activity.streakDays}d`, icon: "🔥" },
                                         { label: "Sent Today", val: String(activity.messagesSentToday), icon: "💬" },
                                         { label: "Chats Active", val: String(activity.activeConvIdsToday.length), icon: "⚡" },
                                         { label: "All-Time Sent", val: String(activity.totalSentAllTime), icon: "🚀" },
                                         { label: "Unread Direct", val: String(unreadDirect), icon: "📩" },
                                         { label: "Unread Groups", val: String(unreadGroups), icon: "👥" },
                                     ].map((box) => (
-                                        <View key={box.label} style={modalStyles.statTile}>
+                                        <View key={box.label} style={[modalStyles.statTile, { flexGrow: 1, minWidth: "30%" }]}>
                                             <Typo size={18}>{box.icon}</Typo>
                                             <Typo size={15} fontWeight="800" color={colors.neutral900}>{box.val}</Typo>
                                             <Typo size={10.5} color={colors.neutral500}>{box.label}</Typo>

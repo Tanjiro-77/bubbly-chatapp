@@ -40,6 +40,7 @@ import {
     isSocketConnected,
     onCallAccepted,
     onCallEnded,
+    onCallFailed,
     onCallConnected,
     onSocketConnectionChange,
 } from '../../socket/socketEvents';
@@ -158,10 +159,11 @@ const CallScreen = () => {
     const hasStartedAgoraRef = useRef(false);
     const isStartingAgoraRef = useRef(false);
     const isRenewingTokenRef = useRef(false);
+    const hasRetriedFailedJoinRef = useRef(false);
     const isRemoteJoinedRef = useRef(false);
     const isSpeakerOnRef = useRef(true);
     const callStateRef = useRef<CallState>(isOutgoingCall ? 'ringing' : 'connecting');
-    const credentialsRef = useRef<{ token: string; appId: string; channelName: string; uid: number } | null>(null);
+    const credentialsRef = useRef<{ token: string; appId: string; channelName: string; uid: number; appIdOnly?: boolean } | null>(null);
     const permissionsRef = useRef<{ granted: boolean; videoAllowed: boolean } | null>(null);
 
     const [callState, setCallState] = useState<CallState>(
@@ -301,11 +303,14 @@ const CallScreen = () => {
             }
             engineRef.current = engine;
 
-            engine.initialize({
+            const initCode = engine.initialize({
                 appId: creds.appId,
                 channelProfile: ChannelProfileType.ChannelProfileCommunication,
                 audioScenario: AudioScenarioType.AudioScenarioChatroom,
             });
+            if (typeof initCode === "number" && initCode < 0) {
+                throw new Error(`Could not initialize call engine (${initCode})`);
+            }
 
             engine.setAudioProfile(
                 AudioProfileType.AudioProfileSpeechStandard,
@@ -357,12 +362,30 @@ const CallScreen = () => {
                 onConnectionStateChanged: async (_connection, state, reason) => {
                     if (state !== ConnectionStateType.ConnectionStateFailed || hasCleanedUp.current) return;
                     if (
-                        reason === ConnectionChangedReasonType.ConnectionChangedTokenExpired ||
-                        reason === ConnectionChangedReasonType.ConnectionChangedInvalidToken
+                        !hasRetriedFailedJoinRef.current &&
+                        (reason === ConnectionChangedReasonType.ConnectionChangedTokenExpired ||
+                            reason === ConnectionChangedReasonType.ConnectionChangedInvalidToken)
                     ) {
-                        const renewed = await renewChannelToken(engine, currentCallId, creds.channelName);
-                        if (renewed || hasCleanedUp.current) return;
+                        hasRetriedFailedJoinRef.current = true;
+                        const freshTokenRes = await getAgoraToken(currentCallId, creds.channelName);
+                        if (!hasCleanedUp.current && freshTokenRes.success && freshTokenRes.data?.appId) {
+                            const nextToken = typeof freshTokenRes.data.token === "string" ? freshTokenRes.data.token : "";
+                            try { engine.leaveChannel(); } catch {}
+                            const rejoinCode = await Promise.resolve(
+                                engine.joinChannel(nextToken, freshTokenRes.data.channelName, freshTokenRes.data.uid, {
+                                    clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+                                    publishMicrophoneTrack: true,
+                                    autoSubscribeAudio: true,
+                                    publishCameraTrack: perms.videoAllowed,
+                                    autoSubscribeVideo: isVideo,
+                                })
+                            );
+                            if (typeof rejoinCode !== "number" || rejoinCode >= 0) {
+                                return;
+                            }
+                        }
                     }
+                    if (hasCleanedUp.current) return;
                     signalCallTermination();
                     cleanup();
                     BubblyAlert.alert("Call Failed", "Could not connect the voice/video media stream.");
@@ -425,7 +448,10 @@ const CallScreen = () => {
             if (hasCleanedUp.current) return;
             console.error("startAgoraSession error:", error);
             const msg = String(error?.message || "");
-            const isNativeMissing = msg.includes("AGORA_NATIVE_UNAVAILABLE") || msg.includes("AgoraRtc") || msg.includes("null");
+            const isNativeMissing =
+                msg.includes("AGORA_NATIVE_UNAVAILABLE") ||
+                msg.includes("AgoraRtcNg") ||
+                msg.includes("doesn't seem to be linked");
             signalCallTermination();
             cleanup();
             BubblyAlert.alert(
@@ -487,8 +513,9 @@ const CallScreen = () => {
                 return;
             }
 
-            const { token, appId, channelName, uid } = tokenRes.data;
-            if (!token || !appId || !channelName || typeof uid !== "number") {
+            const { token, appId, channelName, uid, appIdOnly } = tokenRes.data;
+            const hasValidToken = typeof token === "string" && (token.length > 0 || appIdOnly === true);
+            if (!hasValidToken || !appId || !channelName || typeof uid !== "number") {
                 console.error("Invalid Agora response:", tokenRes.data);
                 signalCallTermination();
                 cleanup();
@@ -497,7 +524,7 @@ const CallScreen = () => {
                 return;
             }
 
-            credentialsRef.current = { token, appId, channelName, uid };
+            credentialsRef.current = { token, appId, channelName, uid, appIdOnly };
             void startAgoraSession();
         } catch (error: any) {
             if (hasCleanedUp.current) return;
@@ -551,42 +578,6 @@ const CallScreen = () => {
         };
     }, [callIdStr, callState, safeBack]);
 
-    useEffect(() => {
-        if (!isSocketConnected()) {
-            connectSocket().catch(() => {});
-        }
-        if (callIdStr) {
-            clearDeliveredCallNotifications(callIdStr).catch(() => {});
-        }
-        void prepareCallSession();
-        onCallAccepted(handleRemoteAccepted);
-        onCallEnded(handleRemoteCallEnded);
-        onCallConnected(handleRemoteConnected);
-
-        const unsubConn = onSocketConnectionChange((connected) => {
-            if (connected && !hasCleanedUp.current && isRemoteJoinedRef.current && callIdStr) {
-                callConnected(callIdStr);
-            }
-        });
-
-        const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-            handleCallEnd();
-            return true;
-        });
-
-        return () => {
-            backSub.remove();
-            unsubConn();
-            onCallAccepted(handleRemoteAccepted, true);
-            onCallEnded(handleRemoteCallEnded, true);
-            onCallConnected(handleRemoteConnected, true);
-            if (!hasCleanedUp.current && callIdStr) {
-                signalCallTermination();
-            }
-            cleanup();
-        };
-    }, []);
-
     const handleRemoteAccepted = useCallback((data: { callId: string }) => {
         if (String(data?.callId) !== callIdStr) return;
         hapticTap("heavy");
@@ -607,12 +598,64 @@ const CallScreen = () => {
         safeBack();
     }, [callIdStr, safeBack]);
 
+    const handleRemoteCallFailed = useCallback((data: {
+        callId?: string;
+        msg?: string;
+    }) => {
+        if (data?.callId && String(data.callId) !== callIdStr) return;
+        if (hasCleanedUp.current) return;
+
+        hasSignaledEndRef.current = true;
+        setCallState("ended");
+        cleanup();
+        BubblyAlert.alert("Call Failed", data?.msg || "Could not connect the call.");
+        safeBack();
+    }, [callIdStr, safeBack]);
+
     const handleRemoteConnected = useCallback((data: { callId: string }) => {
         if (String(data?.callId) !== callIdStr) return;
         hapticTap("celebration");
         setCallState('connected');
         startDurationTimer();
     }, [callIdStr]);
+
+    useEffect(() => {
+        if (!isSocketConnected()) {
+            connectSocket().catch(() => {});
+        }
+        if (callIdStr) {
+            clearDeliveredCallNotifications(callIdStr).catch(() => {});
+        }
+        void prepareCallSession();
+        onCallAccepted(handleRemoteAccepted);
+        onCallEnded(handleRemoteCallEnded);
+        onCallFailed(handleRemoteCallFailed);
+        onCallConnected(handleRemoteConnected);
+
+        const unsubConn = onSocketConnectionChange((connected) => {
+            if (connected && !hasCleanedUp.current && isRemoteJoinedRef.current && callIdStr) {
+                callConnected(callIdStr);
+            }
+        });
+
+        const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+            handleCallEnd();
+            return true;
+        });
+
+        return () => {
+            backSub.remove();
+            unsubConn();
+            onCallAccepted(handleRemoteAccepted, true);
+            onCallEnded(handleRemoteCallEnded, true);
+            onCallFailed(handleRemoteCallFailed, true);
+            onCallConnected(handleRemoteConnected, true);
+            if (!hasCleanedUp.current && callIdStr) {
+                signalCallTermination();
+            }
+            cleanup();
+        };
+    }, []);
 
     const toggleMute = () => {
         hapticTap("heavy");

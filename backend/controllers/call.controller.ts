@@ -1,29 +1,19 @@
 import { Request, Response } from "express";
-import { createHash } from "crypto";
 import { RtcTokenBuilder, RtcRole } from "agora-token";
 import { isValidObjectId } from "mongoose";
 import Call from "../modals/Call";
 import { getIO } from "../socket/io";
 import { acceptCallById, rejectCallById } from "../socket/callEvents";
+import { getAgoraServerConfig, getAgoraUid } from "../utils/agora";
 
-export const getAgoraUid = (userId: string): number => {
-    const hash = createHash("sha256")
-        .update(userId)
-        .digest();
-
-    // Mask to positive signed 31-bit integer so Agora's int32 SDK UID matches across client & token
-    const uid = hash.readUInt32BE(0) & 0x7fffffff;
-
-    return uid === 0 ? 1 : uid;
-};
+export { getAgoraUid };
 
 export const generateAgoraToken = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
         const { callId: rawCallId } = req.body ?? {};
 
-        const appId = process.env.AGORA_APP_ID || "";
-        const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
+        const agora = getAgoraServerConfig();
 
         if (!userId) {
             return res.status(401).json({
@@ -45,11 +35,12 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
 
         const callId = rawCallId;
 
-        if (!appId || !appCertificate) {
-            console.error("Agora credentials are missing");
+        if (!agora.ready) {
+            console.error("Agora credentials are missing:", agora.missingReason);
 
-            return res.status(500).json({
+            return res.status(503).json({
                 success: false,
+                code: "AGORA_NOT_CONFIGURED",
                 msg: "Agora is not configured on the server",
             });
         }
@@ -96,23 +87,26 @@ export const generateAgoraToken = async (req: Request, res: Response) => {
         // Generate token for the SAME numeric UID
         // that the frontend will use in joinChannel().
         // agora-token v2 expects relative seconds from now for both tokenExpire and privilegeExpire.
-        const token = RtcTokenBuilder.buildTokenWithUid(
-            appId,
-            appCertificate,
-            channelName,
-            uid,
-            RtcRole.PUBLISHER,
-            expirationTimeInSeconds,
-            expirationTimeInSeconds
-        );
+        const token = agora.appIdOnly
+            ? ""
+            : RtcTokenBuilder.buildTokenWithUid(
+                  agora.appId,
+                  agora.appCertificate,
+                  channelName,
+                  uid,
+                  RtcRole.PUBLISHER,
+                  expirationTimeInSeconds,
+                  expirationTimeInSeconds
+              );
 
         return res.status(200).json({
             success: true,
             data: {
                 token,
-                appId,
+                appId: agora.appId,
                 channelName,
                 uid,
+                appIdOnly: agora.appIdOnly,
             },
         });
     } catch (error: any) {

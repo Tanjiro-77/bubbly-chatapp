@@ -15,6 +15,9 @@ import { registerAppEvents } from "../socket/appEvents";
 import SavedMessage from "../modals/SavedMessage";
 import { areBlocked } from "../utils/permissions";
 import { getAgoraUid } from "../controllers/call.controller";
+import { getAgoraServerConfig } from "../utils/agora";
+import { registerCallEvents } from "../socket/callEvents";
+import Call from "../modals/Call";
 import { getUserPreferences, updateUserPreferences } from "../controllers/preferences.controller";
 import { isAllowedAudioUrl, resolveGeminiEndpoints, transcribeAudio } from "../controllers/transcribe.controller";
 
@@ -635,5 +638,144 @@ describe("Cross-stack Bug Fixes Regression Tests", () => {
         assert.equal(statusCode, 503);
         assert.equal(responseJson?.success, false);
         assert.equal(responseJson?.code, "STT_NOT_CONFIGURED");
+    });
+
+    test("getAgoraServerConfig rejects placeholders and supports both certificate and explicit appId-only mode", () => {
+        const prevAppId = process.env.AGORA_APP_ID;
+        const prevPublicAppId = process.env.EXPO_PUBLIC_AGORA_APP_ID;
+        const prevCert = process.env.AGORA_APP_CERTIFICATE;
+        const prevAppIdOnly = process.env.AGORA_ALLOW_APP_ID_ONLY;
+
+        cleanups.push(() => {
+            if (prevAppId !== undefined) process.env.AGORA_APP_ID = prevAppId; else delete process.env.AGORA_APP_ID;
+            if (prevPublicAppId !== undefined) process.env.EXPO_PUBLIC_AGORA_APP_ID = prevPublicAppId; else delete process.env.EXPO_PUBLIC_AGORA_APP_ID;
+            if (prevCert !== undefined) process.env.AGORA_APP_CERTIFICATE = prevCert; else delete process.env.AGORA_APP_CERTIFICATE;
+            if (prevAppIdOnly !== undefined) process.env.AGORA_ALLOW_APP_ID_ONLY = prevAppIdOnly; else delete process.env.AGORA_ALLOW_APP_ID_ONLY;
+        });
+
+        process.env.AGORA_APP_ID = "your_agora_app_id_here";
+        process.env.AGORA_APP_CERTIFICATE = "your_agora_app_certificate_here";
+        delete process.env.EXPO_PUBLIC_AGORA_APP_ID;
+        delete process.env.AGORA_ALLOW_APP_ID_ONLY;
+
+        const missing = getAgoraServerConfig();
+        assert.equal(missing.ready, false);
+
+        process.env.AGORA_APP_ID = "ff4f2dea21944c55b1512724e18448aa";
+        const missingCert = getAgoraServerConfig();
+        assert.equal(missingCert.ready, false);
+
+        process.env.AGORA_ALLOW_APP_ID_ONLY = "true";
+        const appIdOnlyCfg = getAgoraServerConfig();
+        assert.equal(appIdOnlyCfg.ready, true);
+        assert.equal(appIdOnlyCfg.appIdOnly, true);
+
+        delete process.env.AGORA_ALLOW_APP_ID_ONLY;
+        process.env.AGORA_APP_CERTIFICATE = "0123456789abcdef0123456789abcdef";
+        const fullCfg = getAgoraServerConfig();
+        assert.equal(fullCfg.ready, true);
+        assert.equal(fullCfg.appIdOnly, false);
+    });
+
+    test("call:invite fails before ringing an available callee when Agora is unconfigured, and call:cancel emits call:ended immediately", async () => {
+        const prevAppId = process.env.AGORA_APP_ID;
+        const prevPublicAppId = process.env.EXPO_PUBLIC_AGORA_APP_ID;
+        const prevCert = process.env.AGORA_APP_CERTIFICATE;
+        const prevAppIdOnly = process.env.AGORA_ALLOW_APP_ID_ONLY;
+        const origConvFindById = Conversation.findById;
+        const origUserFind = User.find;
+        const origUserFindById = User.findById;
+        const origCallCreate = Call.create;
+        const origCallFindOneAndUpdate = Call.findOneAndUpdate;
+        const origMessageCreate = Message.create;
+
+        cleanups.push(() => {
+            if (prevAppId !== undefined) process.env.AGORA_APP_ID = prevAppId; else delete process.env.AGORA_APP_ID;
+            if (prevPublicAppId !== undefined) process.env.EXPO_PUBLIC_AGORA_APP_ID = prevPublicAppId; else delete process.env.EXPO_PUBLIC_AGORA_APP_ID;
+            if (prevCert !== undefined) process.env.AGORA_APP_CERTIFICATE = prevCert; else delete process.env.AGORA_APP_CERTIFICATE;
+            if (prevAppIdOnly !== undefined) process.env.AGORA_ALLOW_APP_ID_ONLY = prevAppIdOnly; else delete process.env.AGORA_ALLOW_APP_ID_ONLY;
+            (Conversation as any).findById = origConvFindById;
+            (User as any).find = origUserFind;
+            (User as any).findById = origUserFindById;
+            (Call as any).create = origCallCreate;
+            (Call as any).findOneAndUpdate = origCallFindOneAndUpdate;
+            (Message as any).create = origMessageCreate;
+        });
+
+        const callerId = "507f1f77bcf86cd799439011";
+        const calleeId = "507f1f77bcf86cd799439012";
+        const convId = "507f1f77bcf86cd799439013";
+        const callId = "507f1f77bcf86cd799439014";
+
+        (Conversation as any).findById = async () => ({
+            _id: convId,
+            type: "direct",
+            participants: [callerId, calleeId],
+            admins: [],
+        });
+        (User as any).find = () => ({
+            select: () => ({
+                lean: async () => [
+                    { _id: callerId, blockedUsers: [] },
+                    { _id: calleeId, blockedUsers: [] },
+                ],
+            }),
+        });
+        (User as any).findById = () => ({
+            select: () => ({
+                lean: async () => ({ _id: calleeId, isOnline: true, pushTokens: [], notificationsEnabled: true }),
+            }),
+        });
+
+        let createdCall = false;
+        (Call as any).create = async () => {
+            createdCall = true;
+            return { _id: callId };
+        };
+
+        const emittedRooms: Array<{ room: string; event: string; payload: any }> = [];
+        const calleeSocket = new MockSocket();
+        calleeSocket.data = { userId: calleeId, name: "Callee" };
+        const fakeIo: any = {
+            sockets: { sockets: new Map([["s_callee", calleeSocket]]) },
+            to: (room: string) => ({
+                emit: (event: string, payload: any) => {
+                    emittedRooms.push({ room, event, payload });
+                },
+            }),
+        };
+
+        delete process.env.AGORA_APP_ID;
+        delete process.env.EXPO_PUBLIC_AGORA_APP_ID;
+        delete process.env.AGORA_APP_CERTIFICATE;
+        delete process.env.AGORA_ALLOW_APP_ID_ONLY;
+
+        const callerSock = new MockSocket();
+        callerSock.data = { userId: callerId, name: "Caller" };
+        registerCallEvents(fakeIo, callerSock as any);
+
+        await callerSock.trigger("call:invite", { conversationId: convId, calleeId, kind: "video" });
+        assert.equal(createdCall, false);
+        assert.equal(emittedRooms.some((e) => e.event === "call:incoming"), false);
+        const failEvent = callerSock.emitted.find((e) => e.event === "call:failed");
+        assert.equal(failEvent?.payload?.reason, "not_configured");
+
+        // Now verify call:cancel notifies the callee immediately even if chat log write throws
+        (Call as any).findOneAndUpdate = async () => ({
+            _id: callId,
+            conversationId: convId,
+            callerId,
+            calleeId,
+            kind: "voice",
+            status: "cancelled",
+        });
+        (Message as any).create = async () => {
+            throw new Error("Simulated DB message write failure");
+        };
+
+        await callerSock.trigger("call:cancel", { callId });
+        const calleeEnded = emittedRooms.find((e) => e.room === `user:${calleeId}` && e.event === "call:ended");
+        assert.equal(calleeEnded?.payload?.callId, callId);
+        assert.equal(calleeEnded?.payload?.reason, "cancelled");
     });
 });

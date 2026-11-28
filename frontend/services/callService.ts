@@ -56,7 +56,11 @@ async function fetchJsonWithRetry(
                 parsed = { success: response.ok, msg: response.ok ? undefined : fallbackErrorMsg };
             }
 
-            if (response.status >= 500 && attempt < retries) {
+            if (
+                (response.status === 502 || response.status === 503 || response.status === 504) &&
+                parsed?.code !== "AGORA_NOT_CONFIGURED" &&
+                attempt < retries
+            ) {
                 await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
                 continue;
             }
@@ -100,9 +104,13 @@ export const getAgoraToken = async (
             };
         }
 
+        const hasTokenOrAppIdOnly =
+            typeof data?.data?.token === "string" &&
+            (data.data.token.length > 0 || data?.data?.appIdOnly === true);
+
         if (
             !data?.success ||
-            !data?.data?.token ||
+            !hasTokenOrAppIdOnly ||
             !data?.data?.appId ||
             !data?.data?.channelName ||
             typeof data?.data?.uid !== "number"
@@ -139,19 +147,20 @@ export const getCallHistory = async (page = 0) => {
 
 async function callActionRequest(
     path: string,
-    method: "GET" | "POST" = "GET"
+    method: "GET" | "POST" = "GET",
+    options?: { timeoutMs?: number; retries?: number }
 ) {
-    const { data } = await fetchJsonWithRetry(path, {
+    const { status, data } = await fetchJsonWithRetry(path, {
         method,
-        timeoutMs: 8000,
-        retries: 2,
+        timeoutMs: options?.timeoutMs ?? 8000,
+        retries: options?.retries ?? 2,
         fallbackErrorMsg: "Call request failed",
     });
-    return data;
+    return data && typeof data === "object" ? { ...data, httpStatus: status } : data;
 }
 
 export const getCallStatus = (callId: string) =>
-    callActionRequest(`/api/call/${callId}/status`, "GET");
+    callActionRequest(`/api/call/${callId}/status`, "GET", { timeoutMs: 5000, retries: 0 });
 
 export const getPendingIncomingCall = () =>
     callActionRequest(`/api/call/pending`, "GET");

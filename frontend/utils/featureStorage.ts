@@ -943,9 +943,8 @@ export async function saveQuietHours(cfg: QuietHoursConfig): Promise<QuietHoursC
     return cfg;
 }
 
-// ── 16. Daily Activity & Messaging Streak Tracker ─────────────────────────────
+// ── 16. Daily Activity Tracker ────────────────────────────────────────────────
 export interface DailyActivityStats {
-    streakDays: number;
     lastActiveDate: string; // YYYY-MM-DD local
     messagesSentToday: number;
     totalSentAllTime: number;
@@ -959,14 +958,7 @@ function getLocalTodayString(d: Date = new Date()): string {
     return `${y}-${m}-${day}`;
 }
 
-function getLocalYesterdayString(): string {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return getLocalTodayString(d);
-}
-
-const DEFAULT_ACTIVITY: DailyActivityStats = {
-    streakDays: 0,
+export const DEFAULT_DAILY_ACTIVITY: DailyActivityStats = {
     lastActiveDate: "",
     messagesSentToday: 0,
     totalSentAllTime: 0,
@@ -975,13 +967,10 @@ const DEFAULT_ACTIVITY: DailyActivityStats = {
 
 export async function getDailyActivityStats(): Promise<DailyActivityStats> {
     const today = getLocalTodayString();
-    const yesterday = getLocalYesterdayString();
     if (dailyActivityCache) {
         if (dailyActivityCache.lastActiveDate && dailyActivityCache.lastActiveDate !== today) {
-            const keepStreak = dailyActivityCache.lastActiveDate === yesterday ? dailyActivityCache.streakDays : 0;
             const rolled: DailyActivityStats = {
                 ...dailyActivityCache,
-                streakDays: keepStreak,
                 messagesSentToday: 0,
                 activeConvIdsToday: [],
             };
@@ -993,39 +982,32 @@ export async function getDailyActivityStats(): Promise<DailyActivityStats> {
     try {
         const raw = await AsyncStorage.getItem(KEYS.DAILY_ACTIVITY);
         if (!raw) {
-            dailyActivityCache = DEFAULT_ACTIVITY;
-            return DEFAULT_ACTIVITY;
+            dailyActivityCache = DEFAULT_DAILY_ACTIVITY;
+            return DEFAULT_DAILY_ACTIVITY;
         }
-        const parsed: DailyActivityStats = { ...DEFAULT_ACTIVITY, ...JSON.parse(raw) };
-        if (parsed.lastActiveDate && parsed.lastActiveDate !== today) {
-            parsed.streakDays = parsed.lastActiveDate === yesterday ? parsed.streakDays : 0;
-            parsed.messagesSentToday = 0;
-            parsed.activeConvIdsToday = [];
-        }
-        dailyActivityCache = parsed;
-        return parsed;
+        const parsedRaw = JSON.parse(raw);
+        const isToday = !parsedRaw?.lastActiveDate || parsedRaw.lastActiveDate === today;
+        const normalized: DailyActivityStats = {
+            lastActiveDate: typeof parsedRaw?.lastActiveDate === "string" ? parsedRaw.lastActiveDate : "",
+            messagesSentToday: isToday && typeof parsedRaw?.messagesSentToday === "number" ? parsedRaw.messagesSentToday : 0,
+            totalSentAllTime: typeof parsedRaw?.totalSentAllTime === "number" ? parsedRaw.totalSentAllTime : 0,
+            activeConvIdsToday: isToday && Array.isArray(parsedRaw?.activeConvIdsToday) ? parsedRaw.activeConvIdsToday : [],
+        };
+        dailyActivityCache = normalized;
+        return normalized;
     } catch {
-        return DEFAULT_ACTIVITY;
+        return DEFAULT_DAILY_ACTIVITY;
     }
 }
 
 export async function recordMessageSentActivity(conversationId?: string): Promise<DailyActivityStats> {
     const today = getLocalTodayString();
-    const yesterday = getLocalYesterdayString();
     const current = await getDailyActivityStats();
-
-    let nextStreak = current.streakDays;
-    if (current.lastActiveDate !== today) {
-        nextStreak = current.lastActiveDate === yesterday ? current.streakDays + 1 : 1;
-    } else if (nextStreak === 0) {
-        nextStreak = 1;
-    }
 
     const activeSet = new Set(current.lastActiveDate === today ? current.activeConvIdsToday : []);
     if (conversationId) activeSet.add(conversationId);
 
     const next: DailyActivityStats = {
-        streakDays: nextStreak,
         lastActiveDate: today,
         messagesSentToday: (current.lastActiveDate === today ? current.messagesSentToday : 0) + 1,
         totalSentAllTime: (current.totalSentAllTime || 0) + 1,

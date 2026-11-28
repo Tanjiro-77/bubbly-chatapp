@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
     View, StyleSheet, TouchableOpacity, Vibration, Platform, StatusBar, useWindowDimensions,
 } from 'react-native';
@@ -144,6 +144,17 @@ const IncomingCall = () => {
     const slideY = useSharedValue(30);
     const fadeIn = useSharedValue(0);
 
+    const handleCallEndedByOther = useCallback((data: { callId: string; reason: string }) => {
+        if (String(data?.callId) !== callIdStr) return;
+        hasEndedRef.current = true;
+        vibrationRef.current = false;
+        safeCancelVibration();
+        stopIncomingRingtone();
+        clearDeliveredCallNotifications(callIdStr).catch(() => {});
+        hapticTap("warning");
+        safeBack();
+    }, [callIdStr]);
+
     useEffect(() => {
         slideY.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.exp) });
         fadeIn.value = withTiming(1, { duration: 400 });
@@ -171,9 +182,10 @@ const IncomingCall = () => {
             getCallStatus(callIdStr)
                 .then((res) => {
                     const status = res?.data?.status;
+                    const isTerminalStatus = Boolean(status && !['ringing', 'connecting'].includes(status));
+                    const isMissingCall = res?.httpStatus === 404;
                     if (
-                        status &&
-                        !['ringing', 'connecting'].includes(status) &&
+                        (isTerminalStatus || isMissingCall) &&
                         isMountedRef.current &&
                         !hasEndedRef.current &&
                         !isAcceptingRef.current
@@ -203,18 +215,7 @@ const IncomingCall = () => {
             stopIncomingRingtone();
             onCallEnded(handleCallEndedByOther, true);
         };
-    }, []);
-
-    const handleCallEndedByOther = (data: { callId: string; reason: string }) => {
-        if (String(data?.callId) !== callIdStr) return;
-        hasEndedRef.current = true;
-        vibrationRef.current = false;
-        safeCancelVibration();
-        stopIncomingRingtone();
-        clearDeliveredCallNotifications(callIdStr).catch(() => {});
-        hapticTap("warning");
-        safeBack();
-    };
+    }, [callIdStr, handleCallEndedByOther]);
 
     const pulseStyle = useAnimatedStyle(() => ({
         transform: [{ scale: pulse.value }],

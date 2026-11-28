@@ -9,6 +9,7 @@ import {
     sendCallPushNotification,
     sendMissedCallPushNotification,
 } from "../services/pushNotificationService";
+import { getAgoraServerConfig } from "../utils/agora";
 import { userRoom } from "./io";
 
 interface ActiveCallEntry {
@@ -121,17 +122,6 @@ export async function endCallById(io: SocketIOServer, callId: string, userId: st
 
     cleanupCall(finalizedCall._id.toString());
 
-    await notifyUnansweredCall({
-        conversationId: finalizedCall.conversationId.toString(),
-        callerId: finalizedCall.callerId.toString(),
-        calleeId: finalizedCall.calleeId.toString(),
-        callId: finalizedCall._id.toString(),
-        kind: finalizedCall.kind,
-        messageStatus,
-        duration: finalizedCall.duration,
-        sendPush: finalStatus === "missed" || finalStatus === "cancelled",
-    });
-
     io.to(userRoom(finalizedCall.callerId.toString())).emit("call:ended", {
         callId: finalizedCall._id.toString(),
         reason: finalStatus,
@@ -142,6 +132,21 @@ export async function endCallById(io: SocketIOServer, callId: string, userId: st
         reason: finalStatus,
         duration: finalizedCall.duration,
     });
+
+    try {
+        await notifyUnansweredCall({
+            conversationId: finalizedCall.conversationId.toString(),
+            callerId: finalizedCall.callerId.toString(),
+            calleeId: finalizedCall.calleeId.toString(),
+            callId: finalizedCall._id.toString(),
+            kind: finalizedCall.kind,
+            messageStatus,
+            duration: finalizedCall.duration,
+            sendPush: finalStatus === "missed" || finalStatus === "cancelled",
+        });
+    } catch (err) {
+        console.error("Failed to record/notify ended call:", err);
+    }
 
     return finalizedCall;
 }
@@ -222,17 +227,21 @@ export async function rejectCallById(io: SocketIOServer, callId: string, userId:
 
     cleanupCall(updated._id.toString());
 
-    await createAndBroadcastMessage({
-        conversationId: updated.conversationId.toString(),
-        senderId: updated.callerId.toString(),
-        type: "call",
-        callMeta: { callId: updated._id.toString(), kind: updated.kind, status: "rejected", duration: 0 },
-        skipRateLimit: true,
-        skipPermissionCheck: true,
-    });
-
     io.to(userRoom(updated.callerId.toString())).emit("call:ended", { callId: updated._id.toString(), reason: "rejected" });
     io.to(userRoom(updated.calleeId.toString())).emit("call:ended", { callId: updated._id.toString(), reason: "rejected" });
+
+    try {
+        await createAndBroadcastMessage({
+            conversationId: updated.conversationId.toString(),
+            senderId: updated.callerId.toString(),
+            type: "call",
+            callMeta: { callId: updated._id.toString(), kind: updated.kind, status: "rejected", duration: 0 },
+            skipRateLimit: true,
+            skipPermissionCheck: true,
+        });
+    } catch (err) {
+        console.error("Failed to record rejected call message:", err);
+    }
 
     return updated;
 }
@@ -278,19 +287,29 @@ async function finalizeDisconnectedCall(
             );
             if (!finalized) return;
 
-            await createAndBroadcastMessage({
-                conversationId: finalized.conversationId.toString(),
-                senderId: finalized.callerId.toString(),
-                type: "call",
-                callMeta: {
-                    callId: finalized._id.toString(),
-                    kind: finalized.kind,
-                    status: finalStatus,
-                    duration,
-                },
-                skipRateLimit: true,
-                skipPermissionCheck: true,
+            io.to(userRoom(otherUserId)).emit("call:ended", {
+                callId,
+                reason: "disconnected",
             });
+
+            try {
+                await createAndBroadcastMessage({
+                    conversationId: finalized.conversationId.toString(),
+                    senderId: finalized.callerId.toString(),
+                    type: "call",
+                    callMeta: {
+                        callId: finalized._id.toString(),
+                        kind: finalized.kind,
+                        status: finalStatus,
+                        duration,
+                    },
+                    skipRateLimit: true,
+                    skipPermissionCheck: true,
+                });
+            } catch (msgErr) {
+                console.error("Failed to record disconnected call message:", msgErr);
+            }
+            return;
         }
 
         io.to(userRoom(otherUserId)).emit("call:ended", {
@@ -387,6 +406,16 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
+            const agora = getAgoraServerConfig();
+            if (!agora.ready) {
+                socket.emit("call:failed", {
+                    success: false,
+                    msg: "Voice & video calls are unavailable: Agora is not configured on the server.",
+                    reason: "not_configured",
+                });
+                return;
+            }
+
             const existing = [...activeCalls.values()].find(
                 (c) => c.callerId === resolvedCalleeId || c.calleeId === resolvedCalleeId || c.callerId === callerId || c.calleeId === callerId
             );
@@ -416,6 +445,9 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                     if (pendingCall) {
                         cleanupCall(call._id.toString());
 
+                        io.to(userRoom(resolvedCalleeId!)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
+                        io.to(userRoom(callerId)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
+
                         await notifyUnansweredCall({
                             conversationId: pendingCall.conversationId.toString(),
                             callerId,
@@ -425,9 +457,6 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                             messageStatus: "missed",
                             sendPush: true,
                         });
-
-                        io.to(userRoom(resolvedCalleeId!)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
-                        io.to(userRoom(callerId)).emit("call:ended", { callId: call._id.toString(), reason: "timeout" });
                     }
                 } catch (timeoutErr) {
                     console.error("Error timing out ringing call:", timeoutErr);
@@ -493,17 +522,21 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
             );
             if (!call) return;
             cleanupCall(call._id.toString());
-            await notifyUnansweredCall({
-                conversationId: call.conversationId.toString(),
-                callerId: call.callerId.toString(),
-                calleeId: call.calleeId.toString(),
-                callId: call._id.toString(),
-                kind: call.kind,
-                messageStatus: "missed",
-                sendPush: true,
-            });
             io.to(userRoom(call.calleeId.toString())).emit("call:ended", { callId: call._id.toString(), reason: "cancelled" });
             io.to(userRoom(call.callerId.toString())).emit("call:ended", { callId: call._id.toString(), reason: "cancelled" });
+            try {
+                await notifyUnansweredCall({
+                    conversationId: call.conversationId.toString(),
+                    callerId: call.callerId.toString(),
+                    calleeId: call.calleeId.toString(),
+                    callId: call._id.toString(),
+                    kind: call.kind,
+                    messageStatus: "missed",
+                    sendPush: true,
+                });
+            } catch (notifyErr) {
+                console.error("Failed to record cancelled call message:", notifyErr);
+            }
         } catch (error) {
             console.log("call:cancel", error);
         }

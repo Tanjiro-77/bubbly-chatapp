@@ -35,6 +35,7 @@ import {
     ChatFolderTag,
     CustomStatusState,
     DailyActivityStats,
+    DEFAULT_DAILY_ACTIVITY,
     DEFAULT_QUIET_HOURS,
     FocusModeState,
     formatRemainingFocus,
@@ -119,13 +120,7 @@ const Home = () => {
     const [focusMode, setFocusModeState] = useState<FocusModeState>({ enabled: false, until: null, label: "" });
     const [myStatus, setMyStatus] = useState<CustomStatusState>({ emoji: "", text: "", expiresAt: null });
     const [reminders, setReminders] = useState<SavedMessageReminder[]>([]);
-    const [dailyActivity, setDailyActivity] = useState<DailyActivityStats>({
-        streakDays: 0,
-        lastActiveDate: "",
-        messagesSentToday: 0,
-        totalSentAllTime: 0,
-        activeConvIdsToday: [],
-    });
+    const [dailyActivity, setDailyActivity] = useState<DailyActivityStats>(DEFAULT_DAILY_ACTIVITY);
     const [quietHours, setQuietHours] = useState<QuietHoursConfig>(DEFAULT_QUIET_HOURS);
     const [showQuickJump, setShowQuickJump] = useState(false);
     const [showRemindersModal, setShowRemindersModal] = useState(false);
@@ -834,7 +829,7 @@ const Home = () => {
                         </View>
                     </View>
 
-                    {/* Focus / Quiet Hours / Streak / Reminders Live Banner */}
+                    {/* Focus / Quiet Hours / Activity / Reminders Live Banner */}
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: scale(6) }}>
                         <TouchableOpacity
                             onPress={() => {
@@ -849,7 +844,7 @@ const Home = () => {
                             }}
                         >
                             <Typo size={11} fontWeight="700" color={colors.primaryLight} textProps={{ numberOfLines: 1 }}>
-                                🔥 {dailyActivity.streakDays}d Streak · {dailyActivity.messagesSentToday} sent today
+                                💬 {dailyActivity.messagesSentToday} sent today
                             </Typo>
                         </TouchableOpacity>
                         {focusMode.enabled && (
