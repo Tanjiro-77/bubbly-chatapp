@@ -39,6 +39,14 @@ export type SendMessageInput = {
     isForwarded?: boolean;
     isViewOnce?: boolean;
     isSilent?: boolean;
+    isEncrypted?: boolean;
+    e2ee?: {
+        v: number;
+        alg: string;
+        iv: string;
+        ciphertext: string;
+        keyVersion?: number;
+    } | null;
     checklist?: {
         title?: string;
         items?: { id: string; text: string; completed?: boolean; completedBy?: string }[];
@@ -82,7 +90,7 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
     let replyToData: any = null;
     if (replyTo) {
         const replyMsg = await Message.findById(replyTo)
-            .select("conversationId content senderId voiceUrl type isDeleted")
+            .select("conversationId content senderId voiceUrl type isDeleted isEncrypted e2ee")
             .populate<{ senderId: { _id: string; name: string } }>({ path: "senderId", select: "name" })
             .lean();
         if (replyMsg && replyMsg.conversationId.toString() === conversationId.toString()) {
@@ -94,6 +102,8 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
                 voiceUrl: (replyMsg as any).isDeleted ? null : (replyMsg.voiceUrl || null),
                 type: (replyMsg as any).isDeleted ? "text" : (replyMsg as any).type,
                 isDeleted: (replyMsg as any).isDeleted || false,
+                isEncrypted: (replyMsg as any).isEncrypted || false,
+                e2ee: (replyMsg as any).isDeleted ? null : ((replyMsg as any).e2ee || null),
             };
         }
     }
@@ -139,11 +149,16 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         location: input.location ?? undefined,
     });
 
+    const isEncrypted = Boolean(input.isEncrypted && input.e2ee?.ciphertext && input.e2ee?.iv);
+    if (input.isEncrypted && !isEncrypted) {
+        throw new Error("Encrypted message requires valid e2ee ciphertext and iv");
+    }
+
     if (typeof content === "string" && content.length > 5000) {
         throw new Error("Message content cannot exceed 5,000 characters");
     }
 
-    if (type === "text" && !content.trim() && !attachement && !voiceUrl && !systemEvent && !callMeta) {
+    if (type === "text" && !isEncrypted && !content.trim() && !attachement && !voiceUrl && !systemEvent && !callMeta) {
         throw new Error("Message cannot be empty");
     }
     if (type === "announcement") {
@@ -192,6 +207,14 @@ export async function createAndBroadcastMessage(input: SendMessageInput) {
         isForwarded: input.isForwarded || false,
         isSilent: input.isSilent || false,
         isViewOnce: input.isViewOnce || false,
+        isEncrypted,
+        e2ee: isEncrypted ? {
+            v: Number(input.e2ee?.v || 1),
+            alg: String(input.e2ee?.alg || "x25519-xsalsa20poly1305"),
+            iv: String(input.e2ee?.iv),
+            ciphertext: String(input.e2ee?.ciphertext),
+            keyVersion: typeof input.e2ee?.keyVersion === "number" ? input.e2ee.keyVersion : 1,
+        } : undefined,
         checklist: sanitizedChecklist,
         expiresAt,
     });

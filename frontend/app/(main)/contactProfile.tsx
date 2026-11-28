@@ -46,6 +46,7 @@ import {
     setEntityNickname,
 } from "../../utils/featureStorage";
 import { ChatScratchpadModal } from "../../components/ConversationFeatureModals";
+import { computeSafetyNumber, ensureIdentityKeyPair, fetchBatchPublicKeys } from "../../utils/e2ee";
 
 const ContactProfileScreen = () => {
     const router = useRouter();
@@ -64,6 +65,23 @@ const ContactProfileScreen = () => {
     const [noteInput, setNoteInput] = useState("");
     const [folderTag, setFolderTag] = useState<ChatFolderTag | null>(null);
     const [showScratchpad, setShowScratchpad] = useState(false);
+    const [safetyNumber, setSafetyNumber] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!currentUser?.id || !userIdStr || isDirect === "false") return;
+        let cancelled = false;
+        Promise.all([
+            ensureIdentityKeyPair(currentUser.id),
+            fetchBatchPublicKeys([userIdStr]),
+        ]).then(([myKeys, peerMap]) => {
+            if (cancelled) return;
+            const peerPub = peerMap[userIdStr]?.publicKey;
+            if (myKeys?.publicKey && peerPub) {
+                setSafetyNumber(computeSafetyNumber(currentUser.id!, myKeys.publicKey, userIdStr, peerPub));
+            }
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [currentUser?.id, userIdStr, isDirect]);
 
     const entityKey = conversationIdStr || userIdStr;
 
@@ -501,8 +519,18 @@ const ContactProfileScreen = () => {
                                     End-to-End Encrypted 🔒
                                 </Typo>
                                 <Typo size={11.5} color={colors.neutral500} style={{ marginTop: 3, lineHeight: 16 }}>
-                                    Messages and calls are secured with Bubbly Shield. No one outside of this chat can read or listen to them.
+                                    Messages and calls are secured with X25519 + XSalsa20-Poly1305 end-to-end encryption.
                                 </Typo>
+                                {safetyNumber ? (
+                                    <View style={{ marginTop: 8, padding: 8, borderRadius: 8, backgroundColor: colors.neutral100 }}>
+                                        <Typo size={10} fontWeight="700" color={colors.neutral400}>
+                                            SAFETY NUMBER
+                                        </Typo>
+                                        <Typo size={11} fontWeight="600" color={colors.neutral800} style={{ marginTop: 2, letterSpacing: 0.6 }}>
+                                            {safetyNumber}
+                                        </Typo>
+                                    </View>
+                                ) : null}
                             </View>
                         </View>
                     </View>

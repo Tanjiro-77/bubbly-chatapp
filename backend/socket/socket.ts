@@ -7,6 +7,7 @@ import { registerChatEvents } from "./chatEvents";
 import { registerGroupEvents } from "./groupEvents";
 import { registerCallEvents, handleUserDisconnectCalls, clearDisconnectTimersForUser } from "./callEvents";
 import { registerAppEvents } from "./appEvents";
+import { registerE2EEEvents } from "./e2eeEvents";
 import Conversation from "../modals/Conversation";
 import User from "../modals/User";
 import Call from "../modals/Call";
@@ -72,6 +73,7 @@ export function intializeSocket(server: any): SocketIOServer {
         registerGroupEvents(io, socket);
         registerCallEvents(io, socket);
         registerAppEvents(io, socket);
+        registerE2EEEvents(io, socket);
 
         try {
             const [me, conversations] = await Promise.all([

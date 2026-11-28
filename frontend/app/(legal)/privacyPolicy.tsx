@@ -13,8 +13,8 @@ const PRIVACY_HIGHLIGHTS: LegalHighlight[] = [
     },
     {
         icon: "lock",
-        label: "Transit Security",
-        value: "HTTPS / TLS",
+        label: "Encryption",
+        value: "End-to-End (E2EE)",
     },
     {
         icon: "eye-slash",
@@ -44,7 +44,7 @@ const PRIVACY_SECTIONS: LegalSection[] = [
         bullets: [
             "Account & Profile Data: Full name, email address, password (stored as a secure hash on our servers), optional phone number, and profile avatar.",
             "Google Sign-In Data: If you choose Continue with Google, we receive your Google name, email address, profile photo, and Google account identifier to sign you in.",
-            "Messages, Stories & Media: Chat messages, voice notes, photos, videos, documents, polls, and 24-hour stories you choose to send or publish.",
+            "Messages, Stories & Media: Chat messages, voice notes, photos, and documents are end-to-end encrypted on your device before transmission, so our servers only relay and store encrypted ciphertext. Push notifications deliver generic alerts without exposing plaintext message content.",
             "Support & Bug Reports: Screenshots, descriptions, and optional contact details you submit when reporting an issue.",
         ],
     },

@@ -471,6 +471,8 @@ export function registerCallEvents(io: SocketIOServer, socket: Socket) {
                 kind: data.kind,
                 caller: { id: callerId, name: callerName, avatar: socket.data.avatar },
                 calleeId: resolvedCalleeId,
+                e2eeMediaKey: (data as any).e2eeMediaKey || undefined,
+                e2eeMediaSalt: (data as any).e2eeMediaSalt || undefined,
             };
 
             if (calleeSockets.length > 0) {

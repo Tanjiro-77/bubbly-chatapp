@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BubblyAlert } from '../../components/BubblyAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { base64ToBytes } from '../../utils/e2ee';
 import {
     createAgoraRtcEngine,
     IRtcEngine,
@@ -134,10 +135,14 @@ const CallScreen = () => {
         remoteUserName,
         remoteUserAvatar,
         isOutgoing,
+        e2eeMediaKey,
+        e2eeMediaSalt,
     } = useLocalSearchParams();
 
     const callIdStr = Array.isArray(callId) ? callId[0] : (callId as string);
     const kindStr = Array.isArray(kind) ? kind[0] : (kind as string);
+    const e2eeMediaKeyStr = Array.isArray(e2eeMediaKey) ? e2eeMediaKey[0] : (e2eeMediaKey as string | undefined);
+    const e2eeMediaSaltStr = Array.isArray(e2eeMediaSalt) ? e2eeMediaSalt[0] : (e2eeMediaSalt as string | undefined);
     const isVideo = kindStr === 'video';
     const isOutgoingCall = (Array.isArray(isOutgoing) ? isOutgoing[0] : isOutgoing) === 'true';
 
@@ -405,6 +410,21 @@ const CallScreen = () => {
             }
 
             engine.setDefaultAudioRouteToSpeakerphone(isSpeakerOnRef.current);
+
+            if (e2eeMediaKeyStr && e2eeMediaSaltStr && typeof (engine as any).enableEncryption === "function") {
+                try {
+                    const saltBytes = Array.from(base64ToBytes(e2eeMediaSaltStr));
+                    if (saltBytes.length === 32) {
+                        (engine as any).enableEncryption(true, {
+                            encryptionMode: 7, // EncryptionMode.Aes128Gcm2
+                            encryptionKey: e2eeMediaKeyStr,
+                            encryptionKdfSalt: saltBytes,
+                        });
+                    }
+                } catch (encErr) {
+                    console.log("Agora media encryption setup skipped:", encErr);
+                }
+            }
 
             const joinOptions = {
                 clientRoleType: ClientRoleType.ClientRoleBroadcaster,

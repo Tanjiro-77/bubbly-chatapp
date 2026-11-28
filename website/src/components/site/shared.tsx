@@ -142,6 +142,11 @@ export const featureGroups = [
     textCol: "text-emerald-400",
     items: [
       {
+        icon: ShieldCheck,
+        title: "End-to-End Encryption (E2EE)",
+        text: "X25519 + XSalsa20-Poly1305 encryption for chats, media, and voice notes plus AES-128-GCM2 Agora call encryption and 60-digit Safety Numbers.",
+      },
+      {
         icon: Lock,
         title: "Biometric App Lock & PIN Vault",
         text: "Protect Bubbly with biometric/passcode lock and store private notes inside a dedicated PIN-protected Vault.",
@@ -476,7 +481,7 @@ export const appScreenshots = [
   },
 ];
 
-// ── Reveal hook ─────────────────────────────────────────────
+// ── Reveal & interactive spotlight hook ──────────────────────
 export function useReveal() {
   useEffect(() => {
     const io = new IntersectionObserver(
@@ -487,7 +492,7 @@ export function useReveal() {
             io.unobserve(e.target);
           }
         }),
-      { threshold: 0.1 },
+      { threshold: 0.08 },
     );
     const observeAll = () => {
       document.querySelectorAll<HTMLElement>("[data-reveal]:not(.is-in)").forEach((el) => {
@@ -497,11 +502,50 @@ export function useReveal() {
     observeAll();
     const mo = new MutationObserver(() => observeAll());
     mo.observe(document.body, { childList: true, subtree: true });
+
+    const onPointerMove = (ev: PointerEvent) => {
+      const target = (ev.target as HTMLElement | null)?.closest?.(".spotlight-card") as HTMLElement | null;
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      target.style.setProperty("--spot-x", `${ev.clientX - rect.left}px`);
+      target.style.setProperty("--spot-y", `${ev.clientY - rect.top}px`);
+    };
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+
     return () => {
       mo.disconnect();
       io.disconnect();
+      window.removeEventListener("pointermove", onPointerMove);
     };
   }, []);
+}
+
+export function ScrollProgressBar() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const doc = document.documentElement;
+      const max = doc.scrollHeight - doc.clientHeight;
+      setProgress(max > 0 ? Math.min(100, Math.max(0, (window.scrollY / max) * 100)) : 0);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-60 h-[2.5px] bg-transparent">
+      <div
+        className="h-full transition-[width] duration-100 ease-out"
+        style={{
+          width: `${progress}%`,
+          background: "var(--gradient-warm)",
+          boxShadow: "0 0 12px color-mix(in oklab, var(--primary) 75%, transparent)",
+        }}
+      />
+    </div>
+  );
 }
 
 // ── Download button ──────────────────────────────────────────
@@ -535,7 +579,7 @@ export function DownloadButton({
     <a
       href={APK_DOWNLOAD_LINK}
       onClick={handleClick}
-      className={`btn-base btn-primary group ${className}`}
+      className={`btn-base btn-primary btn-shimmer group ${className}`}
       download
     >
       <Download className="h-4 w-4 transition-transform group-hover:translate-y-0.5" />

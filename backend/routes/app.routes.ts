@@ -20,6 +20,13 @@ import {
   updateCallRingtone,
   updateNotificationPreference,
 } from "../controllers/notification.controller";
+import {
+  getBatchPublicKeys,
+  getE2EEKeyBackup,
+  getUserPublicKey,
+  publishE2EEKey,
+  setConversationKeys,
+} from "../controllers/e2ee.controller";
 
 const router = Router();
 
@@ -83,5 +90,12 @@ router.put("/user/call-ringtone", authMiddleware, updateCallRingtone);
 router.post("/contacts/sync", authMiddleware, syncContacts);
 router.post("/contacts/find", authMiddleware, findUserByPhone);
 router.put("/user/phone", authMiddleware, updatePhoneNumber);
+
+// ── End-to-End Encryption (E2EE) Key Directory ──
+router.put("/e2ee/keys", authMiddleware, publishE2EEKey);
+router.get("/e2ee/backup", authMiddleware, getE2EEKeyBackup);
+router.get("/e2ee/keys/:userId", authMiddleware, getUserPublicKey);
+router.post("/e2ee/keys/batch", authMiddleware, getBatchPublicKeys);
+router.put("/e2ee/conversations/:conversationId/keys", authMiddleware, setConversationKeys);
 
 export default router;

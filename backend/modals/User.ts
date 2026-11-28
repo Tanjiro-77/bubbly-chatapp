@@ -59,7 +59,7 @@ const userSchema = new Schema<UserProps>({
         lastSeen: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
         readReceipts: { type: Boolean, default: true },
         typingIndicators: { type: Boolean, default: true },
-        storyPrivacy: { type: String, enum: ["everyone", "contacts", "except"], default: "everyone" },
+        storyPrivacy: { type: String, enum: ["everyone", "contacts", "except"], default: "contacts" },
         storyHiddenFrom: [{ type: Schema.Types.ObjectId, ref: "User" }],
     },
     isModerator: { type: Boolean, default: false },
@@ -85,6 +85,27 @@ const userSchema = new Schema<UserProps>({
         emoji: { type: String, default: "" },
         text: { type: String, default: "" },
         updatedAt: { type: Date, default: null },
+    },
+    e2eePublicKey: {
+        type: String,
+        default: "",
+    },
+    e2eeKeyVersion: {
+        type: Number,
+        default: 1,
+    },
+    e2eeKeyFingerprint: {
+        type: String,
+        default: "",
+    },
+    e2eeKeyBackup: {
+        type: {
+            ciphertext: { type: String, default: "" },
+            nonce: { type: String, default: "" },
+            salt: { type: String, default: "" },
+            kdfVersion: { type: Number, default: 1 },
+        },
+        default: null,
     },
 });
 

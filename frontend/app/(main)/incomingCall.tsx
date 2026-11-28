@@ -100,7 +100,7 @@ const IncomingCall = () => {
     const insets = useSafeAreaInsets();
     const { height } = useWindowDimensions();
     const isCompactHeight = height < 700;
-    const { callId, callerId, callerName, callerAvatar, kind, conversationId } = useLocalSearchParams();
+    const { callId, callerId, callerName, callerAvatar, kind, conversationId, e2eeMediaKey, e2eeMediaSalt } = useLocalSearchParams();
     const callIdStr = Array.isArray(callId) ? callId[0] : (callId as string);
     const callerIdStr = Array.isArray(callerId) ? callerId[0] : (callerId as string);
     const callerNameStr = Array.isArray(callerName) ? callerName[0] : (callerName as string);
@@ -261,6 +261,8 @@ const IncomingCall = () => {
                     remoteUserName: callerNameStr,
                     remoteUserAvatar: callerAvatarStr || '',
                     isOutgoing: 'false',
+                    ...(e2eeMediaKey ? { e2eeMediaKey: Array.isArray(e2eeMediaKey) ? e2eeMediaKey[0] : e2eeMediaKey } : {}),
+                    ...(e2eeMediaSalt ? { e2eeMediaSalt: Array.isArray(e2eeMediaSalt) ? e2eeMediaSalt[0] : e2eeMediaSalt } : {}),
                 },
             });
         } catch {}

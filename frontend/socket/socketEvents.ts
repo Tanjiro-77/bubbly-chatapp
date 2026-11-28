@@ -148,6 +148,8 @@ export const callInvite = (payload: {
     conversationId: string;
     calleeId: string;
     kind: "voice" | "video";
+    e2eeMediaKey?: string;
+    e2eeMediaSalt?: string;
 }) => {
     emitCritical("call:invite", payload);
 };
@@ -358,4 +360,17 @@ export const isSocketConnected = (): boolean => {
 
 export const onSocketConnectionChange = (handler: (connected: boolean) => void) => {
     return subscribeSocketStatus(handler);
+};
+
+// ── E2EE Events ──
+export const onE2EEConversationKeysUpdated = (payload: any, off: boolean = false) =>
+    bindEvent("e2ee:conversationKeysUpdated", payload, off);
+
+export const onE2EEConversationKeyRequested = (payload: any, off: boolean = false) =>
+    bindEvent("e2ee:conversationKeyRequested", payload, off);
+
+export const requestConversationKey = (conversationId: string) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit("e2ee:requestConversationKey", { conversationId });
 };

@@ -55,6 +55,15 @@ export interface UserProps extends Document {
         text?: string;
         updatedAt?: Date | null;
     };
+    e2eePublicKey?: string;
+    e2eeKeyVersion?: number;
+    e2eeKeyFingerprint?: string;
+    e2eeKeyBackup?: {
+        ciphertext: string;
+        nonce: string;
+        salt: string;
+        kdfVersion: number;
+    } | null;
 }
 
 export interface UnreadCountProps {
@@ -66,6 +75,22 @@ export interface GroupPermissionsProps {
     sendMessages: GroupSendPermission;
     editInfo: GroupSendPermission;
     addMembers: GroupSendPermission;
+}
+
+export interface E2EEConversationKeyEntry {
+    userId: Types.ObjectId;
+    encryptedKey: string;
+    nonce: string;
+    senderPublicKey: string;
+    keyVersion: number;
+}
+
+export interface E2EEPayload {
+    v: number;
+    alg: string;
+    iv: string;
+    ciphertext: string;
+    keyVersion?: number;
 }
 
 export interface ConversationProps extends Document {
@@ -88,6 +113,9 @@ export interface ConversationProps extends Document {
     archivedBy?: Types.ObjectId[];
     deletedFor?: Types.ObjectId[];
     mutedBy?: { userId: Types.ObjectId; until: Date | null }[];
+    isEncrypted?: boolean;
+    e2eeKeyVersion?: number;
+    encryptedKeys?: E2EEConversationKeyEntry[];
     createdAt: Date;
     updatedAt: Date;
 }

@@ -65,7 +65,8 @@ export async function submitErrorReport(req: AuthRequest, res: Response): Promis
             } catch (uploadErr) {
                 console.warn("Could not upload screenshot to Cloudinary, saving report without image:", uploadErr);
             }
-        } else if (screenshotBase64 && typeof screenshotBase64 === "string" && screenshotBase64.startsWith("http")) {
+        } else if (screenshotBase64 && typeof screenshotBase64 === "string" && /^https:\/\//i.test(screenshotBase64)) {
+            // Only accept secure https URLs; reject anything else (file://, http://, etc.)
             screenshotUrl = screenshotBase64;
         }
 
@@ -162,9 +163,15 @@ export async function updateReportStatus(req: AuthRequest, res: Response): Promi
             return;
         }
 
+        // Sanitize admin notes: strip any HTML/script tags before persisting
+        const safeAdminNotes =
+            adminNotes !== undefined
+                ? String(adminNotes).replace(/<[^>]*>/g, "").trim().slice(0, 2000)
+                : undefined;
+
         const report = await AppErrorReport.findByIdAndUpdate(
             id,
-            { status, ...(adminNotes !== undefined ? { adminNotes } : {}) },
+            { status, ...(safeAdminNotes !== undefined ? { adminNotes: safeAdminNotes } : {}) },
             { new: true }
         );
 

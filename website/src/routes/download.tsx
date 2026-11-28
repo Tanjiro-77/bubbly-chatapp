@@ -128,10 +128,10 @@ export function DownloadPage() {
   return (
     <>
       <PageHero
-        eyebrow="Direct Distribution"
+        eyebrow="Direct & Store Distribution"
         title="Get Bubbly on your device."
-        text={`Download the official ${APP_VERSION} production release. Verified build with zero trackers, ads, or third-party bloat.`}
-        badge={`${APP_VERSION} Production`}
+        text={`Download the official ${APP_VERSION} production release with X25519 End-to-End Encryption. Verified build with zero trackers, ads, or third-party bloat.`}
+        badge={`${APP_VERSION} · E2EE Ready`}
       />
 
       {/* ── Main Download Card ── */}

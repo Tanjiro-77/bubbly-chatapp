@@ -94,6 +94,27 @@ const ConversationSchema = new Schema<ConversationProps>({
             },
         },
     ],
+    isEncrypted: {
+        type: Boolean,
+        default: true,
+    },
+    e2eeKeyVersion: {
+        type: Number,
+        default: 1,
+    },
+    encryptedKeys: [
+        {
+            userId: {
+                type: Schema.Types.ObjectId,
+                ref: "User",
+                required: true,
+            },
+            encryptedKey: { type: String, required: true },
+            nonce: { type: String, required: true },
+            senderPublicKey: { type: String, required: true },
+            keyVersion: { type: Number, default: 1 },
+        },
+    ],
     updatedAt: {
         type: Date,
         default: Date.now,

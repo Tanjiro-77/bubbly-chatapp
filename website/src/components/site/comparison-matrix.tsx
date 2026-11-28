@@ -3,6 +3,7 @@ import { APP_VERSION } from "./shared";
 
 export function ComparisonMatrix() {
   const features = [
+    { name: "X25519 + XSalsa20-Poly1305 End-to-End Encryption", bubbly: true, others: false },
     { name: "Zero Trackers, Analytics or Ad Networks", bubbly: true, others: false },
     { name: "100% Open-Source Codebase on GitHub", bubbly: true, others: false },
     { name: "Background Push & Closed-App Call Alerts", bubbly: true, others: true },

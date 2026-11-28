@@ -22,6 +22,7 @@ import { PhoneSimulator } from "@/components/site/phone-simulator";
 import { ScreenshotsTour } from "@/components/site/screenshots-tour";
 import { ArchitectureSection } from "@/components/site/architecture-section";
 import { ComparisonMatrix } from "@/components/site/comparison-matrix";
+import { E2EEShowcase } from "@/components/site/e2ee-showcase";
 import { sounds } from "@/lib/sound";
 
 export const Route = createFileRoute("/")({
@@ -131,13 +132,13 @@ function IndexPage() {
             {/* Quick feature tick badges */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> X25519 End-to-End Encrypted
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora AES-GCM2 Calls
+              </span>
+              <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> AI Voice Transcription
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agora HD Calling
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Checklists & Reminders
               </span>
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Zero Ads
@@ -312,12 +313,13 @@ function IndexPage() {
                     </span>
                   </div>
                   <h3 className="mt-3 font-display text-2xl font-extrabold text-foreground">
-                    Biometric Lock, PIN Vault & PhonePe Indus Compliant
+                    End-to-End Encryption, Biometric Lock &amp; Store Ready
                   </h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Require both phone number & verified email for 100% contact discovery, protect
-                    private notes in a PIN Vault, lock chats behind biometrics, and send View-Once
-                    or Disappearing messages safely.
+                    Messages, media, and voice notes are sealed on-device with X25519 +
+                    XSalsa20-Poly1305, calls use Agora AES-128-GCM2 media encryption, and every chat
+                    includes 60-digit Safety Number verification alongside Biometric App Lock and
+                    PIN Vault.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2.5 shrink-0">
@@ -341,6 +343,9 @@ function IndexPage() {
           </div>
         </div>
       </section>
+
+      {/* ─────────────────── INTERACTIVE E2EE SHOWCASE ─────────────────── */}
+      <E2EEShowcase />
 
       {/* ─────────────────── SCREENSHOTS TOUR ─────────────────── */}
       <ScreenshotsTour />

@@ -8,36 +8,49 @@ import LegalDocumentView, {
 const SECURITY_HIGHLIGHTS: LegalHighlight[] = [
     {
         icon: "lock",
-        label: "Network Transit",
-        value: "TLS / WSS",
+        label: "Messages & Media",
+        value: "End-to-End Encrypted",
     },
     {
         icon: "key",
-        label: "Auth Tokens",
-        value: "Signed JWT",
+        label: "Key Exchange",
+        value: "X25519 + XSalsa20",
     },
     {
         icon: "shield",
-        label: "Chat Privacy",
-        value: "PIN Vault Lock",
+        label: "Calls & Vault",
+        value: "AES-GCM2 + PIN",
     },
     {
         icon: "check-circle",
-        label: "Play Data Safety",
-        value: "Verified Controls",
+        label: "Store Compliance",
+        value: "Play & App Store",
     },
 ];
 
 const SECURITY_SECTIONS: LegalSection[] = [
     {
+        title: "End-to-End Encryption (E2EE)",
+        paragraphs: [
+            "Bubbly protects your private and group conversations with true client-side End-to-End Encryption:",
+        ],
+        bullets: [
+            "On-Device Key Generation: Each user generates an X25519 identity key pair locally on their device. Your private key never leaves your device in plaintext.",
+            "Authenticated Message Encryption: Text messages, locations, and rich payloads are encrypted on-device with per-conversation 256-bit keys using XSalsa20-Poly1305 before leaving your phone.",
+            "Encrypted Media & Voice Notes: Photos, documents, and voice messages are encrypted locally with unique per-file keys before upload; only the encrypted ciphertext is stored on media servers.",
+            "Zero-Knowledge Push Alerts: Push notifications do not include plaintext message previews—only generic encrypted message alerts.",
+            "Safety Number Verification: Open any contact's profile to inspect and verify the 60-digit Safety Number computed from both users' public keys.",
+        ],
+    },
+    {
         title: "Encryption & Transport Security",
         paragraphs: [
-            "Protecting your conversations and credentials in transit is a core priority for Bubbly:",
+            "In addition to end-to-end encryption, all network traffic is protected in transit:",
         ],
         bullets: [
             "API requests between the Bubbly mobile app and backend servers are transmitted over encrypted HTTPS / TLS connections.",
-            "Real-time messaging, presence updates, and call signaling operate over secure Socket.IO transport.",
-            "Audio and video calling media channels are routed through Agora's real-time communication infrastructure with token-based channel authorization.",
+            "Real-time messaging, presence updates, and call signaling operate over secure Socket.IO (WSS) transport.",
+            "Audio and video calling media streams use per-call AES-128-GCM2 media encryption over Agora's real-time infrastructure with token-based channel authorization.",
         ],
     },
     {

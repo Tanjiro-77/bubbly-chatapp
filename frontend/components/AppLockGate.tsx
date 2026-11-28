@@ -17,7 +17,7 @@ import { hapticTap } from "../utils/haptics";
 import Typo from "./Typo";
 import { BubblyAlert } from "./BubblyAlert";
 
-const APP_LOCK_KEY = "bubbly_app_lock_enabled";
+const APP_LOCK_KEY_PREFIX = "bubbly_app_lock_enabled";
 const PIN_STORAGE_KEY_PREFIX = "@bubbly_vault_pin";
 
 export const AppLockGate = () => {
@@ -47,6 +47,7 @@ export const AppLockGate = () => {
     }, [shakeX]);
 
     const pinStorageKey = user?.id ? `${PIN_STORAGE_KEY_PREFIX}_${user.id}` : PIN_STORAGE_KEY_PREFIX;
+    const appLockKey = user?.id ? `${APP_LOCK_KEY_PREFIX}_${user.id}` : APP_LOCK_KEY_PREFIX;
 
     const refreshLockState = useCallback(async (forceLockIfEnabled = false) => {
         if (!user) {
@@ -58,7 +59,7 @@ export const AppLockGate = () => {
         }
         try {
             const [enabledRaw, pinRaw] = await Promise.all([
-                AsyncStorage.getItem(APP_LOCK_KEY),
+                AsyncStorage.getItem(appLockKey),
                 AsyncStorage.getItem(pinStorageKey),
             ]);
             const enabled = enabledRaw === "true";
@@ -90,7 +91,7 @@ export const AppLockGate = () => {
         return subscribeFeatureUpdates(() => {
             if (!user) return;
             Promise.all([
-                AsyncStorage.getItem(APP_LOCK_KEY),
+                AsyncStorage.getItem(appLockKey),
                 AsyncStorage.getItem(pinStorageKey),
             ]).then(([enabledRaw, pinRaw]) => {
                 const enabled = enabledRaw === "true";
@@ -119,7 +120,7 @@ export const AppLockGate = () => {
                 leftActiveAtRef.current = null;
                 try {
                     const [enabledRaw, shield] = await Promise.all([
-                        AsyncStorage.getItem(APP_LOCK_KEY),
+                        AsyncStorage.getItem(appLockKey),
                         getPrivacyShield(),
                     ]);
                     if (enabledRaw !== "true") {

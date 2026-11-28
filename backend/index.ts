@@ -21,6 +21,9 @@ if (process.env.SET_PUBLIC_DNS === "true") {
 
 const app = express();
 
+// Trust the first proxy hop so rate-limiter reads the real client IP from X-Forwarded-For
+app.set("trust proxy", 1);
+
 // Security headers middleware
 app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

@@ -28,6 +28,11 @@ import {
     isSocketConnected,
     onSocketConnectionChange,
 } from "../../socket/socketEvents";
+import {
+    decryptMessagePayload,
+    getOrCreateConversationKey,
+    seedPublicKeyCache,
+} from "../../utils/e2ee";
 import { DailyDigestModal, QuickJumpModal, RemindersListModal } from "../../components/ConversationFeatureModals";
 import { cancelMessageReminder, getActiveReminders, SavedMessageReminder } from "../../services/reminderService";
 import {
@@ -319,6 +324,35 @@ const Home = () => {
                 getConversations(null);
                 return;
             }
+            const conv = conversationsRef.current.find((item) => item._id == conversationId);
+            if (res.data.isEncrypted && res.data.e2ee && conv && currentUserIdRef.current) {
+                getOrCreateConversationKey(
+                    conversationId,
+                    currentUserIdRef.current,
+                    conv.participants || [],
+                    conv.encryptedKeys,
+                    conv.e2eeKeyVersion || 1
+                ).then((convKey) => {
+                    let decryptedMsg = res.data;
+                    if (convKey) {
+                        const plain = decryptMessagePayload(res.data.e2ee, convKey);
+                        if (plain) {
+                            decryptedMsg = {
+                                ...res.data,
+                                content: plain.content ?? res.data.content,
+                                type: plain.type ?? res.data.type,
+                                attachmentMeta: plain.attachmentMeta ?? res.data.attachmentMeta,
+                                voiceDuration: plain.voiceDuration ?? res.data.voiceDuration,
+                                location: plain.location ?? res.data.location,
+                            };
+                        }
+                    }
+                    setConversations((prev) =>
+                        prev.map((item) => (item._id == conversationId ? { ...item, lastMessage: decryptedMsg } : item))
+                    );
+                }).catch(() => {});
+                return;
+            }
             setConversations((prev) =>
                 prev.map((item) => (item._id == conversationId ? { ...item, lastMessage: res.data } : item))
             );
@@ -340,6 +374,45 @@ const Home = () => {
             hasLoadedConvsRef.current = true;
             setConversations(res.data);
             setCachedConversations(currentUserIdRef.current, res.data);
+
+            // Decrypt any E2EE lastMessage previews in the background
+            const uid = currentUserIdRef.current;
+            if (uid) {
+                Promise.all(
+                    res.data.map(async (conv: any) => {
+                        seedPublicKeyCache(conv.participants || []);
+                        if (conv.lastMessage?.isEncrypted && conv.lastMessage?.e2ee) {
+                            const convKey = await getOrCreateConversationKey(
+                                conv._id,
+                                uid,
+                                conv.participants || [],
+                                conv.encryptedKeys,
+                                conv.e2eeKeyVersion || 1
+                            );
+                            if (convKey) {
+                                const plain = decryptMessagePayload(conv.lastMessage.e2ee, convKey);
+                                if (plain) {
+                                    return {
+                                        ...conv,
+                                        lastMessage: {
+                                            ...conv.lastMessage,
+                                            content: plain.content ?? conv.lastMessage.content,
+                                            type: plain.type ?? conv.lastMessage.type,
+                                            attachmentMeta: plain.attachmentMeta ?? conv.lastMessage.attachmentMeta,
+                                            voiceDuration: plain.voiceDuration ?? conv.lastMessage.voiceDuration,
+                                            location: plain.location ?? conv.lastMessage.location,
+                                        },
+                                    };
+                                }
+                            }
+                        }
+                        return conv;
+                    })
+                ).then((decryptedList) => {
+                    setConversations(decryptedList);
+                    setCachedConversations(uid, decryptedList);
+                }).catch(() => {});
+            }
         }
     };
 

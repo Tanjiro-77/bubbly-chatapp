@@ -83,7 +83,9 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
 
   // ── Story State ──
   const [selectedPreset, setSelectedPreset] = useState(0);
-  const [storyText, setStoryText] = useState("Just shipped Bubbly v4.2.1! Real voice transcribe ✨");
+  const [storyText, setStoryText] = useState(
+    "Just shipped Bubbly v4.2.1! Real voice transcribe ✨",
+  );
   const [storyProgress, setStoryProgress] = useState(35);
   const [isPaused, setIsPaused] = useState(false);
   const [storyEmoji, setStoryEmoji] = useState<string | null>(null);
@@ -319,7 +321,9 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-bold leading-tight">Arnav Khari</p>
-                  <p className="text-[10px] text-emerald-500 font-medium">online · 🎧 Listening · v4.2.1</p>
+                  <p className="text-[10px] text-emerald-500 font-medium">
+                    online · 🎧 Listening · v4.2.1
+                  </p>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -615,7 +619,10 @@ export function PhoneSimulator({ initialTab = "chat" }: { initialTab?: Simulator
                             if (storyEmojiTimeoutRef.current) {
                               clearTimeout(storyEmojiTimeoutRef.current);
                             }
-                            storyEmojiTimeoutRef.current = setTimeout(() => setStoryEmoji(null), 1500);
+                            storyEmojiTimeoutRef.current = setTimeout(
+                              () => setStoryEmoji(null),
+                              1500,
+                            );
                           }}
                           className="hover:scale-125 transition-transform"
                         >

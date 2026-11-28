@@ -48,6 +48,13 @@ export const Route = createFileRoute("/security")({
 
 const securityPillars = [
   {
+    icon: ShieldCheck,
+    title: "End-to-End Encryption (X25519 + XSalsa20-Poly1305)",
+    badge: "Zero-Knowledge E2EE",
+    description:
+      "Every user generates an X25519 identity key pair locally on-device. Messages, voice notes, and shared media are encrypted on-device with per-conversation 256-bit keys before leaving the phone—our servers only relay ciphertext and cannot read your chats.",
+  },
+  {
     icon: Lock,
     title: "Encryption in Transit (TLS / WSS)",
     badge: "Transport Security",
@@ -102,14 +109,14 @@ const dataSafetyRows = [
   {
     category: "Messages, Voice Notes & Media",
     purpose: "Core real-time chat & Story Studio functionality",
-    encrypted: "Yes (TLS / WSS)",
-    shared: "Only with intended chat recipients",
+    encrypted: "Yes (E2EE X25519 + XSalsa20-Poly1305 & TLS)",
+    shared: "Only ciphertext relayed to intended recipients",
     deletable: "Yes (Delete message / Delete account)",
   },
   {
     category: "Audio & Video Call Streams",
     purpose: "Live Agora voice and video calls",
-    encrypted: "Yes (Agora RTC encrypted channel)",
+    encrypted: "Yes (Per-call AES-128-GCM2 Agora media encryption)",
     shared: "Not recorded or stored on servers",
     deletable: "Call logs cleared on account deletion",
   },

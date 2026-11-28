@@ -77,7 +77,16 @@ export function formatMessageNotificationBody(message: {
     location?: { label?: string };
     voiceDuration?: number;
     isViewOnce?: boolean;
+    isEncrypted?: boolean;
 }): string {
+    if (message.isEncrypted) {
+        if (message.isViewOnce) return "🔒 Encrypted view-once media";
+        if (message.type === "image") return "🔒 Encrypted photo";
+        if (message.type === "video") return "🔒 Encrypted video";
+        if (message.type === "voice") return "🔒 Encrypted voice message";
+        if (message.type === "file") return "🔒 Encrypted file";
+        return "🔒 New encrypted message";
+    }
     if (message.isViewOnce) {
         return message.type === "video" ? "🎥 View-once video" : "📷 View-once photo";
     }

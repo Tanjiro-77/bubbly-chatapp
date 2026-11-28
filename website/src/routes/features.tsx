@@ -84,6 +84,26 @@ export function FeaturesPage() {
         <div className="pointer-events-none absolute inset-0 grid-bg opacity-20" />
 
         <div className="relative mx-auto max-w-6xl">
+          {/* ── E2EE & Store-Grade Banner ── */}
+          <div className="spotlight-card mb-8 rounded-3xl p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4 border-emerald-500/25">
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 font-mono text-sm font-bold">
+                E2EE
+              </span>
+              <div>
+                <p className="font-display text-base font-extrabold text-foreground">
+                  End-to-End Encrypted by Default
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  X25519 + XSalsa20-Poly1305 messages &amp; media, AES-128-GCM2 Agora calls, and 60-digit Safety Numbers.
+                </p>
+              </div>
+            </div>
+            <span className="rounded-full bg-emerald-500/10 border border-emerald-500/25 px-3 py-1 font-mono text-[11px] font-bold text-emerald-500">
+              Play Store &amp; App Store Ready
+            </span>
+          </div>
+
           {/* ── Search & Filter Toolbar ── */}
           <div className="rounded-3xl border border-border bg-card/85 p-6 backdrop-blur-xl shadow-lg mb-14">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

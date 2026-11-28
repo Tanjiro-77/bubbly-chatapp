@@ -33,6 +33,12 @@ export const Route = createFileRoute("/faq")({
 
 const faqs = [
   {
+    q: "Are my messages, media, and calls end-to-end encrypted?",
+    a: "Yes! Bubbly uses X25519 + XSalsa20-Poly1305 end-to-end encryption for messages, voice notes, and shared media, plus per-call AES-128-GCM2 media encryption for Agora voice and video calls. Private keys stay on your device, and you can verify 60-digit Safety Numbers in any contact's profile.",
+    category: "Privacy & Security",
+    emoji: "🔒",
+  },
+  {
     q: "Is Bubbly completely free to use?",
     a: "Yes, 100% free! Bubbly is an open-source, full-stack messaging application built by Arnav Khari. There are zero subscriptions, paywalls, or in-app purchases.",
     category: "General",

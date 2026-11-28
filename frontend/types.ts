@@ -193,6 +193,19 @@ export type ConversationProps = {
     name: string;
     avatar: string;
     email: string;
+    e2eePublicKey?: string;
+    e2eeKeyVersion?: number;
+    e2eeKeyFingerprint?: string;
+  }[];
+
+  isEncrypted?: boolean;
+  e2eeKeyVersion?: number;
+  encryptedKeys?: {
+    userId: string;
+    encryptedKey: string;
+    nonce: string;
+    senderPublicKey: string;
+    keyVersion: number;
   }[];
 
   name?: string;
@@ -219,6 +232,14 @@ export type ConversationProps = {
     voiceDuration?: number;
     isDeleted?: boolean;
     isSilent?: boolean;
+    isEncrypted?: boolean;
+    e2ee?: {
+      v: number;
+      alg: string;
+      iv: string;
+      ciphertext: string;
+      keyVersion?: number;
+    } | null;
 
     callMeta?: CallMetaProps | null;
     poll?: PollProps | null;
@@ -282,6 +303,8 @@ export type AttachmentMetaProps = {
   | "audio";
   isHd?: boolean;
   isViewOnce?: boolean;
+  fileKey?: string;
+  fileNonce?: string;
 };
 
 // Alias used by MessageProps
@@ -445,6 +468,14 @@ export interface MessageProps {
   isForwarded?: boolean;
   isViewOnce?: boolean;
   viewOnceOpenedBy?: string[];
+  isEncrypted?: boolean;
+  e2ee?: {
+    v: number;
+    alg: string;
+    iv: string;
+    ciphertext: string;
+    keyVersion?: number;
+  } | null;
 }
 
 // ─────────────────────────────────────────────

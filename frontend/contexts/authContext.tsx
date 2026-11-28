@@ -14,6 +14,7 @@ import {
     registerForPushNotificationsAsync,
     unregisterPushTokenAsync,
 } from "../services/notificationService";
+import { publishMyPublicKey } from "../utils/e2ee";
 
 
 export const AuthContext = createContext<AuthContextProps>({
@@ -51,6 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     connectSocket().catch(() => {});
                     bootstrapAndSyncPreferences(storedToken, decoded.user.id).catch(() => {});
                     registerForPushNotificationsAsync(storedToken).catch(() => {});
+                    publishMyPublicKey(decoded.user.id, storedToken).catch(() => {});
                 } else {
                     await AsyncStorage.removeItem('token');
                 }
@@ -89,6 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         connectSocket().catch(() => {});
         bootstrapAndSyncPreferences(authToken, decoded.user.id).catch(() => {});
         registerForPushNotificationsAsync(authToken).catch(() => {});
+        publishMyPublicKey(decoded.user.id, authToken).catch(() => {});
         return decoded.user;
     }, []);
 

@@ -108,6 +108,17 @@ const messageSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
+    isEncrypted: {
+        type: Boolean,
+        default: false,
+    },
+    e2ee: {
+        v: { type: Number },
+        alg: { type: String },
+        iv: { type: String },
+        ciphertext: { type: String },
+        keyVersion: { type: Number },
+    },
     viewOnceOpenedBy: [
         {
             type: mongoose.Schema.Types.ObjectId,

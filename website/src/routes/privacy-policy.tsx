@@ -87,7 +87,7 @@ const permissionsList = [
 const thirdPartyServices = [
   {
     name: "MongoDB Atlas / Bubbly Backend",
-    role: "Stores user accounts, conversation metadata, encrypted password hashes, and messages.",
+    role: "Stores user accounts, public key directory, and end-to-end encrypted message ciphertext (never plaintext E2EE messages).",
   },
   {
     name: "Agora.io (RTC SDK)",

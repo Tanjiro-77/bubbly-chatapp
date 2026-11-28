@@ -83,6 +83,8 @@ export function formatMessagePayload(message: any, extras?: {
         isForwarded: message.isForwarded || false,
         isSilent: message.isSilent || false,
         isViewOnce: isDeleted ? false : (message.isViewOnce || false),
+        isEncrypted: Boolean(message.isEncrypted),
+        e2ee: isDeleted ? null : (message.e2ee || null),
         viewOnceOpenedBy: isDeleted ? [] : (message.viewOnceOpenedBy || []).map((u: any) => u.toString?.() || u),
     };
 }
@@ -107,6 +109,7 @@ export function maskAnonymousPoll(poll: any, viewerId: string) {
     };
 }
 
+// SVG is intentionally excluded: it can contain executable scripts and must never be stored/served.
 const ALLOWED_MIME = new Set([
     "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic",
     "video/mp4", "video/quicktime", "video/webm",
@@ -120,6 +123,7 @@ const ALLOWED_MIME = new Set([
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "text/plain",
     "application/zip",
+    "application/octet-stream",
 ]);
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -140,6 +144,10 @@ export function validateAttachment(meta?: {
     if (meta.mimeType !== undefined) {
         if (typeof meta.mimeType !== "string") {
             throw new Error("This file type is not allowed");
+        }
+        // Block SVG uploads — SVG can embed executable scripts
+        if (meta.mimeType === "image/svg+xml" || meta.mimeType.toLowerCase().includes("svg")) {
+            throw new Error("SVG files are not allowed for security reasons");
         }
         if (!ALLOWED_MIME.has(meta.mimeType) && !meta.mimeType.startsWith("image/") && !meta.mimeType.startsWith("audio/")) {
             throw new Error("This file type is not allowed");

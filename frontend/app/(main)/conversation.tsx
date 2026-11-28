@@ -28,6 +28,8 @@ import {
     uploadFileToCloudinary,
     uploadAudioToCloudinary,
     uploadDocumentToCloudinary,
+    uploadEncryptedFileToCloudinary,
+    downloadAndDecryptE2EEFile,
     getFileIcon,
     formatFileSize,
 } from "../../services/imageService"
@@ -47,7 +49,18 @@ import {
     onMessageAck,
     onChecklistUpdated,
     isSocketConnected, onSocketConnectionChange,
+    onE2EEConversationKeysUpdated,
+    onE2EEConversationKeyRequested,
+    requestConversationKey,
 } from "../../socket/socketEvents"
+import {
+    getOrCreateConversationKey,
+    encryptMessagePayload,
+    decryptMessagePayload,
+    seedPublicKeyCache,
+    wrapConversationKeyForPeer,
+    generateCallEncryptionCredentials,
+} from "../../utils/e2ee"
 import { connectSocket } from "../../socket/socket"
 import {
     MessageProps, ReplyToProps, ResponseProps,
@@ -1451,6 +1464,157 @@ const Conversation = () => {
     const isDirectRef = useRef(type === 'direct');
     isDirectRef.current = type === 'direct';
     const prevConvIdRef = useRef(conversationId);
+    const convKeyRef = useRef<string | null>(null);
+    const [isE2EEActive, setIsE2EEActive] = useState(false);
+
+    useEffect(() => {
+        const isNotesChat = typeof conversationId === 'string' && conversationId.startsWith('notes_');
+        if (!conversationId || !currentUser?.id || isNotesChat) return;
+        let cancelled = false;
+        seedPublicKeyCache(participants);
+        getOrCreateConversationKey(
+            conversationId as string,
+            currentUser.id,
+            participants
+        ).then((key) => {
+            if (!cancelled && key) {
+                convKeyRef.current = key;
+                setIsE2EEActive(true);
+            }
+        }).catch(() => {});
+
+        const handleKeysUpdated = (res: any) => {
+            if (res?.data?.conversationId !== conversationId || !currentUser?.id) return;
+            getOrCreateConversationKey(
+                conversationId as string,
+                currentUser.id,
+                participants,
+                res.data.encryptedKeys,
+                res.data.e2eeKeyVersion || 1
+            ).then((key) => {
+                if (!cancelled && key) {
+                    convKeyRef.current = key;
+                    setIsE2EEActive(true);
+                    // Re-decrypt any messages that arrived before the key was unwrapped
+                    setMessages((prev) => {
+                        const encryptedItems = prev.filter((m) => m.isEncrypted && m.e2ee);
+                        if (encryptedItems.length === 0) return prev;
+                        Promise.all(encryptedItems.map((m) => decryptMessageForUI(m)))
+                            .then((resolved) => {
+                                if (cancelled) return;
+                                const resolvedMap = new Map(resolved.map((r) => [r.id, r]));
+                                setMessages((curr) => curr.map((m) => resolvedMap.get(m.id) || m));
+                            })
+                            .catch(() => {});
+                        return prev;
+                    });
+                }
+            }).catch(() => {});
+        };
+
+        const handleKeyRequested = (data: any) => {
+            if (data?.conversationId !== conversationId || !currentUser?.id) return;
+            if (data.requesterId && data.requesterPublicKey) {
+                wrapConversationKeyForPeer(
+                    conversationId as string,
+                    currentUser.id,
+                    data.requesterId,
+                    data.requesterPublicKey,
+                    data.keyVersion || 1
+                ).catch(() => {});
+            }
+        };
+
+        onE2EEConversationKeysUpdated(handleKeysUpdated);
+        onE2EEConversationKeyRequested(handleKeyRequested);
+        return () => {
+            cancelled = true;
+            onE2EEConversationKeysUpdated(handleKeysUpdated, true);
+            onE2EEConversationKeyRequested(handleKeyRequested, true);
+        };
+    }, [conversationId, currentUser?.id, participants]);
+
+    const ensureConvKey = useCallback(async (): Promise<string | null> => {
+        if (convKeyRef.current) return convKeyRef.current;
+        if (!conversationId || !currentUserRef.current?.id) return null;
+        const key = await getOrCreateConversationKey(
+            conversationId as string,
+            currentUserRef.current.id,
+            participants
+        );
+        if (key) {
+            convKeyRef.current = key;
+            setIsE2EEActive(true);
+        }
+        return key;
+    }, [conversationId, participants]);
+
+    const decryptMessageForUI = useCallback(async (msg: MessageProps): Promise<MessageProps> => {
+        if (!msg?.isEncrypted || !msg?.e2ee) return msg;
+        const convKey = await ensureConvKey();
+        if (!convKey) return { ...msg, content: msg.content || "🔒 Unable to decrypt message" };
+
+        const plain = decryptMessagePayload(msg.e2ee, convKey);
+        if (!plain) return { ...msg, content: msg.content || "🔒 Unable to decrypt message" };
+
+        let resolvedAttachment = plain.attachement ?? msg.attachement ?? null;
+        let resolvedMeta = (plain.attachmentMeta ?? msg.attachmentMeta ?? null) as MessageProps["attachmentMeta"];
+        let resolvedVoice = plain.voiceUrl ?? msg.voiceUrl ?? null;
+
+        if (
+            resolvedMeta?.url &&
+            resolvedMeta?.fileKey &&
+            resolvedMeta?.fileNonce &&
+            !resolvedMeta.url.startsWith("data:") &&
+            !resolvedMeta.url.startsWith("blob:")
+        ) {
+            const localUri = await downloadAndDecryptE2EEFile(
+                resolvedMeta.url,
+                resolvedMeta.fileKey,
+                resolvedMeta.fileNonce,
+                resolvedMeta.mimeType || "application/octet-stream"
+            );
+            if (localUri) {
+                resolvedAttachment = localUri;
+                resolvedMeta = { ...resolvedMeta, url: localUri };
+            }
+        }
+        if (
+            resolvedVoice &&
+            plain.voiceFileKey &&
+            plain.voiceFileNonce &&
+            !resolvedVoice.startsWith("data:") &&
+            !resolvedVoice.startsWith("blob:")
+        ) {
+            const localAudio = await downloadAndDecryptE2EEFile(
+                resolvedVoice,
+                plain.voiceFileKey,
+                plain.voiceFileNonce,
+                "audio/m4a"
+            );
+            if (localAudio) resolvedVoice = localAudio;
+        }
+
+        let resolvedReplyTo = msg.replyTo;
+        if (resolvedReplyTo && (resolvedReplyTo as any).isEncrypted && (resolvedReplyTo as any).e2ee) {
+            const rPlain = decryptMessagePayload((resolvedReplyTo as any).e2ee, convKey);
+            if (rPlain) {
+                resolvedReplyTo = { ...resolvedReplyTo, content: rPlain.content || "" };
+            }
+        }
+
+        return {
+            ...msg,
+            content: plain.content ?? msg.content ?? "",
+            type: (plain.type as any) ?? msg.type,
+            attachement: resolvedAttachment,
+            attachmentMeta: resolvedMeta,
+            voiceUrl: resolvedVoice,
+            voiceDuration: plain.voiceDuration ?? msg.voiceDuration,
+            location: plain.location ?? msg.location,
+            replyTo: resolvedReplyTo,
+        };
+    }, [ensureConvKey]);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -2393,7 +2557,14 @@ const Conversation = () => {
             BubblyAlert.alert("Connecting...", "Reconnecting your real-time session. Please try again in a moment.");
             return;
         }
-        callInvite({ conversationId: conversationId as string, calleeId: targetCalleeId, kind: callKind });
+        const callCreds = generateCallEncryptionCredentials();
+        callInvite({
+            conversationId: conversationId as string,
+            calleeId: targetCalleeId,
+            kind: callKind,
+            e2eeMediaKey: callCreds.e2eeMediaKey,
+            e2eeMediaSalt: callCreds.e2eeMediaSalt,
+        });
     }, [otherParticipant, currentUser, conversationId, isDirect, isNotesToSelf]);
 
     const callRingingHandler = useCallback((data: any) => {
@@ -2406,6 +2577,8 @@ const Conversation = () => {
                 remoteUserName: isDirect ? otherParticipantRef.current?.name : nameRef.current,
                 remoteUserAvatar: isDirect ? otherParticipantRef.current?.avatar : avatarRef.current,
                 isOutgoing: 'true',
+                ...(data.e2eeMediaKey ? { e2eeMediaKey: data.e2eeMediaKey } : {}),
+                ...(data.e2eeMediaSalt ? { e2eeMediaSalt: data.e2eeMediaSalt } : {}),
             },
         });
     }, [isDirect, conversationId]);
@@ -2512,34 +2685,41 @@ const Conversation = () => {
             conversationId: conversationId as string,
         };
 
-        const isOwnMessage = normalizedMessage.sender?.id?.toString() === currentUser?.id?.toString();
+        const finalizeIncoming = (resolvedMsg: MessageProps) => {
+            const isOwnMessage = resolvedMsg.sender?.id?.toString() === currentUser?.id?.toString();
 
-        setMessageStatuses(prev => ({
-            ...prev,
-            [normalizedMessage.id]: isOwnMessage ? (prev[normalizedMessage.id] || "sent") : prev[normalizedMessage.id],
-        }));
+            setMessageStatuses(prev => ({
+                ...prev,
+                [resolvedMsg.id]: isOwnMessage ? (prev[resolvedMsg.id] || "sent") : prev[resolvedMsg.id],
+            }));
 
-        // We received this from another user, so confirm delivery back to the sender.
-        if (!isOwnMessage) {
-            messageDelivered({
-                messageId: normalizedMessage.id,
-                conversationId: conversationId as string,
+            if (!isOwnMessage) {
+                messageDelivered({
+                    messageId: resolvedMsg.id,
+                    conversationId: conversationId as string,
+                });
+                if (isScrolledUpRef.current) {
+                    setNewMessagesBelow(prev => prev + 1);
+                }
+            }
+
+            hasSyncedMessagesRef.current = true;
+            setMessages((prev) => {
+                if (prev.some((msg) => msg.id === resolvedMsg.id)) {
+                    return prev;
+                }
+                return [resolvedMsg, ...prev];
             });
-            if (isScrolledUpRef.current) {
-                setNewMessagesBelow(prev => prev + 1);
-            }
+
+            setTypingUser(null);
+            markAsRead(conversationId as string);
+        };
+
+        if (normalizedMessage.isEncrypted && normalizedMessage.e2ee) {
+            decryptMessageForUI(normalizedMessage).then(finalizeIncoming).catch(() => finalizeIncoming(normalizedMessage));
+        } else {
+            finalizeIncoming(normalizedMessage);
         }
-
-        hasSyncedMessagesRef.current = true;
-        setMessages((prev) => {
-            if (prev.some((msg) => msg.id === normalizedMessage.id)) {
-                return prev;
-            }
-            return [normalizedMessage, ...prev];
-        });
-
-        setTypingUser(null);
-        markAsRead(conversationId as string);
     };
 
     const messagesHandler = (res: ResponseProps) => {
@@ -2560,6 +2740,43 @@ const Conversation = () => {
                 ...msg,
                 conversationId: msg.conversationId || (conversationId as string),
             }));
+            const rawEncryptedKeys = (res as any).encryptedKeys;
+            const keyVersion = (res as any).e2eeKeyVersion || 1;
+            const decryptBatch = async () => {
+                if (Array.isArray(rawEncryptedKeys) && currentUserRef.current?.id && conversationId) {
+                    const key = await getOrCreateConversationKey(
+                        conversationId as string,
+                        currentUserRef.current.id,
+                        participants,
+                        rawEncryptedKeys,
+                        keyVersion
+                    );
+                    if (key) {
+                        convKeyRef.current = key;
+                        setIsE2EEActive(true);
+                    } else if (rawEncryptedKeys.length > 0) {
+                        requestConversationKey(conversationId as string);
+                    }
+                }
+                if (pageMessages.some(m => m.isEncrypted && m.e2ee)) {
+                    const decryptedPage = await Promise.all(pageMessages.map(m => decryptMessageForUI(m)));
+                    setMessages(prev => prev.map(existing => {
+                        const match = decryptedPage.find(d => d.id === existing.id);
+                        return match || existing;
+                    }));
+                }
+                if (Array.isArray((res as any).pinnedMessages) && convKeyRef.current) {
+                    const decPins = (res as any).pinnedMessages.map((pm: any) => {
+                        if (pm?.isEncrypted && pm?.e2ee && convKeyRef.current) {
+                            const plain = decryptMessagePayload(pm.e2ee, convKeyRef.current);
+                            if (plain) return { ...pm, content: plain.content ?? pm.content };
+                        }
+                        return pm;
+                    });
+                    setPinnedMessages(decPins);
+                }
+            };
+            decryptBatch().catch(() => {});
             setMessageStatuses(prev => {
                 const next = { ...prev };
                 for (const msg of pageMessages) {
@@ -2636,7 +2853,14 @@ const Conversation = () => {
 
     const pinnedMessageHandler = useCallback((res: any) => {
         if (res?.success && res.data?.conversationId === conversationId) {
-            setPinnedMessages(res.data.pinnedMessages || []);
+            const pins = (res.data.pinnedMessages || []).map((pm: any) => {
+                if (pm?.isEncrypted && pm?.e2ee && convKeyRef.current) {
+                    const plain = decryptMessagePayload(pm.e2ee, convKeyRef.current);
+                    if (plain) return { ...pm, content: plain.content ?? pm.content };
+                }
+                return pm;
+            });
+            setPinnedMessages(pins);
             if (res.data.action === "pinned") {
                 setMessages(prev => prev.map(m => m.id === res.data.messageId ? { ...m, isPinned: true } : m));
             } else if (res.data.action === "unpinned") {
@@ -2692,6 +2916,13 @@ const Conversation = () => {
 
     const editMessageHandler = useCallback((res: ResponseProps) => {
         if (res.success) {
+            if (res.data?.isEncrypted && res.data?.e2ee && convKeyRef.current) {
+                const plain = decryptMessagePayload(res.data.e2ee, convKeyRef.current);
+                if (plain) {
+                    setMessages(prev => prev.map(msg => msg.id === res.data.messageId ? { ...msg, content: plain.content ?? msg.content, isEdited: true } : msg));
+                    return;
+                }
+            }
             setMessages(prev => prev.map(msg => msg.id === res.data.messageId ? { ...msg, content: res.data.content, isEdited: true } : msg));
         }
     }, []);
@@ -2737,7 +2968,6 @@ const Conversation = () => {
                 return updated;
             });
             recordMessageSentActivity(conversationId as string);
-            recordMessageSentActivity(conversationId as string);
             setIsSilentSend(false);
             return;
         }
@@ -2759,17 +2989,45 @@ const Conversation = () => {
         };
         setMessages(prev => [optimisticCard, ...prev]);
         setMessageStatuses(prev => ({ ...prev, [clientId]: "sending" }));
-        newMessage({
-            conversationId,
-            sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-            content: textPayload,
-            type: "text",
-            isSilent: isSilentSend,
-            clientId,
-        });
+        if (!checklistObj) {
+            ensureConvKey().then((convKey) => {
+                if (convKey) {
+                    const e2ee = encryptMessagePayload({ content: textPayload, type: "text" }, convKey);
+                    newMessage({
+                        conversationId,
+                        sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                        content: "",
+                        type: "text",
+                        isSilent: isSilentSend,
+                        isEncrypted: true,
+                        e2ee,
+                        clientId,
+                    });
+                } else {
+                    newMessage({
+                        conversationId,
+                        sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                        content: textPayload,
+                        type: "text",
+                        isSilent: isSilentSend,
+                        clientId,
+                    });
+                }
+            }).catch(() => {});
+        } else {
+            newMessage({
+                conversationId,
+                sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                content: textPayload,
+                type: "checklist",
+                checklist: checklistObj,
+                isSilent: isSilentSend,
+                clientId,
+            });
+        }
         recordMessageSentActivity(conversationId as string);
         setIsSilentSend(false);
-    }, [currentUser, conversationId, isNotesToSelf, isSilentSend]);
+    }, [currentUser, conversationId, isNotesToSelf, isSilentSend, ensureConvKey]);
 
     const handleCreateChecklist = useCallback((checklist: ChecklistProps) => {
         setShowChecklistModal(false);
@@ -3176,9 +3434,34 @@ const Conversation = () => {
         }
         setIsUploadingVoice(true);
         try {
-            const uploadResult = await uploadAudioToCloudinary(uri, "voice-messages");
-            if (!uploadResult.success || !uploadResult.data) { BubblyAlert.alert("Error", "Could not upload voice message"); return; }
-            newMessage({ conversationId, sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }, content: "", attachement: null, replyTo: replyTo?.id || null, voiceUrl: uploadResult.data, voiceDuration: duration, isSilent: isSilentSend });
+            const convKey = await ensureConvKey();
+            if (convKey) {
+                const encVoice = await uploadEncryptedFileToCloudinary(uri, "e2ee-voice");
+                if (!encVoice.success || !encVoice.data) { BubblyAlert.alert("Error", "Could not upload encrypted voice message"); return; }
+                const e2ee = encryptMessagePayload({
+                    content: "",
+                    type: "voice",
+                    voiceUrl: encVoice.data.url,
+                    voiceDuration: duration,
+                    voiceFileKey: encVoice.data.fileKey,
+                    voiceFileNonce: encVoice.data.fileNonce,
+                }, convKey);
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: "",
+                    type: "voice",
+                    voiceDuration: duration,
+                    replyTo: replyTo?.id || null,
+                    isSilent: isSilentSend,
+                    isEncrypted: true,
+                    e2ee,
+                });
+            } else {
+                const uploadResult = await uploadAudioToCloudinary(uri, "voice-messages");
+                if (!uploadResult.success || !uploadResult.data) { BubblyAlert.alert("Error", "Could not upload voice message"); return; }
+                newMessage({ conversationId, sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }, content: "", attachement: null, replyTo: replyTo?.id || null, voiceUrl: uploadResult.data, voiceDuration: duration, isSilent: isSilentSend });
+            }
             recordMessageSentActivity(conversationId as string);
             setReplyTo(null);
             setIsSilentSend(false);
@@ -3297,17 +3580,38 @@ const Conversation = () => {
             setReplyTo(null);
             setIsSilentSend(false);
 
-            newMessage({
-                conversationId,
-                sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-                content: "",
-                attachement: resolvedUrl,
-                attachmentMeta: gifMeta,
-                type: 'image',
-                replyTo: currentReply?.id || null,
-                isSilent: currentSilent,
-                clientId,
-            });
+            const convKey = await ensureConvKey();
+            if (convKey) {
+                const e2ee = encryptMessagePayload({
+                    content: "",
+                    type: "image",
+                    attachement: resolvedUrl,
+                    attachmentMeta: gifMeta as any,
+                }, convKey);
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: "",
+                    type: 'image',
+                    replyTo: currentReply?.id || null,
+                    isSilent: currentSilent,
+                    isEncrypted: true,
+                    e2ee,
+                    clientId,
+                });
+            } else {
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: "",
+                    attachement: resolvedUrl,
+                    attachmentMeta: gifMeta,
+                    type: 'image',
+                    replyTo: currentReply?.id || null,
+                    isSilent: currentSilent,
+                    clientId,
+                });
+            }
             recordMessageSentActivity(conversationId as string);
         } catch {
             BubblyAlert.alert("GIF Error", "Failed to send GIF.");
@@ -3516,17 +3820,38 @@ const Conversation = () => {
             setReplyTo(null);
             setIsSilentSend(false);
 
-            newMessage({
-                conversationId,
-                sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
-                content: cleanText,
-                attachement: null,
-                attachmentMeta: null,
-                type: 'text',
-                replyTo: currentReply?.id || null,
-                isSilent: currentSilent,
-                clientId,
-            });
+            const convKey = await ensureConvKey();
+            if (convKey) {
+                const e2ee = encryptMessagePayload({
+                    content: cleanText,
+                    type: "text",
+                }, convKey);
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: "",
+                    attachement: null,
+                    attachmentMeta: null,
+                    type: 'text',
+                    replyTo: currentReply?.id || null,
+                    isSilent: currentSilent,
+                    isEncrypted: true,
+                    e2ee,
+                    clientId,
+                });
+            } else {
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: cleanText,
+                    attachement: null,
+                    attachmentMeta: null,
+                    type: 'text',
+                    replyTo: currentReply?.id || null,
+                    isSilent: currentSilent,
+                    clientId,
+                });
+            }
             recordMessageSentActivity(conversationId as string);
             return;
         }
@@ -3537,8 +3862,24 @@ const Conversation = () => {
             let attachmentMeta = null;
             let messageType = 'text';
 
+            const convKey = await ensureConvKey();
             if (selectedFile) {
-                if (selectedFile.isImage) {
+                if (convKey) {
+                    const encMedia = await uploadEncryptedFileToCloudinary(selectedFile.uri, "e2ee-media");
+                    if (!encMedia.success || !encMedia.data) { setLoading(false); BubblyAlert.alert("Error", "Could not upload encrypted file!"); return; }
+                    messageType = selectedFile.isImage ? 'image' : 'file';
+                    attachmentMeta = {
+                        url: encMedia.data.url,
+                        name: selectedFile.name,
+                        size: encMedia.data.size || selectedFile.size,
+                        mimeType: selectedFile.mimeType,
+                        resourceType: (selectedFile.isImage ? "image" : "raw") as any,
+                        isViewOnce: selectedFile.isImage ? isViewOnce : false,
+                        isHd: selectedFile.isImage ? isHd : false,
+                        fileKey: encMedia.data.fileKey,
+                        fileNonce: encMedia.data.fileNonce,
+                    };
+                } else if (selectedFile.isImage) {
                     const uploadResult = await uploadFileToCloudinary(
                         { uri: selectedFile.uri, mimeType: selectedFile.mimeType, name: selectedFile.name },
                         "message-attachements"
@@ -3556,17 +3897,37 @@ const Conversation = () => {
                 }
             }
 
-            newMessage({
-                conversationId,
-                sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
-                content: message.trim(),
-                attachement,
-                attachmentMeta,
-                type: messageType,
-                replyTo: replyTo?.id || null,
-                isSilent: isSilentSend,
-                isViewOnce: selectedFile?.isImage ? isViewOnce : false,
-            });
+            if (convKey) {
+                const e2ee = encryptMessagePayload({
+                    content: message.trim(),
+                    type: messageType,
+                    attachement: null,
+                    attachmentMeta: attachmentMeta as any,
+                }, convKey);
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: "",
+                    type: messageType,
+                    replyTo: replyTo?.id || null,
+                    isSilent: isSilentSend,
+                    isViewOnce: selectedFile?.isImage ? isViewOnce : false,
+                    isEncrypted: true,
+                    e2ee,
+                });
+            } else {
+                newMessage({
+                    conversationId,
+                    sender: { id: currentUser?.id, name: currentUser.name, avatar: currentUser.avatar },
+                    content: message.trim(),
+                    attachement,
+                    attachmentMeta,
+                    type: messageType,
+                    replyTo: replyTo?.id || null,
+                    isSilent: isSilentSend,
+                    isViewOnce: selectedFile?.isImage ? isViewOnce : false,
+                });
+            }
             recordMessageSentActivity(conversationId as string);
             if (draftSaveTimerRef.current) {
                 clearTimeout(draftSaveTimerRef.current);
@@ -3598,8 +3959,9 @@ const Conversation = () => {
             const prevDateStr = prevChronological ? getLocalDateKey(prevChronological.createdAt) : '';
 
             if (msgDateStr !== prevDateStr) {
+                // Use the index position to guarantee key uniqueness across all separators
                 result.push({
-                    id: `separator-${msgDateStr}`,
+                    id: `separator-${msgDateStr}-${i}`,
                     type: 'separator',
                     date: msg.createdAt,
                 });
@@ -3719,7 +4081,9 @@ const Conversation = () => {
                         const lines = [...messages].reverse().map(m => {
                             const time = moment(m.createdAt).format('YYYY-MM-DD HH:mm');
                             const sender = m.sender?.name || (m.sender?.id === currentUser?.id ? "You" : "User");
-                            const content = formatRichPreviewText(m.content) || (m.type === 'image' ? '[Photo]' : m.type === 'voice' ? '[Voice Note]' : '[Attachment]');
+                            const content = m.isDeleted
+                                ? '[Deleted Message]'
+                                : formatRichPreviewText(m.content) || (m.type === 'image' ? '[Photo]' : m.type === 'voice' ? '[Voice Note]' : '[Attachment]');
                             return `[${time}] ${sender}: ${content}`;
                         });
                         const chatText = `--- Bubbly Chat Export: ${conversationName} ---\nExported on: ${moment().format('LLL')}\nTotal Messages: ${messages.length}\n\n` + lines.join('\n');

@@ -2,6 +2,7 @@ import axios from "axios";
 import { Platform } from "react-native";
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "../constants";
 import { ResponseProps } from "../types";
+import { bytesToBase64, decryptBytesForE2EE, encryptBytesForE2EE } from "../utils/e2ee";
 
 const CLOUDINARY_IMAGE_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
 const CLOUDINARY_AUDIO_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
@@ -171,6 +172,80 @@ export const uploadDocumentToCloudinary = async (
     } catch (error: any) {
         console.log("uploadDocumentToCloudinary error:", error);
         return { success: false, msg: error.message || "Could not upload file" };
+    }
+};
+
+async function uriToUint8Array(uri: string): Promise<Uint8Array> {
+    const res = await fetch(uri);
+    if (typeof res.arrayBuffer === "function") {
+        const ab = await res.arrayBuffer();
+        return new Uint8Array(ab);
+    }
+    const blob = await res.blob();
+    const ab = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(reader.error || new Error("Failed to read file bytes"));
+        reader.readAsArrayBuffer(blob);
+    });
+    return new Uint8Array(ab);
+}
+
+export const uploadEncryptedFileToCloudinary = async (
+    uri: string,
+    folderName: string = "e2ee-media"
+): Promise<{ success: boolean; data?: { url: string; fileKey: string; fileNonce: string; size: number }; msg?: string }> => {
+    try {
+        const plainBytes = await uriToUint8Array(uri);
+        const { encryptedBytes, fileKey, fileNonce } = encryptBytesForE2EE(plainBytes);
+
+        const formData = new FormData();
+        if (Platform.OS === "web") {
+            const blob = new Blob([encryptedBytes as unknown as BlobPart], { type: "application/octet-stream" });
+            formData.append("file", blob, `enc_${Date.now()}.bin`);
+        } else {
+            const b64 = bytesToBase64(encryptedBytes);
+            formData.append("file", `data:application/octet-stream;base64,${b64}`);
+        }
+        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+        formData.append("folder", folderName);
+        formData.append("resource_type", "raw");
+
+        const response = await axios.post(CLOUDINARY_RAW_URL, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+        return {
+            success: true,
+            data: {
+                url: response?.data?.secure_url,
+                fileKey,
+                fileNonce,
+                size: plainBytes.length,
+            },
+        };
+    } catch (error: any) {
+        console.log("uploadEncryptedFileToCloudinary error:", error);
+        return { success: false, msg: error?.message || "Could not upload encrypted file" };
+    }
+};
+
+export const downloadAndDecryptE2EEFile = async (
+    url: string,
+    fileKey: string,
+    fileNonce: string,
+    mimeType: string = "application/octet-stream"
+): Promise<string | null> => {
+    try {
+        const encBytes = await uriToUint8Array(url);
+        const plain = decryptBytesForE2EE(encBytes, fileKey, fileNonce);
+        if (!plain) return null;
+        if (Platform.OS === "web") {
+            const blob = new Blob([plain as unknown as BlobPart], { type: mimeType });
+            return URL.createObjectURL(blob);
+        }
+        return `data:${mimeType};base64,${bytesToBase64(plain)}`;
+    } catch {
+        return null;
     }
 };
 

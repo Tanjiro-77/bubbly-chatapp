@@ -173,16 +173,59 @@
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-soft);
   transition:
-    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
     border-color 0.3s ease,
-    box-shadow 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      420px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+      color-mix(in oklab, var(--color-primary) 16%, transparent),
+      transparent 70%
+    );
+    transition: opacity 0.3s ease;
+  }
 
   &:hover {
     transform: translateY(-4px);
     border-color: color-mix(in oklab, var(--color-primary) 55%, var(--color-border));
     box-shadow:
-      0 12px 32px -12px color-mix(in oklab, var(--color-primary) 28%, transparent),
+      0 14px 36px -12px color-mix(in oklab, var(--color-primary) 30%, transparent),
       var(--shadow-soft);
+  }
+
+  &:hover::after {
+    opacity: 1;
+  }
+}
+
+@utility btn-shimmer {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 45%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.28),
+      transparent
+    );
+    transform: translateX(-140%) skewX(-18deg);
+    transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+
+  &:hover::after {
+    transform: translateX(280%) skewX(-18deg);
   }
 }
 

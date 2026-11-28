@@ -78,7 +78,14 @@ export function AboutPage() {
       title: "v4.2.1: Voice Transcription, Durable Sync & Obsidian Craft",
       text: "Bubbly v4.2.1 brings real Gemini/Whisper voice-note transcription, full device + cloud settings synchronization, rebuilt two-phase Agora calling with ringback audio & reconnect grace, redesigned Obsidian splash and interactive How-to-Use studio, and app-wide crash hardening.",
       emoji: "🚀",
-      tag: "Latest Release",
+      tag: "Core Release",
+    },
+    {
+      chapter: "05",
+      title: "Full End-to-End Encryption & Store-Grade Privacy",
+      text: "Upgraded with X25519 + XSalsa20-Poly1305 end-to-end encryption for messages, voice notes, and media, AES-128-GCM2 encrypted Agora calls, 60-digit Safety Numbers, and zero-knowledge push alerts — engineered to pass Play Store and App Store reviews.",
+      emoji: "🔐",
+      tag: "Zero-Knowledge E2EE",
     },
   ];
 

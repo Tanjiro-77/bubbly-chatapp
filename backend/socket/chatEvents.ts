@@ -23,6 +23,7 @@ function sanitizeLastMessage(lastMessage: any) {
             poll: null,
             checklist: null,
             callMeta: null,
+            e2ee: null,
         };
     }
     if (!lastMessage.isViewOnce) return lastMessage;
@@ -75,6 +76,8 @@ function formatPinnedMessages(pinnedMessages: any[] = []) {
             id: pm._id.toString(),
             content: pm.content,
             type: pm.type,
+            isEncrypted: Boolean(pm.isEncrypted),
+            e2ee: pm.e2ee || null,
             createdAt: pm.createdAt,
             sender: pm.senderId ? {
                 id: pm.senderId._id?.toString(),
@@ -157,12 +160,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     deletedFor: { $ne: userId },
                 })
                     .sort({ updatedAt: -1 })
-                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent" })
-                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus privacy blockedUsers" })
+                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent isEncrypted e2ee" })
+                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus privacy blockedUsers e2eePublicKey e2eeKeyVersion e2eeKeyFingerprint" })
                     .populate({ path: "admins", select: "name avatar" })
                     .populate({
                         path: "pinnedMessages",
-                        select: "content senderId type createdAt isDeleted",
+                        select: "content senderId type createdAt isDeleted isEncrypted e2ee",
                         populate: { path: "senderId", select: "name avatar" }
                     })
                     .lean(),
@@ -221,12 +224,12 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     { $pull: { deletedFor: userId } },
                     { new: true }
                 )
-                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus privacy blockedUsers" })
+                    .populate({ path: "participants", select: "name avatar email isOnline lastSeen customStatus privacy blockedUsers e2eePublicKey e2eeKeyVersion e2eeKeyFingerprint" })
                     .populate({ path: "admins", select: "name avatar" })
-                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent" })
+                    .populate({ path: "lastMessage", select: "content senderId attachement createdAt voiceUrl voiceDuration isDeleted type attachmentMeta location systemEvent callMeta poll checklist isViewOnce viewOnceOpenedBy isSilent isEncrypted e2ee" })
                     .populate({
                         path: "pinnedMessages",
-                        select: "content senderId type createdAt isDeleted",
+                        select: "content senderId type createdAt isDeleted isEncrypted e2ee",
                         populate: { path: "senderId", select: "name avatar" }
                     })
                     .lean();
@@ -291,7 +294,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             }
 
             const populatedConversation = await Conversation.findById(conversation._id)
-                .populate({ path: "participants", select: "name avatar email" })
+                .populate({ path: "participants", select: "name avatar email e2eePublicKey e2eeKeyVersion e2eeKeyFingerprint" })
                 .populate({ path: "admins", select: "name avatar" })
                 .lean();
 
@@ -339,6 +342,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 isSilent: !!data.isSilent,
                 checklist: data.checklist || null,
                 isViewOnce: !!(data.isViewOnce ?? data.attachmentMeta?.isViewOnce),
+                isEncrypted: !!data.isEncrypted,
+                e2ee: data.e2ee || null,
             });
 
             socket.emit("messageAck", { success: true, data: payload, clientId: data.clientId });
@@ -443,18 +448,20 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                             senderId: { name: string };
                             voiceUrl?: string;
                             type?: string;
+                            isEncrypted?: boolean;
+                            e2ee?: any;
                         } | null
                     }>({
                         path: "replyTo",
-                        select: "content senderId voiceUrl type isDeleted",
+                        select: "content senderId voiceUrl type isDeleted isEncrypted e2ee",
                         populate: { path: "senderId", select: "name" }
                     })
                     .lean(),
                 Conversation.findById(data.conversationId)
-                    .select("pinnedMessages")
+                    .select("pinnedMessages encryptedKeys e2eeKeyVersion")
                     .populate({
                         path: "pinnedMessages",
-                        select: "content senderId type createdAt isDeleted",
+                        select: "content senderId type createdAt isDeleted isEncrypted e2ee",
                         populate: { path: "senderId", select: "name avatar" },
                     })
                     .lean(),
@@ -485,6 +492,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                         voiceUrl: (message.replyTo as any).isDeleted ? null : ((message.replyTo as any).voiceUrl || null),
                         type: (message.replyTo as any).isDeleted ? "text" : (message.replyTo as any).type,
                         isDeleted: (message.replyTo as any).isDeleted || false,
+                        isEncrypted: (message.replyTo as any).isEncrypted || false,
+                        e2ee: (message.replyTo as any).isDeleted ? null : ((message.replyTo as any).e2ee || null),
                     } : null,
                 });
                 const openedViewOnce = formatted.isViewOnce && formatted.viewOnceOpenedBy.includes(userId);
@@ -512,6 +521,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 hasMore,
                 aroundMessageId: aroundMessageFound ? data.aroundMessageId : null,
                 pinnedMessages: formatPinnedMessages(conversationDoc?.pinnedMessages || []),
+                encryptedKeys: conversationDoc?.encryptedKeys || [],
+                e2eeKeyVersion: conversationDoc?.e2eeKeyVersion || 1,
             });
         } catch (error) {
             console.log("getMessages error:", error);
@@ -698,6 +709,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
             message.poll = undefined;
             (message as any).checklist = undefined;
             message.callMeta = undefined;
+            message.e2ee = undefined;
             message.reactions = [] as any;
             message.isPinned = false;
             await message.save();
@@ -741,7 +753,7 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
         }
     });
 
-    socket.on("editMessage", async (data: { messageId: string; conversationId: string; content?: string; newContent?: string }) => {
+    socket.on("editMessage", async (data: { messageId: string; conversationId: string; content?: string; newContent?: string; isEncrypted?: boolean; e2ee?: any }) => {
         try {
             const userId = socket.data.userId;
             if (!data?.messageId || !isValidObjectId(data.messageId)) {
@@ -749,13 +761,14 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
+            const isEncryptedEdit = Boolean(data.isEncrypted && data.e2ee?.ciphertext && data.e2ee?.iv);
             const rawContent = typeof data.content === "string" ? data.content : data.newContent;
-            if (typeof rawContent !== "string" || !rawContent.trim()) {
+            if (!isEncryptedEdit && (typeof rawContent !== "string" || !rawContent.trim())) {
                 socket.emit("editMessage", { success: false, msg: "Message content cannot be empty" });
                 return;
             }
 
-            if (rawContent.length > 5000) {
+            if (typeof rawContent === "string" && rawContent.length > 5000) {
                 socket.emit("editMessage", { success: false, msg: "Message content exceeds limit of 5,000 characters" });
                 return;
             }
@@ -782,7 +795,19 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                 return;
             }
 
-            message.content = rawContent.trim();
+            if (isEncryptedEdit) {
+                message.content = "";
+                message.isEncrypted = true;
+                message.e2ee = {
+                    v: Number(data.e2ee.v || 1),
+                    alg: String(data.e2ee.alg || "x25519-xsalsa20poly1305"),
+                    iv: String(data.e2ee.iv),
+                    ciphertext: String(data.e2ee.ciphertext),
+                    keyVersion: typeof data.e2ee.keyVersion === "number" ? data.e2ee.keyVersion : 1,
+                };
+            } else {
+                message.content = (rawContent || "").trim();
+            }
             message.isEdited = true;
             await message.save();
 
@@ -793,6 +818,8 @@ export function registerChatEvents(io: SocketIOServer, socket: Socket) {
                     messageId: data.messageId,
                     conversationId: message.conversationId.toString(),
                     content: message.content,
+                    isEncrypted: Boolean(message.isEncrypted),
+                    e2ee: message.e2ee || null,
                     isEdited: true,
                 },
             });
