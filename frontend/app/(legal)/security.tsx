@@ -77,13 +77,14 @@ const SECURITY_SECTIONS: LegalSection[] = [
         ],
     },
     {
-        title: "Google Play Data Safety Summary",
+        title: "Google Play & Apple App Store Data Safety",
         paragraphs: [
-            "In alignment with Google Play's Data Safety standards, here is how Bubbly handles your data:",
+            "In alignment with Google Play's Data Safety and Apple App Store Privacy standards, here is how Bubbly handles your data:",
         ],
         bullets: [
-            "Data Encrypted in Transit: Yes — network traffic uses HTTPS / TLS.",
-            "Data Deletion Request Available: Yes — users can request full account and data deletion from Settings or via email.",
+            "End-to-End Encrypted Content: Yes — Messages, voice notes, and shared media are encrypted on-device (X25519 + XSalsa20-Poly1305); voice/video calls use per-call AES-128-GCM2 Agora media encryption.",
+            "Data Encrypted in Transit: Yes — all network traffic uses HTTPS / TLS and WSS.",
+            "Data Deletion Request Available: Yes — users can permanently delete their account and data from Settings → Delete Account or via email.",
             "Third-Party Advertising / Data Brokers: None — Bubbly does not sell your personal information or serve third-party ad trackers.",
             "Minimal Diagnostic Telemetry: Crash logs are collected only to resolve software defects and improve reliability.",
         ],

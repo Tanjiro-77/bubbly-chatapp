@@ -96,6 +96,14 @@ const TECH_STACK: TechItem[] = [
         fallbackEmoji: "📡",
     },
     {
+        id: "e2ee",
+        label: "TweetNaCl",
+        role: "E2EE Crypto",
+        detail: "X25519 key exchange, XSalsa20-Poly1305 messages/media & Safety Numbers.",
+        iconKey: "siLetsencrypt",
+        fallbackEmoji: "🔐",
+    },
+    {
         id: "cloudinary",
         label: "Cloudinary",
         role: "Media CDN",
@@ -152,14 +160,14 @@ const BENTO_PILLARS: {
     },
     {
         key: "vault",
-        title: "Protected",
-        subtitle: "PIN Vault Shield",
-        specTitle: "Private By Design",
+        title: "E2EE + Vault",
+        subtitle: "X25519 Shield",
+        specTitle: "End-to-End Encrypted By Design",
         specBody:
-            "Hide sensitive threads behind your 4-digit Secret Vault PIN, mask lock-screen previews via Privacy Shield, and lock app access on background.",
-        badgeBg: "#fae8ff",
-        accent: "#9333ea",
-        icon: <Icons.ShieldCheck size={verticalScale(17)} color="#9333ea" weight="fill" />,
+            "Messages, media, and voice notes are encrypted on-device with X25519 + XSalsa20-Poly1305, calls use Agora AES-128-GCM2, plus 60-digit Safety Numbers, 4-digit Secret Vault PIN, and Biometric App Lock.",
+        badgeBg: "#dcfce7",
+        accent: "#16a34a",
+        icon: <Icons.ShieldCheck size={verticalScale(17)} color="#15803d" weight="fill" />,
     },
 ];
 
@@ -519,6 +527,7 @@ export default function AboutScreen() {
                                     accessibilityRole="button"
                                     accessibilityLabel="View Arnav Khari full portrait"
                                 >
+                                    <View style={styles.heroPortraitGlow} />
                                     <LinearGradient
                                         colors={[colors.primary, "#F59E0B", "#EA580C"]}
                                         start={{ x: 0, y: 0 }}
@@ -534,9 +543,12 @@ export default function AboutScreen() {
                                                 transition={220}
                                             />
                                             <LinearGradient
-                                                colors={["transparent", "rgba(12,10,8,0.8)"]}
+                                                colors={["transparent", "rgba(12,10,8,0.86)"]}
                                                 style={styles.heroPortraitScrim}
                                             />
+                                            <View style={styles.heroVerifiedPill}>
+                                                <Icons.SealCheck size={11} color={colors.primary} weight="fill" />
+                                            </View>
                                             <View style={styles.heroZoomPill}>
                                                 <Icons.CornersOut size={11} color={colors.primary} weight="bold" />
                                             </View>
@@ -552,7 +564,7 @@ export default function AboutScreen() {
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                         <View style={styles.heroCreatorBadge}>
                                             <Typo size={9.5} fontWeight="800" color={colors.primary} textProps={{ numberOfLines: 1 }}>
-                                                CREATOR & ARCHITECT
+                                                CREATOR &amp; ARCHITECT
                                             </Typo>
                                         </View>
                                         {celebrateCreator && (
@@ -562,18 +574,21 @@ export default function AboutScreen() {
                                             </Animated.View>
                                         )}
                                     </View>
-                                    <Typo size={17.5} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
+                                    <Typo size={18.5} fontWeight="800" color={colors.white} textProps={{ numberOfLines: 1 }}>
                                         Arnav Khari
                                     </Typo>
-                                    <Typo size={11.5} color="rgba(255,255,255,0.75)" textProps={{ numberOfLines: 2 }}>
-                                        Always-on push & HD calling, real-time sockets, and strong tactile haptics.
+                                    <Typo size={11.5} color="rgba(255,255,255,0.78)" textProps={{ numberOfLines: 2 }}>
+                                        End-to-end encrypted real-time chat, Agora HD calling, and tactile native craft.
                                     </Typo>
                                     <View style={styles.heroMetaTagsRow}>
                                         <View style={styles.heroMetaTag}>
-                                            <Typo size={10} fontWeight="700" color="rgba(255,255,255,0.85)">Full-Stack</Typo>
+                                            <Typo size={10} fontWeight="700" color="rgba(255,255,255,0.88)">Full-Stack</Typo>
                                         </View>
                                         <View style={styles.heroMetaTag}>
-                                            <Typo size={10} fontWeight="700" color="rgba(255,255,255,0.85)">Expo + Agora</Typo>
+                                            <Typo size={10} fontWeight="700" color="rgba(255,255,255,0.88)">Expo + Agora</Typo>
+                                        </View>
+                                        <View style={[styles.heroMetaTag, { borderColor: "rgba(34,197,94,0.4)", backgroundColor: "rgba(34,197,94,0.14)" }]}>
+                                            <Typo size={10} fontWeight="700" color="#86EFAC">X25519 E2EE</Typo>
                                         </View>
                                     </View>
                                 </TouchableOpacity>
@@ -1249,10 +1264,16 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "rgba(250,204,21,0.22)",
     },
+    heroPortraitGlow: {
+        position: "absolute",
+        inset: -4,
+        borderRadius: radius._20,
+        backgroundColor: "rgba(250,204,21,0.22)",
+    },
     heroPortraitFrame: {
-        width: scale(90),
-        height: verticalScale(114),
-        borderRadius: radius._17,
+        width: scale(104),
+        height: verticalScale(132),
+        borderRadius: radius._20,
         padding: 2.5,
         flexShrink: 0,
     },
@@ -1275,6 +1296,19 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         height: verticalScale(36),
+    },
+    heroVerifiedPill: {
+        position: "absolute",
+        left: 6,
+        bottom: 6,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: "rgba(14,12,10,0.82)",
+        borderWidth: 1,
+        borderColor: "rgba(250,204,21,0.45)",
+        alignItems: "center",
+        justifyContent: "center",
     },
     heroZoomPill: {
         position: "absolute",

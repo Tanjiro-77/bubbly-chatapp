@@ -31,6 +31,12 @@ const AuthLegalFooter: React.FC<AuthLegalFooterProps> = ({
 
     return (
         <View style={styles.wrapper}>
+            <View style={[styles.e2eePill, { backgroundColor: chipBg, borderColor: chipBorder }]}>
+                <Icons.Lock size={verticalScale(11)} color="#16a34a" weight="fill" />
+                <Typo size={10.5} fontWeight="700" color={chipText}>
+                    End-to-End Encrypted · X25519 + XSalsa20
+                </Typo>
+            </View>
             <Typo size={11.5} color={mutedColor} style={styles.caption}>
                 {actionLabel}
             </Typo>
@@ -82,6 +88,15 @@ const styles = StyleSheet.create({
         alignItems: "center",
         gap: spacingY._8,
         marginTop: spacingY._4,
+    },
+    e2eePill: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: scale(5),
+        paddingHorizontal: scale(10),
+        paddingVertical: verticalScale(4),
+        borderRadius: radius.full,
+        borderWidth: 1,
     },
     caption: {
         textAlign: "center",

@@ -1499,7 +1499,7 @@ export default function SettingsScreen() {
                         iconColor="#16a34a"
                         iconBg="#16a34a1F"
                         label="Security & Data Safety"
-                        subtitle="Encryption, Vault PIN, and Play Store safety"
+                        subtitle="X25519 E2EE, Vault PIN, and Play & App Store safety"
                         onPress={() => router.push("/(legal)/security" as any)}
                         isLast
                     />
