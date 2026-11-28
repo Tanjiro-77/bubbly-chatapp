@@ -61,18 +61,15 @@ export function ScreenshotsTour() {
               style={{ background: "var(--gradient-warm)" }}
             />
 
-            <div className="phone-bezel relative overflow-hidden rounded-[2.8rem] border-4 border-zinc-800 bg-zinc-950 p-2 shadow-2xl">
-              <div className="relative overflow-hidden rounded-[2.3rem] bg-black">
-                <img
-                  key={currentItem.src}
-                  src={currentItem.src}
-                  alt={currentItem.title}
-                  className="pop-in w-full object-cover transition-transform duration-500 hover:scale-102"
-                  style={{ maxHeight: "560px" }}
-                />
-
-                <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
-              </div>
+            <div className="relative overflow-hidden rounded-[2.2rem] border border-border/80 bg-card shadow-2xl">
+              <img
+                key={currentItem.src}
+                src={currentItem.src}
+                alt={currentItem.title}
+                className="pop-in mx-auto w-full object-contain transition-transform duration-500 hover:scale-[1.015]"
+                style={{ maxHeight: "600px" }}
+              />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
             </div>
 
             {/* Prev / Next controls */}

@@ -172,13 +172,17 @@ const convKeyCache = new Map<string, string>();
 const publicKeyCache = new Map<string, { publicKey: string; keyVersion: number; fingerprint: string }>();
 
 export function computePublicKeyFingerprint(publicKeyB64: string): string {
-    const hash = nacl.hash(base64ToBytes(publicKeyB64));
-    const groups: string[] = [];
-    for (let i = 0; i < 16; i += 2) {
-        const val = ((hash[i] << 8) | hash[i + 1]).toString(16).padStart(4, "0").toUpperCase();
-        groups.push(val);
+    try {
+        const hash = nacl.hash(base64ToBytes(publicKeyB64));
+        const groups: string[] = [];
+        for (let i = 0; i < 16; i += 2) {
+            const val = ((hash[i] << 8) | hash[i + 1]).toString(16).padStart(4, "0").toUpperCase();
+            groups.push(val);
+        }
+        return groups.join(" ");
+    } catch {
+        return "";
     }
-    return groups.join(" ");
 }
 
 export function computeSafetyNumber(
@@ -187,20 +191,24 @@ export function computeSafetyNumber(
     theirUserId: string,
     theirPublicKeyB64: string
 ): string {
-    const pair = [
-        { id: myUserId, pub: myPublicKeyB64 },
-        { id: theirUserId, pub: theirPublicKeyB64 },
-    ].sort((a, b) => a.id.localeCompare(b.id));
-    const input = `${pair[0].id}|${pair[0].pub}|${pair[1].id}|${pair[1].pub}`;
-    const digest = nacl.hash(utf8ToBytes(input));
-    const chunks: string[] = [];
-    for (let i = 0; i < 12; i++) {
-        const idx = i * 4;
-        const num =
-            ((digest[idx] << 24) | (digest[idx + 1] << 16) | (digest[idx + 2] << 8) | digest[idx + 3]) >>> 0;
-        chunks.push(String(num % 100000).padStart(5, "0"));
+    try {
+        const pair = [
+            { id: myUserId, pub: myPublicKeyB64 },
+            { id: theirUserId, pub: theirPublicKeyB64 },
+        ].sort((a, b) => a.id.localeCompare(b.id));
+        const input = `${pair[0].id}|${pair[0].pub}|${pair[1].id}|${pair[1].pub}`;
+        const digest = nacl.hash(utf8ToBytes(input));
+        const chunks: string[] = [];
+        for (let i = 0; i < 12; i++) {
+            const idx = i * 4;
+            const num =
+                ((digest[idx] << 24) | (digest[idx + 1] << 16) | (digest[idx + 2] << 8) | digest[idx + 3]) >>> 0;
+            chunks.push(String(num % 100000).padStart(5, "0"));
+        }
+        return chunks.join(" ");
+    } catch {
+        return "";
     }
-    return chunks.join(" ");
 }
 
 export async function ensureIdentityKeyPair(userId: string): Promise<E2EEIdentityKeys> {

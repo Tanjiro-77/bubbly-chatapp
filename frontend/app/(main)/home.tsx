@@ -380,6 +380,7 @@ const Home = () => {
             if (uid) {
                 Promise.all(
                     res.data.map(async (conv: any) => {
+                        if (!conv?._id) return conv;
                         seedPublicKeyCache(conv.participants || []);
                         if (conv.lastMessage?.isEncrypted && conv.lastMessage?.e2ee) {
                             const convKey = await getOrCreateConversationKey(

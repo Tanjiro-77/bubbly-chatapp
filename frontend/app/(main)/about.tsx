@@ -1266,7 +1266,10 @@ const styles = StyleSheet.create({
     },
     heroPortraitGlow: {
         position: "absolute",
-        inset: -4,
+        top: -4,
+        right: -4,
+        bottom: -4,
+        left: -4,
         borderRadius: radius._20,
         backgroundColor: "rgba(250,204,21,0.22)",
     },

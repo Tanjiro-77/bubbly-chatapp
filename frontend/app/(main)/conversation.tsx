@@ -3434,7 +3434,7 @@ const Conversation = () => {
         }
         setIsUploadingVoice(true);
         try {
-            const convKey = await ensureConvKey();
+            const convKey = await ensureConvKey().catch(() => null);
             if (convKey) {
                 const encVoice = await uploadEncryptedFileToCloudinary(uri, "e2ee-voice");
                 if (!encVoice.success || !encVoice.data) { BubblyAlert.alert("Error", "Could not upload encrypted voice message"); return; }
@@ -3580,7 +3580,7 @@ const Conversation = () => {
             setReplyTo(null);
             setIsSilentSend(false);
 
-            const convKey = await ensureConvKey();
+            const convKey = await ensureConvKey().catch(() => null);
             if (convKey) {
                 const e2ee = encryptMessagePayload({
                     content: "",
@@ -3820,7 +3820,7 @@ const Conversation = () => {
             setReplyTo(null);
             setIsSilentSend(false);
 
-            const convKey = await ensureConvKey();
+            const convKey = await ensureConvKey().catch(() => null);
             if (convKey) {
                 const e2ee = encryptMessagePayload({
                     content: cleanText,
@@ -3862,7 +3862,7 @@ const Conversation = () => {
             let attachmentMeta = null;
             let messageType = 'text';
 
-            const convKey = await ensureConvKey();
+            const convKey = await ensureConvKey().catch(() => null);
             if (selectedFile) {
                 if (convKey) {
                     const encMedia = await uploadEncryptedFileToCloudinary(selectedFile.uri, "e2ee-media");
